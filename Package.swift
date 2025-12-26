@@ -15,6 +15,11 @@ let package = Package(
       name: "MediaBrowser",
       dependencies: [.product(name: "GRDB", package: "GRDB.swift")],
       path: "Sources/MediaBrowser"
-    )
+    ),
+    .testTarget(
+      name: "MediaBrowserTests",
+      dependencies: ["MediaBrowser"],
+      path: "Tests/MediaBrowserTests"
+    ),
   ]
 )

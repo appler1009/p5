@@ -98,7 +98,7 @@ class MediaScanner: ObservableObject {
     }
   }
 
-  private func countItems(in directory: URL) async -> Int {
+  func countItems(in directory: URL) async -> Int {
     let fileManager = FileManager.default
     guard
       let enumerator = fileManager.enumerator(
@@ -127,7 +127,7 @@ class MediaScanner: ObservableObject {
     return count
   }
 
-  private func scanDirectory(_ directory: URL) async {
+  func scanDirectory(_ directory: URL) async {
     let fileManager = FileManager.default
     guard
       let enumerator = fileManager.enumerator(
@@ -175,7 +175,7 @@ class MediaScanner: ObservableObject {
     }
   }
 
-  private func isEdited(base: String) -> Bool {
+  func isEdited(base: String) -> Bool {
     // Check for separators first
     let separators = ["_", "-"]
     for sep in separators {
@@ -244,7 +244,7 @@ class MediaScanner: ObservableObject {
     supportedImageExtensions + supportedVideoExtensions
   }
 
-  private func mediaType(for url: URL) -> MediaType? {
+  func mediaType(for url: URL) -> MediaType? {
     let pathExtension = url.pathExtension.lowercased()
     if supportedImageExtensions.contains(pathExtension) {
       // Check if it's a Live Photo: look for paired .mov

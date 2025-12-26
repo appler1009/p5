@@ -31,3 +31,6 @@
 # Database files (if not to commit)
 *.db
 *.sqlite
+
+# Coverage reports
+coverage.html
