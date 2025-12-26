@@ -56,6 +56,7 @@ struct ContentView: View {
           Spacer()
         }
         .padding(.horizontal)
+        .padding(.top, 8)
         .padding(.bottom, 8)
 
         ScrollView {

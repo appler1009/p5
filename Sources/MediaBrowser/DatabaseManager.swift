@@ -12,6 +12,24 @@ class DatabaseManager {
         + "/MediaBrowser"
       try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
       let dbPath = "\(path)/media.db"
+
+      // If DB exists and media_items table lacks blurhash column, recreate DB
+      if FileManager.default.fileExists(atPath: dbPath) {
+        let tempQueue = try DatabaseQueue(path: dbPath)
+        var needsRecreate = false
+        try tempQueue.read { db in
+          if try db.tableExists("media_items") {
+            let columns = try db.columns(in: "media_items").map { $0.name }
+            if !columns.contains("blurhash") {
+              needsRecreate = true
+            }
+          }
+        }
+        if needsRecreate {
+          try FileManager.default.removeItem(atPath: dbPath)
+        }
+      }
+
       dbQueue = try DatabaseQueue(path: dbPath)
       try createTable()
     } catch {
@@ -33,6 +51,7 @@ class DatabaseManager {
         t.column("exif_date", .datetime)
         t.column("latitude", .double)
         t.column("longitude", .double)
+        t.column("blurhash", .text)
         t.column("exif", .text)
       }
       try db.create(table: "directories", ifNotExists: true) { t in
@@ -62,8 +81,8 @@ class DatabaseManager {
       try dbQueue?.write { db in
         try db.execute(
           sql: """
-            INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, exif)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, blurhash, exif)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             item.url.absoluteString,
@@ -76,6 +95,7 @@ class DatabaseManager {
             metadata.exifDate,
             metadata.gps?.latitude,
             metadata.gps?.longitude,
+            item.blurhash,
             exifString,
           ]
         )
@@ -142,7 +162,9 @@ class DatabaseManager {
             meta.shutterSpeed = exifDict["shutter_speed"] as? String
           }
 
-          let item = MediaItem(url: url, type: itemType, metadata: meta)
+          let item = MediaItem(
+            url: url, type: itemType, metadata: meta, displayName: nil,
+            blurhash: row["blurhash"] as String?)
           items.append(item)
         }
       }
@@ -193,6 +215,19 @@ class DatabaseManager {
       print("Load directories error: \(error)")
     }
     return directories
+  }
+
+  func updateBlurhash(for url: URL, hash: String) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "UPDATE media_items SET blurhash = ? WHERE url = ?",
+          arguments: [hash, url.absoluteString]
+        )
+      }
+    } catch {
+      print("Update blurhash error: \(error)")
+    }
   }
 
   func clearAll() {

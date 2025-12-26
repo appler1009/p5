@@ -56,6 +56,11 @@ class ThumbnailCache {
       } catch {
         // ignore
       }
+      if let cgImage = cgImage {
+        let image = NSImage(cgImage: cgImage, size: size)
+        return image
+      }
+      return nil
     }
 
     if var cgImage = cgImage {
@@ -71,7 +76,8 @@ class ThumbnailCache {
           cgImage = cropped
         }
       }
-      return NSImage(cgImage: cgImage, size: size)
+      let image = NSImage(cgImage: cgImage, size: size)
+      return image
     }
     return nil
   }
