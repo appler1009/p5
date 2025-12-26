@@ -25,8 +25,10 @@ struct SettingsView: View {
               HStack {
                 Text(directoryManager.directories[index].path)
                 Spacer()
-                Button("Remove") {
+                Button(action: {
                   directoryManager.removeDirectory(at: index)
+                }) {
+                  Image(systemName: "trash")
                 }
               }
             }
@@ -52,7 +54,7 @@ struct SettingsView: View {
         }
       }
       .padding()
-      .frame(minWidth: 600, minHeight: 300)
+      .frame(minWidth: 450, minHeight: 300)
       .onKeyPress(.escape) {
         NSApp.keyWindow?.close()
         return .handled
