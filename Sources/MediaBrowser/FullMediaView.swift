@@ -7,7 +7,7 @@ struct AVPlayerViewRepresentable: NSViewRepresentable {
   func makeNSView(context: Context) -> AVPlayerView {
     let view = AVPlayerView()
     view.player = player
-    view.controlsStyle = .none
+    view.controlsStyle = .floating
     return view
   }
 
@@ -51,7 +51,6 @@ struct FullMediaView: View {
 
   @State private var fullImage: NSImage?
   @State private var player: AVPlayer?
-  @State private var showExif = false
 
   var body: some View {
     ZStack {
@@ -78,86 +77,12 @@ struct FullMediaView: View {
       }
     }
     .overlay(alignment: .bottom) {
-      VStack {
-        if showExif, let metadata = item.metadata {
-          ScrollView {
-            VStack(alignment: .leading, spacing: 4) {
-              if let creationDate = metadata.creationDate {
-                Text("Created: \(creationDate.formatted())")
-              }
-              if let modificationDate = metadata.modificationDate {
-                Text("Modified: \(modificationDate.formatted())")
-              }
-              if let dimensions = metadata.dimensions {
-                Text("Dimensions: \(Int(dimensions.width)) x \(Int(dimensions.height))")
-              }
-              if let exifDate = metadata.exifDate {
-                Text("EXIF Date: \(exifDate.formatted()) (local time)")
-              }
-              if let make = metadata.make {
-                Text("Camera: \(make) \(metadata.model ?? "")")
-              }
-              if let lens = metadata.lens {
-                Text("Lens: \(lens)")
-              }
-              if let iso = metadata.iso {
-                Text("ISO: \(iso)")
-              }
-              if let aperture = metadata.aperture {
-                Text("Aperture: f/\(String(format: "%.1f", aperture))")
-              }
-              if let shutterSpeed = metadata.shutterSpeed {
-                Text("Shutter: \(shutterSpeed)s")
-              }
-              if let gps = metadata.gps {
-                Text(
-                  "GPS: \(String(format: "%.6f", gps.latitude)), \(String(format: "%.6f", gps.longitude))"
-                )
-                if let altitude = gps.altitude {
-                  Text("Altitude: \(String(format: "%.1f", altitude))m")
-                }
-              }
-              if let duration = metadata.duration {
-                Text("Duration: \(String(format: "%.2f", duration))s")
-              }
-            }
-            .padding()
-          }
-          .frame(maxHeight: 200)
-        } else {
-          HStack {
-            Text(item.url.lastPathComponent)
-            Button(action: { showExif.toggle() }) {
-              Image(systemName: showExif ? "chevron.down" : "chevron.right")
-                .foregroundColor(.white)
-            }
-          }
-        }
-      }
-      .padding(8)
-      .background(Color.black.opacity(0.7))
-      .foregroundColor(.white)
-      .cornerRadius(8)
-      .padding(.bottom, 20)
-    }
-    .onTapGesture {
-      onClose()
-    }
-    .onChange(of: item.id) {
-      fullImage = nil
-      player = nil
-      if item.type == .video {
-        loadVideo()
-      } else {
-        loadImage()
-      }
-    }
-    .onAppear {
-      if item.type == .video {
-        loadVideo()
-      } else {
-        loadImage()
-      }
+      Text(item.url.lastPathComponent)
+        .padding(8)
+        .background(Color.black.opacity(0.7))
+        .foregroundColor(.white)
+        .cornerRadius(8)
+        .padding(.bottom, 20)
     }
     .overlay(alignment: .topTrailing) {
       Button(action: onClose) {
@@ -214,6 +139,25 @@ struct FullMediaView: View {
       })
       .opacity(0)
     )
+    .onTapGesture {
+      onClose()
+    }
+    .onChange(of: item.id) {
+      fullImage = nil
+      player = nil
+      if item.type == .video {
+        loadVideo()
+      } else {
+        loadImage()
+      }
+    }
+    .onAppear {
+      if item.type == .video {
+        loadVideo()
+      } else {
+        loadImage()
+      }
+    }
   }
 
   private func loadImage() {
