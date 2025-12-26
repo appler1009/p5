@@ -86,14 +86,19 @@ class MediaScanner: ObservableObject {
       }
     }
 
-    var baseToURL = [String: URL]()
+    var baseToURLs = [String: [URL]]()
     for url in allURLs {
       let base = url.deletingPathExtension().lastPathComponent
-      baseToURL[base] = url
+      baseToURLs[base, default: []].append(url)
     }
 
-    for (base, url) in baseToURL {
-      if isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURL[$0] }) == nil {
+    for (base, urls) in baseToURLs {
+      // Prefer image over video for the same base
+      let imageURL = urls.first { supportedImageExtensions.contains($0.pathExtension.lowercased()) }
+      let preferredURL = imageURL ?? urls.first
+      if let url = preferredURL,
+        isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
+      {
         if let type = mediaType(for: url) {
           var item = MediaItem(url: url, type: type)
           await extractMetadata(for: &item)

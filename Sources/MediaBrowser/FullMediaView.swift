@@ -51,12 +51,13 @@ struct FullMediaView: View {
 
   @State private var fullImage: NSImage?
   @State private var player: AVPlayer?
+  @State private var showVideo = false
 
   var body: some View {
     ZStack {
       Color.black.edgesIgnoringSafeArea(.all)
 
-      if item.type == .video {
+      if item.type == .video || (item.type == .livePhoto && showVideo) {
         if let player = player {
           AVPlayerViewRepresentable(player: player)
             .id(item.id)
@@ -93,6 +94,25 @@ struct FullMediaView: View {
           .clipShape(Circle())
       }
       .padding()
+    }
+    .overlay(alignment: .topLeading) {
+      if item.type == .livePhoto {
+        Button(action: {
+          showVideo.toggle()
+          if showVideo {
+            loadVideo()
+          } else {
+            loadImage()
+          }
+        }) {
+          Image(systemName: showVideo ? "photo" : "livephoto")
+            .foregroundColor(.white)
+            .padding(10)
+            .background(Color.black.opacity(0.5))
+            .clipShape(Circle())
+        }
+        .padding()
+      }
     }
     .overlay(alignment: .leading) {
       VStack {
@@ -145,16 +165,18 @@ struct FullMediaView: View {
     .onChange(of: item.id) {
       fullImage = nil
       player = nil
-      if item.type == .video {
+      showVideo = false
+      if item.type == .video || (item.type == .livePhoto && showVideo) {
         loadVideo()
-      } else {
+      } else if item.type == .photo || (item.type == .livePhoto && !showVideo) {
         loadImage()
       }
     }
     .onAppear {
-      if item.type == .video {
+      showVideo = false
+      if item.type == .video || (item.type == .livePhoto && showVideo) {
         loadVideo()
-      } else {
+      } else if item.type == .photo || (item.type == .livePhoto && !showVideo) {
         loadImage()
       }
     }
@@ -165,7 +187,10 @@ struct FullMediaView: View {
   }
 
   private func loadVideo() {
-    player = AVPlayer(url: item.url)
+    let videoURL =
+      item.type == .livePhoto
+      ? item.url.deletingPathExtension().appendingPathExtension("mov") : item.url
+    player = AVPlayer(url: videoURL)
     player?.play()
   }
 }
