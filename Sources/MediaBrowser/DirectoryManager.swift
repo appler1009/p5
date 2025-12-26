@@ -84,6 +84,12 @@ class DirectoryManager: ObservableObject {
     }
   }
 
+  func cleanupThumbnails() -> Int {
+    let count = ThumbnailCache.shared.cleanupDanglingThumbnails()
+    UserDefaults.standard.set(count, forKey: "lastThumbnailCleanupCount")
+    return count
+  }
+
   deinit {
     for url in accessedURLs {
       url.stopAccessingSecurityScopedResource()

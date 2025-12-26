@@ -76,6 +76,27 @@ class ThumbnailCache {
     return nil
   }
 
+  func cleanupDanglingThumbnails() -> Int {
+    let fileManager = FileManager.default
+    var deletedCount = 0
+    guard let files = try? fileManager.contentsOfDirectory(atPath: cacheDir) else { return 0 }
+    for file in files where file.hasSuffix(".png") {
+      let key = String(file.dropLast(4))  // remove .png
+      if let lastUnderscore = key.lastIndex(of: "_") {
+        let urlString = String(key[..<lastUnderscore])
+        if let url = URL(string: urlString), !fileManager.fileExists(atPath: url.path) {
+          do {
+            try fileManager.removeItem(atPath: cacheDir + "/" + file)
+            deletedCount += 1
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+    return deletedCount
+  }
+
   private func loadFromDisk(key: String) -> NSImage? {
     let filePath = cacheDir + "/" + key + ".png"
     return NSImage(contentsOfFile: filePath)

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
+  @AppStorage("lastThumbnailCleanupCount") private var lastCleanupCount = 0
 
   var body: some View {
     VStack {
@@ -17,6 +18,10 @@ struct SettingsView: View {
           MediaScanner.shared.reset()
         }
         .foregroundColor(.red)
+        Button("Cleanup Thumbnails (\(lastCleanupCount) last)") {
+          let count = directoryManager.cleanupThumbnails()
+          lastCleanupCount = count
+        }
         Spacer()
       }
       .padding(.horizontal)

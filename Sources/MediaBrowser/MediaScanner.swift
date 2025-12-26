@@ -69,6 +69,9 @@ class MediaScanner: ObservableObject {
     for item in items {
       DatabaseManager.shared.insertItem(item)
     }
+    // Cleanup dangling thumbnails
+    let deleted = ThumbnailCache.shared.cleanupDanglingThumbnails()
+    print("Cleaned up \(deleted) dangling thumbnails")
   }
 
   private func scanDirectory(_ directory: URL) async {
