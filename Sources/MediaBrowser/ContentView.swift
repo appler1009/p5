@@ -13,6 +13,27 @@ struct ContentView: View {
     })
   }
 
+  private var monthlyGroups: [(month: String, items: [MediaItem])] {
+    let calendar = Calendar.current
+    let grouped = Dictionary(grouping: sortedItems) { item -> Date? in
+      guard let date = item.metadata?.creationDate else { return nil }
+      return calendar.date(from: calendar.dateComponents([.year, .month], from: date))
+    }
+    let sortedGroups = grouped.sorted { (lhs, rhs) -> Bool in
+      guard let lhsDate = lhs.key, let rhsDate = rhs.key else { return lhs.key != nil }
+      return lhsDate > rhsDate
+    }
+    return sortedGroups.map {
+      (
+        month: $0.key?.formatted(.dateTime.year().month(.wide)) ?? "Unknown",
+        items: $0.value.sorted {
+          ($0.metadata?.creationDate ?? Date.distantPast)
+            > ($1.metadata?.creationDate ?? Date.distantPast)
+        }
+      )
+    }
+  }
+
   var body: some View {
     ZStack {
       VStack(spacing: 0) {
@@ -38,12 +59,18 @@ struct ContentView: View {
         .padding(.bottom, 8)
 
         ScrollView {
-          LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
-            ForEach(sortedItems) { item in
-              MediaItemView(item: item, onTap: { selectedItem = item })
+          VStack(alignment: .leading, spacing: 16) {
+            ForEach(monthlyGroups, id: \.month) { group in
+              Section(header: Text(group.month).font(.headline).padding(.horizontal)) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
+                  ForEach(group.items) { item in
+                    MediaItemView(item: item, onTap: { selectedItem = item })
+                  }
+                }
+                .padding(.horizontal, 8)
+              }
             }
           }
-          .padding(.horizontal, 8)
           .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
