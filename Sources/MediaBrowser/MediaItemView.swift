@@ -37,6 +37,7 @@ struct MediaItemView: View {
       }
     }
     .aspectRatio(1, contentMode: .fit)  // Ensure square cells
+    .help(item.metadata?.filename ?? item.url.lastPathComponent)
     .onTapGesture {
       onTap()
     }
@@ -47,7 +48,8 @@ struct MediaItemView: View {
 
   private func loadThumbnail() {
     Task {
-      let image = await ThumbnailCache.shared.thumbnail(for: item.url, size: CGSize(width: 100, height: 100))
+      let image = await ThumbnailCache.shared.thumbnail(
+        for: item.url, size: CGSize(width: 100, height: 100))
       thumbnail = image
     }
   }

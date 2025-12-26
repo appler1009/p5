@@ -80,23 +80,23 @@ class DatabaseManager {
     do {
       try dbQueue?.write { db in
         try db.execute(
-            sql: """
+          sql: """
             INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, exif)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            arguments: [
-                item.url.absoluteString,
-                String(describing: item.type),
-                metadata.filename,
-                metadata.creationDate,
-                metadata.modificationDate,
-                metadata.dimensions?.width,
-                metadata.dimensions?.height,
-                metadata.exifDate,
-                metadata.gps?.latitude,
-                metadata.gps?.longitude,
-                exifString
-            ]
+          arguments: [
+            item.url.absoluteString,
+            String(describing: item.type),
+            metadata.filename,
+            metadata.creationDate,
+            metadata.modificationDate,
+            metadata.dimensions?.width,
+            metadata.dimensions?.height,
+            metadata.exifDate,
+            metadata.gps?.latitude,
+            metadata.gps?.longitude,
+            exifString,
+          ]
         )
       }
     } catch {
