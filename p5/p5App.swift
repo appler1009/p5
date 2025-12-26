@@ -9,9 +9,9 @@ import SwiftUI
 
 @main
 struct p5App: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+  var body: some Scene {
+    WindowGroup {
+      ContentView()
     }
+  }
 }
