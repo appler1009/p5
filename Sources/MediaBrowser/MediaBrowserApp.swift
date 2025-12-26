@@ -4,6 +4,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
+
+    // Suppress MapKit debug output
+    UserDefaults.standard.set(false, forKey: "MKDefaultLogLevel")
   }
 }
 

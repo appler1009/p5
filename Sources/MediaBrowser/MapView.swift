@@ -164,6 +164,10 @@ struct MapView: NSViewRepresentable {
           }
         }
       } else {
+        // For larger clusters, ensure they render on top of thumbnails
+        annotationView?.displayPriority = .required
+        annotationView?.collisionMode = .circle
+
         let size = min(max(CGFloat(25 + Int(Double(annotation.cluster.count) * 1.5)), 35), 70)
 
         let image = NSImage(size: CGSize(width: size, height: size))
