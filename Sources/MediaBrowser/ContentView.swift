@@ -44,7 +44,12 @@ struct ContentView: View {
     }
 
     return grouped.map { (month: $0.key, items: $0.value) }
-      .sorted { $0.month > $1.month }
+      .sorted { group1, group2 in
+        // Sort by the earliest date in each group for chronological order
+        let date1 = group1.items.first?.metadata?.creationDate ?? Date.distantPast
+        let date2 = group2.items.first?.metadata?.creationDate ?? Date.distantPast
+        return date1 > date2  // Most recent first (descending)
+      }
   }
 
   private func distance(_ c1: CLLocationCoordinate2D, _ c2: CLLocationCoordinate2D) -> Double {
@@ -255,6 +260,9 @@ struct ContentView: View {
           Image(systemName: "map").tag("Map")
         }
         .pickerStyle(.segmented)
+        .onChange(of: viewMode) {
+          UserDefaults.standard.set(viewMode, forKey: "viewMode")
+        }
       }
     }
 
