@@ -37,33 +37,6 @@ struct ContentView: View {
   var body: some View {
     ZStack {
       VStack(spacing: 0) {
-        HStack {
-          Button(action: {
-            openWindow(id: "settings")
-          }) {
-            Image(systemName: "gear")
-          }
-          .help("Settings")
-          .keyboardShortcut(",", modifiers: .command)
-
-          Button("Scan") {
-            Task {
-              await MediaScanner.shared.scan(directories: directoryManager.directories)
-            }
-          }
-          .disabled(mediaScanner.isScanning || directoryManager.directories.isEmpty)
-
-          if let progress = mediaScanner.scanProgress {
-            ProgressView(value: Double(progress.current), total: Double(progress.total))
-              .frame(width: 100)
-          }
-
-          Spacer()
-        }
-        .padding(.horizontal)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-
         ScrollView {
           VStack(alignment: .leading, spacing: 16) {
             ForEach(monthlyGroups, id: \.month) { group in
@@ -94,6 +67,29 @@ struct ContentView: View {
       }
     }
     .navigationTitle("Media Browser")
+    .toolbar {
+      ToolbarItemGroup(placement: .automatic) {
+        Button("Scan") {
+          Task {
+            await MediaScanner.shared.scan(directories: directoryManager.directories)
+          }
+        }
+        .disabled(mediaScanner.isScanning || directoryManager.directories.isEmpty)
+
+        if let progress = mediaScanner.scanProgress {
+          ProgressView(value: Double(progress.current), total: Double(progress.total))
+            .frame(width: 100)
+        }
+
+        Button(action: {
+          openWindow(id: "settings")
+        }) {
+          Image(systemName: "gear")
+        }
+        .help("Settings")
+        .keyboardShortcut(",", modifiers: .command)
+      }
+    }
   }
 
   private func nextItem() {
