@@ -19,5 +19,6 @@ struct MediaBrowserApp: App {
       SettingsView()
     }
     .windowStyle(.hiddenTitleBar)
+    .defaultSize(width: 600, height: 300)
   }
 }

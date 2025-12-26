@@ -23,6 +23,7 @@ struct ContentView: View {
             Image(systemName: "gear")
           }
           .help("Settings")
+          .keyboardShortcut(",", modifiers: .command)
 
           Button("Scan") {
             Task {

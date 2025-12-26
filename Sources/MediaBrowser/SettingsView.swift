@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -5,41 +6,57 @@ struct SettingsView: View {
   @AppStorage("lastThumbnailCleanupCount") private var lastCleanupCount = 0
 
   var body: some View {
-    VStack {
-      Text("Directory Settings")
-        .font(.largeTitle)
-        .padding()
-
-      HStack {
-        Button("Add Directory") {
-          directoryManager.addDirectory()
+    ZStack {
+      Color.clear
+        .frame(width: 0, height: 0)
+        .onAppear {
+          NSApp.keyWindow?.title = "Settings"
         }
-        Button("Reset Database") {
-          MediaScanner.shared.reset()
-        }
-        .foregroundColor(.red)
-        Button("Cleanup Thumbnails (\(lastCleanupCount) last)") {
-          let count = directoryManager.cleanupThumbnails()
-          lastCleanupCount = count
-        }
-        Spacer()
-      }
-      .padding(.horizontal)
-
-      List {
-        ForEach(directoryManager.directories.indices, id: \.self) { index in
+      Form {
+        Section(header: Text("Directory Management")) {
           HStack {
-            Text(directoryManager.directories[index].path)
-            Spacer()
-            Button("Remove") {
-              directoryManager.removeDirectory(at: index)
+            Button("Add Directory") {
+              directoryManager.addDirectory()
             }
+            Spacer()
+          }
+          List {
+            ForEach(directoryManager.directories.indices, id: \.self) { index in
+              HStack {
+                Text(directoryManager.directories[index].path)
+                Spacer()
+                Button("Remove") {
+                  directoryManager.removeDirectory(at: index)
+                }
+              }
+            }
+          }
+          .frame(height: 120)  // Compact height for a few rows
+        }
+
+        Section(header: Text("Database Management")) {
+          HStack {
+            Button("Reset Database") {
+              MediaScanner.shared.reset()
+            }
+            .foregroundColor(.red)
+            Spacer()
+          }
+          HStack {
+            Button("Cleanup Thumbnails (\(lastCleanupCount) last)") {
+              let count = directoryManager.cleanupThumbnails()
+              lastCleanupCount = count
+            }
+            Spacer()
           }
         }
       }
-      .frame(minHeight: 200)
+      .padding()
+      .frame(minWidth: 600, minHeight: 300)
+      .onKeyPress(.escape) {
+        NSApp.keyWindow?.close()
+        return .handled
+      }
     }
-    .frame(minWidth: 600, minHeight: 400)
-    .padding()
   }
 }
