@@ -56,6 +56,20 @@ class ThumbnailCache {
       } catch {
         // ignore
       }
+      if let videoCgImage = cgImage {
+        // Crop to square
+        let width = videoCgImage.width
+        let height = videoCgImage.height
+        let minDim = min(width, height)
+        if width != height {
+          let x = (width - minDim) / 2
+          let y = (height - minDim) / 2
+          let rect = CGRect(x: x, y: y, width: minDim, height: minDim)
+          if let cropped = videoCgImage.cropping(to: rect) {
+            cgImage = cropped
+          }
+        }
+      }
       if let cgImage = cgImage {
         let image = NSImage(cgImage: cgImage, size: size)
         return image
