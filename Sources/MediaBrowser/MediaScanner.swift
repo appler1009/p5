@@ -6,12 +6,16 @@ enum MediaType {
   case video
 }
 
-struct MediaItem: Identifiable {
+struct MediaItem: Identifiable, Equatable {
   let id = UUID()
   let url: URL
   let type: MediaType
   var metadata: MediaMetadata?  // to be filled later
   var displayName: String?  // for edited versions, show original name
+
+  static func == (lhs: MediaItem, rhs: MediaItem) -> Bool {
+    return lhs.id == rhs.id
+  }
 }
 
 struct MediaMetadata {

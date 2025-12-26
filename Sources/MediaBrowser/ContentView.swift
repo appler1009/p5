@@ -136,6 +136,7 @@ struct ContentView: View {
       }
     }
 
+    // Keep all clusters, but small ones (< 5 items) will be shown as individual thumbnails
     clusters = tempClusters
   }
 
@@ -206,6 +207,9 @@ struct ContentView: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .onAppear {
             region = regionForItems(itemsWithGPS)
+            computeClusters()
+          }
+          .onChange(of: mediaScanner.items) {
             computeClusters()
           }
         }

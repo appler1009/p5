@@ -7,22 +7,48 @@ struct MapView: NSViewRepresentable {
   let onClusterTap: (Cluster) -> Void
   let onRegionChange: (MKCoordinateRegion) -> Void
 
-  private let thumbnailSize = CGSize(width: 30, height: 30)
+  private let baseThumbnailSize = CGSize(width: 30, height: 30)
+  private let maxThumbnailSize = CGSize(width: 45, height: 45)  // 50% larger at max zoom
+
+  private func calculateThumbnailSize(for zoomLevel: Double) -> CGSize {
+    // Scale thumbnail size from 30px at low zoom to 45px at high zoom (15+)
+    let normalizedZoom = max(0, min(1, (zoomLevel - 5) / 10))  // Normalize zoom from 5-15 to 0-1
+    let scaleFactor = 1.0 + (0.5 * normalizedZoom)  // Scale from 1.0 to 1.5
+    let newSize = CGSize(
+      width: baseThumbnailSize.width * scaleFactor,
+      height: baseThumbnailSize.height * scaleFactor
+    )
+    return newSize
+  }
 
   private func createRoundedThumbnail(from image: NSImage, size: CGSize) -> NSImage {
-    let roundedImage = NSImage(size: size)
+    let shadowOffset: CGFloat = 2.0
+    let shadowSize = CGSize(
+      width: size.width + shadowOffset * 2, height: size.height + shadowOffset * 2)
+
+    let roundedImage = NSImage(size: shadowSize)
     roundedImage.lockFocus()
 
-    // Create rounded rect path
-    let rect = CGRect(origin: .zero, size: size)
-    let radius: CGFloat = 4.0
-    let roundedPath = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+    // Draw shadow first
+    let shadowRect = CGRect(
+      x: shadowOffset,
+      y: shadowOffset,
+      width: size.width,
+      height: size.height
+    )
+    let shadowPath = NSBezierPath(roundedRect: shadowRect, xRadius: 4.0, yRadius: 4.0)
+    NSColor.black.withAlphaComponent(0.3).setFill()
+    shadowPath.fill()
+
+    // Create rounded rect path for image
+    let imageRect = CGRect(origin: .zero, size: size)
+    let roundedPath = NSBezierPath(roundedRect: imageRect, xRadius: 4.0, yRadius: 4.0)
     roundedPath.addClip()
 
     // Draw the image
-    image.draw(in: rect)
+    image.draw(in: imageRect)
 
-    // Draw translucent dark border
+    // Draw border
     NSColor.black.withAlphaComponent(0.7).setStroke()
     roundedPath.lineWidth = 1.0
     roundedPath.stroke()
@@ -101,7 +127,7 @@ struct MapView: NSViewRepresentable {
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
       guard let annotation = annotation as? MapAnnotation else { return nil }
 
-      let identifier = annotation.cluster.count == 1 ? "PhotoPin" : "ClusterPin"
+      let identifier = annotation.cluster.count < 5 ? "PhotoPin" : "ClusterPin"
       var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
 
       if annotationView == nil {
@@ -112,24 +138,28 @@ struct MapView: NSViewRepresentable {
         annotationView?.annotation = annotation
       }
 
-      if annotation.cluster.count == 1 {
-        // For individual photos, load and display thumbnail with rounded border
-        // Start with camera icon as fallback
-        annotationView?.image = NSImage(
-          systemSymbolName: "camera.fill", accessibilityDescription: nil)
+      if annotation.cluster.count < 5 {
+        // For small clusters (1-4 items), show individual thumbnails
+        if let item = annotation.cluster.items.first {
+          // Calculate thumbnail size based on zoom level
+          let zoomLevel = log2(360 / parent.region.span.longitudeDelta)
+          let thumbnailSize = parent.calculateThumbnailSize(for: zoomLevel)
 
-        let item = annotation.cluster.items.first
-        let url = item?.url
-        Task {
-          if let url = url,
-            let thumbnail = await ThumbnailCache.shared.thumbnail(
-              for: url, size: parent.thumbnailSize)
-          {
-            // Create rounded thumbnail with 1 pixel border
-            let borderedImage = parent.createRoundedThumbnail(
-              from: thumbnail, size: parent.thumbnailSize)
-            await MainActor.run {
-              annotationView?.image = borderedImage
+          // Start with camera icon as fallback
+          annotationView?.image = NSImage(
+            systemSymbolName: "camera.fill", accessibilityDescription: nil)
+
+          let url = item.url
+          Task {
+            if let thumbnail = await ThumbnailCache.shared.thumbnail(
+              for: url, size: thumbnailSize)
+            {
+              // Create rounded thumbnail with 1 pixel border
+              let borderedImage = parent.createRoundedThumbnail(
+                from: thumbnail, size: thumbnailSize)
+              await MainActor.run {
+                annotationView?.image = borderedImage
+              }
             }
           }
         }
