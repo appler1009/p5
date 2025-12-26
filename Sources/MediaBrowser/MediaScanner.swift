@@ -12,7 +12,6 @@ struct MediaItem: Identifiable {
   let type: MediaType
   var metadata: MediaMetadata?  // to be filled later
   var displayName: String?  // for edited versions, show original name
-  var blurhash: String?
 }
 
 struct MediaMetadata {
@@ -42,7 +41,6 @@ class MediaScanner: ObservableObject {
   static let shared = MediaScanner()
 
   @Published var items: [MediaItem] = []
-  @Published var blurhashes: [URL: String] = [:]
 
   private let supportedImageExtensions = [
     "jpg", "jpeg", "png", "heic", "tiff", "tif", "raw", "cr2", "nef", "arw", "dng",
@@ -106,23 +104,15 @@ class MediaScanner: ObservableObject {
         isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
       {
         if let type = mediaType(for: url) {
-          var item = MediaItem(url: url, type: type, displayName: nil, blurhash: nil)
+          var item = MediaItem(url: url, type: type, displayName: nil)
           if isEdited(base: base) {
             item.displayName = getOriginalBase(base: base) + "." + url.pathExtension.uppercased()
           }
           await extractMetadata(for: &item)
           // Generate thumbnail
-          let image = await ThumbnailCache.shared.thumbnail(
+          let _ = await ThumbnailCache.shared.thumbnail(
             for: url, size: CGSize(width: 100, height: 100))
-          item.blurhash = nil
           items.append(item)
-          // Generate blurhash asynchronously
-          Task {
-            if let image = image, let hash = image.blurHash(numberOfComponents: (4, 3)) {
-              blurhashes[url] = hash
-              DatabaseManager.shared.updateBlurhash(for: url, hash: hash)
-            }
-          }
         }
       }
     }

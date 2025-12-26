@@ -80,24 +80,23 @@ class DatabaseManager {
     do {
       try dbQueue?.write { db in
         try db.execute(
-          sql: """
-            INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, blurhash, exif)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            sql: """
+            INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, exif)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-          arguments: [
-            item.url.absoluteString,
-            String(describing: item.type),
-            metadata.filename,
-            metadata.creationDate,
-            metadata.modificationDate,
-            metadata.dimensions?.width,
-            metadata.dimensions?.height,
-            metadata.exifDate,
-            metadata.gps?.latitude,
-            metadata.gps?.longitude,
-            item.blurhash,
-            exifString,
-          ]
+            arguments: [
+                item.url.absoluteString,
+                String(describing: item.type),
+                metadata.filename,
+                metadata.creationDate,
+                metadata.modificationDate,
+                metadata.dimensions?.width,
+                metadata.dimensions?.height,
+                metadata.exifDate,
+                metadata.gps?.latitude,
+                metadata.gps?.longitude,
+                exifString
+            ]
         )
       }
     } catch {
@@ -163,8 +162,7 @@ class DatabaseManager {
           }
 
           let item = MediaItem(
-            url: url, type: itemType, metadata: meta, displayName: nil,
-            blurhash: row["blurhash"] as String?)
+            url: url, type: itemType, metadata: meta, displayName: nil)
           items.append(item)
         }
       }
@@ -215,19 +213,6 @@ class DatabaseManager {
       print("Load directories error: \(error)")
     }
     return directories
-  }
-
-  func updateBlurhash(for url: URL, hash: String) {
-    do {
-      try dbQueue?.write { db in
-        try db.execute(
-          sql: "UPDATE media_items SET blurhash = ? WHERE url = ?",
-          arguments: [hash, url.absoluteString]
-        )
-      }
-    } catch {
-      print("Update blurhash error: \(error)")
-    }
   }
 
   func clearAll() {
