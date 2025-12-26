@@ -7,6 +7,30 @@ struct MapView: NSViewRepresentable {
   let onClusterTap: (Cluster) -> Void
   let onRegionChange: (MKCoordinateRegion) -> Void
 
+  private let thumbnailSize = CGSize(width: 30, height: 30)
+
+  private func createRoundedThumbnail(from image: NSImage, size: CGSize) -> NSImage {
+    let roundedImage = NSImage(size: size)
+    roundedImage.lockFocus()
+
+    // Create rounded rect path
+    let rect = CGRect(origin: .zero, size: size)
+    let radius: CGFloat = 4.0
+    let roundedPath = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+    roundedPath.addClip()
+
+    // Draw the image
+    image.draw(in: rect)
+
+    // Draw translucent dark border
+    NSColor.black.withAlphaComponent(0.7).setStroke()
+    roundedPath.lineWidth = 1.0
+    roundedPath.stroke()
+
+    roundedImage.unlockFocus()
+    return roundedImage
+  }
+
   func makeCoordinator() -> Coordinator {
     Coordinator(self)
   }
@@ -89,16 +113,34 @@ struct MapView: NSViewRepresentable {
       }
 
       if annotation.cluster.count == 1 {
+        // For individual photos, load and display thumbnail with rounded border
+        // Start with camera icon as fallback
         annotationView?.image = NSImage(
           systemSymbolName: "camera.fill", accessibilityDescription: nil)
+
+        let item = annotation.cluster.items.first
+        let url = item?.url
+        Task {
+          if let url = url,
+            let thumbnail = await ThumbnailCache.shared.thumbnail(
+              for: url, size: parent.thumbnailSize)
+          {
+            // Create rounded thumbnail with 1 pixel border
+            let borderedImage = parent.createRoundedThumbnail(
+              from: thumbnail, size: parent.thumbnailSize)
+            await MainActor.run {
+              annotationView?.image = borderedImage
+            }
+          }
+        }
       } else {
-        let size = min(max(CGFloat(30 + annotation.cluster.count * 2), 40), 80)
+        let size = min(max(CGFloat(25 + Int(Double(annotation.cluster.count) * 1.5)), 35), 70)
 
         let image = NSImage(size: CGSize(width: size, height: size))
         image.lockFocus()
 
         let rect = CGRect(x: 0, y: 0, width: size, height: size)
-        NSColor.systemBlue.setFill()
+        NSColor.systemBlue.withAlphaComponent(0.9).setFill()
         NSBezierPath(ovalIn: rect).fill()
 
         NSColor.white.setFill()

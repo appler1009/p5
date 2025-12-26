@@ -77,15 +77,26 @@ struct ContentView: View {
 
     // Dynamic clustering distance based on zoom level
     let zoomLevel = log2(360 / region.span.longitudeDelta)
+
+    // At maximum zoom (15+), disable clustering completely
+    if zoomLevel >= 15 {
+      clusters = itemsWithGPS.map { item in
+        let coord = CLLocationCoordinate2D(
+          latitude: item.metadata!.gps!.latitude, longitude: item.metadata!.gps!.longitude)
+        return Cluster(coordinate: coord, count: 1, items: [item])
+      }
+      return
+    }
+
     let clusterDistance: Double
 
     // Adjust clustering threshold based on zoom level
     if zoomLevel < 5 {
-      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.3  // Very zoomed out - aggressive clustering
+      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.7  // Very zoomed out - very aggressive clustering
     } else if zoomLevel < 8 {
-      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.15  // Medium zoom - moderate clustering
+      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.5  // Medium-low zoom - very aggressive clustering
     } else if zoomLevel < 12 {
-      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.08  // Zoomed in - light clustering
+      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.25  // Medium zoom - aggressive clustering
     } else {
       clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.02  // Very zoomed in - minimal clustering
     }
