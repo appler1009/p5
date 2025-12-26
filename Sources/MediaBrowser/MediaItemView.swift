@@ -22,10 +22,18 @@ struct MediaItemView: View {
           .overlay(Text("Loading...").font(.caption))
       }
 
-      if item.type == .video || item.type == .livePhoto {
+    }
+    .overlay(alignment: .topLeading) {
+      if item.type == .video {
         Image(systemName: "play.fill")
           .foregroundColor(.white)
           .shadow(radius: 2)
+          .padding(7)
+      } else if item.type == .livePhoto {
+        Image(systemName: "livephoto")
+          .foregroundColor(.white)
+          .shadow(radius: 2)
+          .padding(4)
       }
     }
     .aspectRatio(1, contentMode: .fit)  // Ensure square cells
