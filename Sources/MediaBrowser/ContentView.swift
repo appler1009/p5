@@ -1,6 +1,13 @@
 import MapKit
 import SwiftUI
 
+struct Cluster: Identifiable {
+  let id = UUID()
+  let coordinate: CLLocationCoordinate2D
+  let count: Int
+  let items: [MediaItem]
+}
+
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
@@ -9,38 +16,133 @@ struct ContentView: View {
   @State private var viewMode: String = UserDefaults.standard.string(forKey: "viewMode") ?? "Grid"
   @State private var region = MKCoordinateRegion(
     center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-    span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10))
-
-  private var sortedItems: [MediaItem] {
-    mediaScanner.items.sorted(by: {
-      ($0.metadata?.creationDate ?? Date.distantPast)
-        > ($1.metadata?.creationDate ?? Date.distantPast)
-    })
-  }
-
-  private var monthlyGroups: [(month: String, items: [MediaItem])] {
-    let calendar = Calendar.current
-    let grouped = Dictionary(grouping: sortedItems) { item -> Date? in
-      guard let date = item.metadata?.creationDate else { return nil }
-      return calendar.date(from: calendar.dateComponents([.year, .month], from: date))
-    }
-    let sortedGroups = grouped.sorted { (lhs, rhs) -> Bool in
-      guard let lhsDate = lhs.key, let rhsDate = rhs.key else { return lhs.key != nil }
-      return lhsDate > rhsDate
-    }
-    return sortedGroups.map {
-      (
-        month: $0.key?.formatted(.dateTime.year().month(.wide)) ?? "Unknown",
-        items: $0.value.sorted {
-          ($0.metadata?.creationDate ?? Date.distantPast)
-            > ($1.metadata?.creationDate ?? Date.distantPast)
-        }
-      )
-    }
-  }
+    span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)
+  )
+  @State private var clusters: [Cluster] = []
 
   private var itemsWithGPS: [MediaItem] {
     sortedItems.filter { $0.metadata?.gps != nil }
+  }
+
+  private var sortedItems: [MediaItem] {
+    mediaScanner.items.sorted { item1, item2 in
+      let date1 = item1.metadata?.creationDate ?? Date.distantPast
+      let date2 = item2.metadata?.creationDate ?? Date.distantPast
+      return date1 > date2  // Most recent first
+    }
+  }
+
+  private var monthlyGroups: [(month: String, items: [MediaItem])] {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "MMMM yyyy"
+
+    let grouped = Dictionary(grouping: sortedItems) { item in
+      guard let date = item.metadata?.creationDate else {
+        return "Unknown"
+      }
+      return formatter.string(from: date)
+    }
+
+    return grouped.map { (month: $0.key, items: $0.value) }
+      .sorted { $0.month > $1.month }
+  }
+
+  private func distance(_ c1: CLLocationCoordinate2D, _ c2: CLLocationCoordinate2D) -> Double {
+    let lat1 = c1.latitude * .pi / 180
+    let lon1 = c1.longitude * .pi / 180
+    let lat2 = c2.latitude * .pi / 180
+    let lon2 = c2.longitude * .pi / 180
+    let dlat = lat2 - lat1
+    let dlon = lon2 - lon1
+    let a = sin(dlat / 2) * sin(dlat / 2) + cos(lat1) * cos(lat2) * sin(dlon / 2) * sin(dlon / 2)
+    let c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return 6371 * c  // km
+  }
+
+  private func averageCoordinate(_ items: [MediaItem]) -> CLLocationCoordinate2D {
+    let coords = items.map {
+      CLLocationCoordinate2D(
+        latitude: $0.metadata!.gps!.latitude, longitude: $0.metadata!.gps!.longitude)
+    }
+    let avgLat = coords.map { $0.latitude }.reduce(0, +) / Double(coords.count)
+    let avgLon = coords.map { $0.longitude }.reduce(0, +) / Double(coords.count)
+    return CLLocationCoordinate2D(latitude: avgLat, longitude: avgLon)
+  }
+
+  private func computeClusters() {
+    guard !itemsWithGPS.isEmpty else {
+      clusters = []
+      return
+    }
+
+    // Dynamic clustering distance based on zoom level
+    let zoomLevel = log2(360 / region.span.longitudeDelta)
+    let clusterDistance: Double
+
+    // Adjust clustering threshold based on zoom level
+    if zoomLevel < 5 {
+      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.3  // Very zoomed out - aggressive clustering
+    } else if zoomLevel < 8 {
+      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.15  // Medium zoom - moderate clustering
+    } else if zoomLevel < 12 {
+      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.08  // Zoomed in - light clustering
+    } else {
+      clusterDistance = max(region.span.latitudeDelta, region.span.longitudeDelta) * 0.02  // Very zoomed in - minimal clustering
+    }
+
+    // Also limit by absolute distance (in km) to prevent over-clustering at high zoom
+    let maxClusterRadiusKm = 0.5  // Maximum cluster radius of 500m
+
+    var tempClusters: [Cluster] = []
+    let sortedItems = itemsWithGPS.sorted { item1, item2 in
+      let coord1 = CLLocationCoordinate2D(
+        latitude: item1.metadata!.gps!.latitude, longitude: item1.metadata!.gps!.longitude)
+      let coord2 = CLLocationCoordinate2D(
+        latitude: item2.metadata!.gps!.latitude, longitude: item2.metadata!.gps!.longitude)
+      return coord1.latitude < coord2.latitude
+        || (coord1.latitude == coord2.latitude && coord1.longitude < coord2.longitude)
+    }
+
+    for item in sortedItems {
+      let coord = CLLocationCoordinate2D(
+        latitude: item.metadata!.gps!.latitude, longitude: item.metadata!.gps!.longitude)
+
+      // Find existing cluster within both distance thresholds
+      let candidateIndex = tempClusters.firstIndex { cluster in
+        let coordDist = distance(cluster.coordinate, coord)
+        let kmDist = coordDist * 111.32  // Approximate km per degree at equator
+        return coordDist < clusterDistance || kmDist < maxClusterRadiusKm
+      }
+
+      if let index = candidateIndex {
+        let cluster = tempClusters[index]
+        let newItems = cluster.items + [item]
+        let newCoord = averageCoordinate(newItems)
+        tempClusters[index] = Cluster(
+          coordinate: newCoord, count: cluster.count + 1, items: newItems)
+      } else {
+        tempClusters.append(Cluster(coordinate: coord, count: 1, items: [item]))
+      }
+    }
+
+    clusters = tempClusters
+  }
+
+  private func zoomToCluster(_ cluster: Cluster) {
+    let coords = cluster.items.map {
+      CLLocationCoordinate2D(
+        latitude: $0.metadata!.gps!.latitude, longitude: $0.metadata!.gps!.longitude)
+    }
+    let minLat = coords.map { $0.latitude }.min()!
+    let maxLat = coords.map { $0.latitude }.max()!
+    let minLon = coords.map { $0.longitude }.min()!
+    let maxLon = coords.map { $0.longitude }.max()!
+    let center = CLLocationCoordinate2D(
+      latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
+    let span = MKCoordinateSpan(
+      latitudeDelta: max(maxLat - minLat, 0.01) * 1.2,
+      longitudeDelta: max(maxLon - minLon, 0.01) * 1.2)
+    region = MKCoordinateRegion(center: center, span: span)
   }
 
   private func regionForItems(_ items: [MediaItem]) -> MKCoordinateRegion {
@@ -54,46 +156,48 @@ struct ContentView: View {
       span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1))
   }
 
-  @ViewBuilder
-  private func mainContent() -> some View {
-    if viewMode == "Grid" {
-      ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
-          ForEach(monthlyGroups, id: \.month) { group in
-            Section(header: Text(group.month).font(.headline).padding(.horizontal)) {
-              LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
-                ForEach(group.items) { item in
-                  MediaItemView(item: item, onTap: { selectedItem = item })
-                }
-              }
-              .padding(.horizontal, 8)
-            }
-          }
-        }
-        .padding(.bottom, 8)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-    } else {
-      Map(coordinateRegion: $region, annotationItems: itemsWithGPS) { item in
-        MapAnnotation(
-          coordinate: CLLocationCoordinate2D(
-            latitude: item.metadata!.gps!.latitude, longitude: item.metadata!.gps!.longitude)
-        ) {
-          Image(systemName: "photo")
-            .foregroundColor(.blue)
-            .onTapGesture(count: 2) {
-              selectedItem = item
-            }
-        }
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-  }
-
   var body: some View {
     ZStack {
       VStack(spacing: 0) {
-        mainContent()
+        if viewMode == "Grid" {
+          ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+              ForEach(monthlyGroups, id: \.month) { group in
+                Section(header: Text(group.month).font(.headline).padding(.horizontal)) {
+                  LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
+                    ForEach(group.items) { item in
+                      MediaItemView(item: item, onTap: { selectedItem = item })
+                    }
+                  }
+                  .padding(.horizontal, 8)
+                }
+              }
+            }
+            .padding(.bottom, 8)
+          }
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if viewMode == "Map" {
+          MapView(
+            clusters: $clusters,
+            region: $region,
+            onClusterTap: { cluster in
+              if cluster.count == 1 {
+                selectedItem = cluster.items.first
+              } else {
+                zoomToCluster(cluster)
+              }
+            },
+            onRegionChange: { newRegion in
+              region = newRegion
+              computeClusters()
+            }
+          )
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .onAppear {
+            region = regionForItems(itemsWithGPS)
+            computeClusters()
+          }
+        }
       }
 
       if let selected = selectedItem {
@@ -110,17 +214,17 @@ struct ContentView: View {
     .navigationTitle("Media Browser")
     .toolbar {
       ToolbarItemGroup(placement: .automatic) {
+        if let progress = mediaScanner.scanProgress {
+          ProgressView(value: Double(progress.current), total: Double(progress.total))
+            .frame(width: 100)
+        }
+
         Button("Scan") {
           Task {
             await MediaScanner.shared.scan(directories: directoryManager.directories)
           }
         }
         .disabled(mediaScanner.isScanning || directoryManager.directories.isEmpty)
-
-        if let progress = mediaScanner.scanProgress {
-          ProgressView(value: Double(progress.current), total: Double(progress.total))
-            .frame(width: 100)
-        }
 
         Button(action: {
           openWindow(id: "settings")
@@ -138,12 +242,7 @@ struct ContentView: View {
         .pickerStyle(.segmented)
       }
     }
-    .onChange(of: viewMode) { newValue in
-      UserDefaults.standard.set(newValue, forKey: "viewMode")
-      if newValue == "Map" {
-        region = regionForItems(itemsWithGPS)
-      }
-    }
+
   }
 
   private func nextItem() {
