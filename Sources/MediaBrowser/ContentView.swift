@@ -51,7 +51,12 @@ struct ContentView: View {
               await MediaScanner.shared.scan(directories: directoryManager.directories)
             }
           }
-          .disabled(directoryManager.directories.isEmpty)
+          .disabled(mediaScanner.isScanning || directoryManager.directories.isEmpty)
+
+          if let progress = mediaScanner.scanProgress {
+            ProgressView(value: Double(progress.current), total: Double(progress.total))
+              .frame(width: 100)
+          }
 
           Spacer()
         }
