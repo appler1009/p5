@@ -1,0 +1,33 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserstate
+
+# Build artifacts
+*.o
+*.dylib
+*.so
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+
+# IDEs
+.vscode/
+.idea/
+
+# Database files (if not to commit)
+*.db
+*.sqlite
