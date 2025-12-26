@@ -78,7 +78,7 @@ struct FullMediaView: View {
       }
     }
     .overlay(alignment: .bottom) {
-      Text(item.url.lastPathComponent)
+      Text(item.displayName ?? item.url.lastPathComponent)
         .padding(8)
         .background(Color.black.opacity(0.7))
         .foregroundColor(.white)

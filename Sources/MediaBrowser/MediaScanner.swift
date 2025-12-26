@@ -11,6 +11,7 @@ struct MediaItem: Identifiable {
   let url: URL
   let type: MediaType
   var metadata: MediaMetadata?  // to be filled later
+  var displayName: String?  // for edited versions, show original name
 }
 
 struct MediaMetadata {
@@ -103,7 +104,10 @@ class MediaScanner: ObservableObject {
         isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
       {
         if let type = mediaType(for: url) {
-          var item = MediaItem(url: url, type: type)
+          var item = MediaItem(url: url, type: type, displayName: nil)
+          if isEdited(base: base) {
+            item.displayName = getOriginalBase(base: base) + "." + url.pathExtension.uppercased()
+          }
           await extractMetadata(for: &item)
           items.append(item)
         }
@@ -112,17 +116,28 @@ class MediaScanner: ObservableObject {
   }
 
   private func isEdited(base: String) -> Bool {
+    // Check for separators first
     let separators = ["_", "-"]
     for sep in separators {
       if let range = base.range(of: sep, options: .backwards) {
         let after = base[range.upperBound...]
-        return after.hasPrefix("E")
+        if after.hasPrefix("E") {
+          return true
+        }
+      }
+    }
+    // Check for E before digits without separator
+    if let firstDigitIndex = base.firstIndex(where: { $0.isNumber }) {
+      let beforeDigits = base[..<firstDigitIndex]
+      if beforeDigits.hasSuffix("E") {
+        return true
       }
     }
     return false
   }
 
   private func getEditedBase(base: String) -> String? {
+    // Check for separators first
     let separators = ["_", "-"]
     for sep in separators {
       if let range = base.range(of: sep, options: .backwards) {
@@ -131,7 +146,38 @@ class MediaScanner: ObservableObject {
         return "\(prefix)\(sep)E\(number)"
       }
     }
+    // Insert E before digits
+    if let firstDigitIndex = base.firstIndex(where: { $0.isNumber }) {
+      let letters = base[..<firstDigitIndex]
+      let digits = base[firstDigitIndex...]
+      return "\(letters)E\(digits)"
+    }
     return nil
+  }
+
+  private func getOriginalBase(base: String) -> String {
+    // Check for separators first
+    let separators = ["_", "-"]
+    for sep in separators {
+      if let range = base.range(of: sep, options: .backwards) {
+        let after = base[range.upperBound...]
+        if after.hasPrefix("E") {
+          let number = after.dropFirst()
+          let prefix = base[..<range.lowerBound]
+          return "\(prefix)\(sep)\(number)"
+        }
+      }
+    }
+    // Remove E before digits
+    if let firstDigitIndex = base.firstIndex(where: { $0.isNumber }) {
+      let beforeDigits = base[..<firstDigitIndex]
+      if beforeDigits.hasSuffix("E") {
+        let letters = beforeDigits.dropLast()
+        let digits = base[firstDigitIndex...]
+        return "\(letters)\(digits)"
+      }
+    }
+    return base
   }
 
   private var supportedExtensions: [String] {
