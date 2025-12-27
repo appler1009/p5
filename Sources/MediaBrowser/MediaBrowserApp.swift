@@ -19,6 +19,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidBecomeActive(_ notification: Notification) {
     // Disable window tabbing for all windows
     NSApp.windows.forEach { $0.tabbingMode = .disallowed }
+
+    // Restore full screen state
+    let wasFullScreen = UserDefaults.standard.bool(forKey: "wasFullScreen")
+    if wasFullScreen, let window = NSApp.windows.first {
+      window.toggleFullScreen(nil)
+    }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -26,6 +32,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    // Save full screen state
+    if let window = NSApp.windows.first {
+      UserDefaults.standard.set(window.styleMask.contains(.fullScreen), forKey: "wasFullScreen")
+    }
     // App cleanup - no auto-sync to clean up
   }
 }
