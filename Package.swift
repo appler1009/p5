@@ -8,12 +8,18 @@ let package = Package(
     .executable(name: "MediaBrowser", targets: ["MediaBrowser"])
   ],
   dependencies: [
-    .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.0.0")
+    .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.0.0"),
+    .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.0.0"),
   ],
   targets: [
     .executableTarget(
       name: "MediaBrowser",
-      dependencies: [.product(name: "GRDB", package: "GRDB.swift")],
+      dependencies: [
+        .product(name: "GRDB", package: "GRDB.swift"),
+        .product(name: "AWSS3", package: "aws-sdk-swift"),
+        .product(name: "AWSClientRuntime", package: "aws-sdk-swift"),
+        .product(name: "AWSSDKIdentity", package: "aws-sdk-swift"),
+      ],
       path: "Sources/MediaBrowser"
     ),
     .testTarget(

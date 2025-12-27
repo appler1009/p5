@@ -11,6 +11,7 @@ struct Cluster: Identifiable {
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
+  @ObservedObject private var s3Service = S3Service.shared
   @Environment(\.openWindow) private var openWindow
   @State private var selectedItem: MediaItem?
   @State private var viewMode: String = UserDefaults.standard.string(forKey: "viewMode") ?? "Grid"
@@ -246,6 +247,13 @@ struct ContentView: View {
         }
         .disabled(mediaScanner.isScanning || directoryManager.directories.isEmpty)
 
+        Button("Upload One") {
+          Task {
+            await uploadOneItem()
+          }
+        }
+        .disabled(mediaScanner.items.isEmpty || !s3Service.config.isValid)
+
         Button(action: {
           openWindow(id: "settings")
         }) {
@@ -278,6 +286,60 @@ struct ContentView: View {
     guard let index = sortedItems.firstIndex(where: { $0.id == selectedItem?.id }) else { return }
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
     selectedItem = sortedItems[prevIndex]
+  }
+
+  private func uploadOneItem() async {
+    guard let firstItem = mediaScanner.items.first else {
+      print("No media items available to upload")
+      return
+    }
+
+    print("=== UPLOAD ONE TEST ===")
+    print("Uploading item: \(firstItem.displayName ?? firstItem.url.lastPathComponent)")
+    print("File path: \(firstItem.url.path)")
+
+    do {
+      try await s3Service.uploadMediaItem(firstItem)
+
+      // Get the S3 key that was generated
+      let s3Key = s3Service.createS3Key(for: firstItem)
+      let s3Uri = "s3://\(s3Service.config.bucketName)/\(s3Key)"
+
+      print("✅ Upload successful!")
+      print("📍 S3 URI: \(s3Uri)")
+      print("🗂️  S3 Key: \(s3Key)")
+      print("📦 Bucket: \(s3Service.config.bucketName)")
+      print("🏷️  Storage Class: INTELLIGENT_TIERING")
+
+      // Update the item's sync status in database
+      var updatedItem = firstItem
+      updatedItem.s3SyncStatus = .synced
+      DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
+
+      print("💾 Database updated: sync status set to 'synced'")
+
+    } catch let error as S3Error {
+      print("❌ Upload failed with S3Error: \(error)")
+
+      // Update the item's sync status to failed
+      var updatedItem = firstItem
+      updatedItem.s3SyncStatus = .failed
+      DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
+
+      print("💾 Database updated: sync status set to 'failed'")
+
+    } catch {
+      print("❌ Upload failed with error: \(error)")
+
+      // Update the item's sync status to failed
+      var updatedItem = firstItem
+      updatedItem.s3SyncStatus = .failed
+      DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
+
+      print("💾 Database updated: sync status set to 'failed'")
+    }
+
+    print("======================")
   }
 }
 

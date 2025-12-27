@@ -132,6 +132,26 @@ struct MediaDetailsSidebar: View {
           }
           .padding(.top, 8)
         }
+
+        // S3 Sync Status
+        HStack {
+          Image(systemName: s3SyncIcon)
+            .foregroundColor(.accentColor)
+          Text("S3 Sync")
+            .font(.headline)
+          Spacer()
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 4)
+
+        Divider()
+
+        VStack(alignment: .leading, spacing: 12) {
+          detailRow("Status", s3SyncStatusText)
+          if item.s3SyncStatus == .synced {
+            detailRow("Last Synced", "Recently")
+          }
+        }
       }
     }
     .padding(16)
@@ -210,6 +230,28 @@ struct MediaDetailsSidebar: View {
   private func copyToClipboard(_ value: String) {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(value, forType: .string)
+  }
+
+  private var s3SyncIcon: String {
+    switch item.s3SyncStatus {
+    case .synced:
+      return "cloud.fill"
+    case .failed:
+      return "exclamationmark.triangle.fill"
+    case .notSynced:
+      return "cloud.fill"
+    }
+  }
+
+  private var s3SyncStatusText: String {
+    switch item.s3SyncStatus {
+    case .synced:
+      return "Synced to S3"
+    case .failed:
+      return "Sync Failed"
+    case .notSynced:
+      return "Not Synced"
+    }
   }
 }
 

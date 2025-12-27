@@ -1,5 +1,11 @@
 import Foundation
 
+enum S3SyncStatus: String, Codable {
+  case notSynced = "not_synced"
+  case synced = "synced"
+  case failed = "failed"
+}
+
 enum MediaType {
   case photo
   case livePhoto
@@ -12,6 +18,7 @@ struct MediaItem: Identifiable, Equatable {
   let type: MediaType
   var metadata: MediaMetadata?  // to be filled later
   var displayName: String?  // for edited versions, show original name
+  var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
 
   static func == (lhs: MediaItem, rhs: MediaItem) -> Bool {
     return lhs.id == rhs.id

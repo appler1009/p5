@@ -13,20 +13,18 @@ class DatabaseManager {
       try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
       let dbPath = "\(path)/media.db"
 
-      // If DB exists and media_items table lacks blurhash column, recreate DB
+      // If DB exists and media_items table lacks s3_sync_status column, add it
       if FileManager.default.fileExists(atPath: dbPath) {
         let tempQueue = try DatabaseQueue(path: dbPath)
-        var needsRecreate = false
-        try tempQueue.read { db in
+        try tempQueue.write { db in
           if try db.tableExists("media_items") {
             let columns = try db.columns(in: "media_items").map { $0.name }
-            if !columns.contains("blurhash") {
-              needsRecreate = true
+            if !columns.contains("s3_sync_status") {
+              try db.alter(table: "media_items") { t in
+                t.add(column: "s3_sync_status", .text).defaults(to: S3SyncStatus.notSynced.rawValue)
+              }
             }
           }
-        }
-        if needsRecreate {
-          try FileManager.default.removeItem(atPath: dbPath)
         }
       }
 
@@ -34,6 +32,72 @@ class DatabaseManager {
       try createTable()
     } catch {
       print("Database init error: \(error)")
+    }
+  }
+
+  func saveDirectories(_ directories: [URL]) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(sql: "DELETE FROM directories")
+        for url in directories {
+          let bookmarkData = try url.bookmarkData(
+            options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+          let bookmarkBase64 = bookmarkData.base64EncodedString()
+          try db.execute(
+            sql: "INSERT INTO directories (path, bookmark) VALUES (?, ?)",
+            arguments: [url.path, bookmarkBase64])
+        }
+      }
+    } catch {
+      print("Save directories error: \(error)")
+    }
+  }
+
+  func loadDirectories() -> [URL] {
+    var directories: [URL] = []
+    do {
+      try dbQueue?.read { db in
+        let rows = try Row.fetchAll(db, sql: "SELECT * FROM directories")
+        for row in rows {
+          if let bookmarkBase64 = row["bookmark"] as String?,
+            let bookmarkData = Data(base64Encoded: bookmarkBase64)
+          {
+            var isStale = false
+            if let url = try? URL(
+              resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil,
+              bookmarkDataIsStale: &isStale), !isStale
+            {
+              directories.append(url)
+            }
+          }
+        }
+      }
+    } catch {
+      print("Load directories error: \(error)")
+    }
+    return directories
+  }
+
+  func clearAll() {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(sql: "DELETE FROM media_items")
+      }
+    } catch {
+      print("Clear error: \(error)")
+    }
+  }
+
+  func updateS3SyncStatus(for item: MediaItem) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "UPDATE media_items SET s3_sync_status = ? WHERE url = ?",
+          arguments: [item.s3SyncStatus.rawValue, item.url.absoluteString]
+        )
+      }
+    } catch {
+      print("Update S3 sync status error: \(error)")
     }
   }
 
@@ -53,6 +117,7 @@ class DatabaseManager {
         t.column("longitude", .double)
         t.column("blurhash", .text)
         t.column("exif", .text)
+        t.column("s3_sync_status", .text).defaults(to: S3SyncStatus.notSynced.rawValue)
       }
       try db.create(table: "directories", ifNotExists: true) { t in
         t.column("id", .integer).primaryKey(autoincrement: true)
@@ -81,8 +146,8 @@ class DatabaseManager {
       try dbQueue?.write { db in
         try db.execute(
           sql: """
-            INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, exif)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, exif, s3_sync_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             item.url.absoluteString,
@@ -96,6 +161,7 @@ class DatabaseManager {
             metadata.gps?.latitude,
             metadata.gps?.longitude,
             exifString,
+            item.s3SyncStatus.rawValue,
           ]
         )
       }
@@ -161,8 +227,12 @@ class DatabaseManager {
             meta.shutterSpeed = exifDict["shutter_speed"] as? String
           }
 
-          let item = MediaItem(
+          let syncStatusString = row["s3_sync_status"] as String?
+          let syncStatus = syncStatusString.flatMap { S3SyncStatus(rawValue: $0) } ?? .notSynced
+
+          var item = MediaItem(
             url: url, type: itemType, metadata: meta, displayName: nil)
+          item.s3SyncStatus = syncStatus
           items.append(item)
         }
       }
@@ -170,58 +240,5 @@ class DatabaseManager {
       print("Query error: \(error)")
     }
     return items
-  }
-
-  func saveDirectories(_ directories: [URL]) {
-    do {
-      try dbQueue?.write { db in
-        try db.execute(sql: "DELETE FROM directories")
-        for url in directories {
-          let bookmarkData = try url.bookmarkData(
-            options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-          let bookmarkBase64 = bookmarkData.base64EncodedString()
-          try db.execute(
-            sql: "INSERT INTO directories (path, bookmark) VALUES (?, ?)",
-            arguments: [url.path, bookmarkBase64])
-        }
-      }
-    } catch {
-      print("Save directories error: \(error)")
-    }
-  }
-
-  func loadDirectories() -> [URL] {
-    var directories: [URL] = []
-    do {
-      try dbQueue?.read { db in
-        let rows = try Row.fetchAll(db, sql: "SELECT * FROM directories")
-        for row in rows {
-          if let bookmarkBase64 = row["bookmark"] as String?,
-            let bookmarkData = Data(base64Encoded: bookmarkBase64)
-          {
-            var isStale = false
-            if let url = try? URL(
-              resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil,
-              bookmarkDataIsStale: &isStale), !isStale
-            {
-              directories.append(url)
-            }
-          }
-        }
-      }
-    } catch {
-      print("Load directories error: \(error)")
-    }
-    return directories
-  }
-
-  func clearAll() {
-    do {
-      try dbQueue?.write { db in
-        try db.execute(sql: "DELETE FROM media_items")
-      }
-    } catch {
-      print("Clear error: \(error)")
-    }
   }
 }

@@ -8,6 +8,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Suppress MapKit debug output
     UserDefaults.standard.set(false, forKey: "MKDefaultLogLevel")
   }
+
+  func applicationWillTerminate(_ notification: Notification) {
+    // Clean up auto-sync timer
+    S3Service.shared.stopAutoSync()
+  }
 }
 
 @main
