@@ -2,6 +2,17 @@ import AVKit
 import MapKit
 import SwiftUI
 
+struct Triangle: Shape {
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+    path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+    path.closeSubpath()
+    return path
+  }
+}
+
 struct MediaDetailsSidebar: View {
   let item: MediaItem
 
@@ -105,7 +116,7 @@ struct MediaDetailsSidebar: View {
             .frame(height: 200)
             .disabled(true)
             .cornerRadius(8)
-            .overlay(
+            .overlay {
               // Add a pin overlay at the exact coordinate location
               VStack {
                 Spacer()
@@ -133,12 +144,12 @@ struct MediaDetailsSidebar: View {
                     }
                     .offset(y: -6)
                   }
-                  .offset(x: -6, y: -10)  // Center the pin
+                  .offset(x: -6, y: -10)  // Center of pin
                   Spacer()
                 }
                 .padding(.bottom, 25)
               }
-            )
+            }
             .overlay(
               RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.gray.opacity(0.3), lineWidth: 1)
@@ -146,11 +157,11 @@ struct MediaDetailsSidebar: View {
           }
 
           // Coordinate details in table format
-          VStack(alignment: .leading, spacing: 4) {
-            coordinateRow("Latitude", String(format: "%.6f°", gps.latitude))
-            coordinateRow("Longitude", String(format: "%.6f°", gps.longitude))
+          VStack(alignment: .leading, spacing: 12) {
+            detailRow("Latitude", String(format: "%.6f°", gps.latitude))
+            detailRow("Longitude", String(format: "%.6f°", gps.longitude))
             if let altitude = gps.altitude {
-              coordinateRow("Altitude", String(format: "%.1f m", altitude))
+              detailRow("Altitude", String(format: "%.1f m", altitude))
             }
           }
           .padding(.top, 8)
@@ -161,49 +172,46 @@ struct MediaDetailsSidebar: View {
     .frame(width: 350)
   }
 
-  private func detailRow(_ label: String, _ value: String) -> some View {
+  private func detailRow(_ label: String, _ value: String, allowCopy: Bool = true) -> some View {
     HStack(alignment: .top, spacing: 12) {
-      Text(label)
-        .font(.caption)
-        .fontWeight(.medium)
-        .foregroundColor(.secondary)
-        .frame(width: 80, alignment: .leading)
+      // Label (always clickable for copy)
+      Button(action: {
+        copyToClipboard(value)
+      }) {
+        Text(label)
+          .font(.caption)
+          .fontWeight(.medium)
+          .foregroundColor(.secondary)
+          .frame(width: 80, alignment: .leading)
+      }
+      .buttonStyle(.plain)
+      .help("Copy \(label.lowercased()) to clipboard")
 
-      VStack(alignment: .leading, spacing: 2) {
-        if label == "Path" {
-          // For Path, create a multi-line layout with full width
-          Text(value)
-            .font(.body)
-            .textSelection(.enabled)
-            .lineLimit(nil)
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-          // For other fields, keep single line with ellipsis
-          Text(value)
-            .font(.body)
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+      // Value (always clickable for copy)
+      Button(action: {
+        copyToClipboard(value)
+      }) {
+        VStack(alignment: .leading, spacing: 2) {
+          if label == "Path" {
+            // For Path, create a multi-line layout with full width
+            Text(value)
+              .font(.body)
+              .textSelection(.enabled)
+              .lineLimit(nil)
+              .multilineTextAlignment(.leading)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          } else {
+            // For other fields, keep single line with ellipsis
+            Text(value)
+              .font(.body)
+              .textSelection(.enabled)
+              .fixedSize(horizontal: false, vertical: true)
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
         }
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-  }
-
-  private func coordinateRow(_ label: String, _ value: String) -> some View {
-    HStack(alignment: .top, spacing: 12) {
-      Text(label)
-        .font(.caption)
-        .fontWeight(.medium)
-        .foregroundColor(.secondary)
-        .frame(width: 80, alignment: .leading)
-
-      Text(value)
-        .font(.body)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
+      .buttonStyle(.plain)
+      .help("Copy value to clipboard")
 
       Spacer()
     }
@@ -232,9 +240,13 @@ struct MediaDetailsSidebar: View {
     let seconds = Int(duration) % 60
     return String(format: "%d:%02d", minutes, seconds)
   }
+
+  private func copyToClipboard(_ value: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(value, forType: .string)
+  }
 }
 
-// Updated FullMediaView with sidebar
 struct FullMediaView: View {
   let item: MediaItem
   let onClose: () -> Void
@@ -451,17 +463,6 @@ struct FullMediaView: View {
 }
 
 // Keep existing helper views
-struct Triangle: Shape {
-  func path(in rect: CGRect) -> Path {
-    var path = Path()
-    path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-    path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-    path.closeSubpath()
-    return path
-  }
-}
-
 struct AVPlayerViewRepresentable: NSViewRepresentable {
   let player: AVPlayer
 
