@@ -176,7 +176,8 @@ class DatabaseManager {
       try dbQueue?.read { db in
         let rows = try Row.fetchAll(db, sql: "SELECT * FROM media_items")
         for row in rows {
-          guard let urlString = row["url"] as String?,
+          guard let itemId = row["id"] as Int?,
+            let urlString = row["url"] as String?,
             let url = URL(string: urlString),
             let typeString = row["type"] as String?
           else { continue }
@@ -231,7 +232,7 @@ class DatabaseManager {
           let syncStatus = syncStatusString.flatMap { S3SyncStatus(rawValue: $0) } ?? .notSynced
 
           var item = MediaItem(
-            url: url, type: itemType, metadata: meta, displayName: nil)
+            id: itemId, url: url, type: itemType, metadata: meta, displayName: nil)
           item.s3SyncStatus = syncStatus
           items.append(item)
         }

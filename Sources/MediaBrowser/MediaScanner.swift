@@ -13,7 +13,7 @@ enum MediaType {
 }
 
 struct MediaItem: Identifiable, Equatable {
-  let id = UUID()
+  let id: Int
   let url: URL
   let type: MediaType
   var metadata: MediaMetadata?  // to be filled later
@@ -167,7 +167,7 @@ class MediaScanner: ObservableObject {
         isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
       {
         if let type = mediaType(for: url) {
-          var item = MediaItem(url: url, type: type, displayName: nil)
+          var item = MediaItem(id: -1, url: url, type: type, displayName: nil)
           if isEdited(base: base) {
             item.displayName = getOriginalBase(base: base) + "." + url.pathExtension.uppercased()
           }

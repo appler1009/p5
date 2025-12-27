@@ -9,8 +9,11 @@ class S3Service: ObservableObject {
 
   @Published var uploadProgress: [String: Double] = [:]
   @Published var isUploading = false
-  @Published var currentUploadItem: String?
-  @Published var autoSyncEnabled = false
+  @Published var autoSyncEnabled: Bool = UserDefaults.standard.bool(forKey: "autoSyncEnabled") {
+    didSet {
+      UserDefaults.standard.set(autoSyncEnabled, forKey: "autoSyncEnabled")
+    }
+  }
   @Published var config = S3Config() {
     didSet {
       saveConfig()
@@ -22,7 +25,6 @@ class S3Service: ObservableObject {
   private var s3Client: S3Client?
   private let configKey = "s3Config"
   private var pendingTasks = Set<Task<Void, Never>>()
-  private var isUploadingItem = false
   private let uploadQueue = DispatchQueue(label: "com.mediabrowser.s3upload")
 
   private let supportedImageExtensions = [
@@ -143,10 +145,19 @@ class S3Service: ObservableObject {
       throw S3Error.clientNotInitialized
     }
 
+    let progressFileName = item.displayName ?? item.url.lastPathComponent
+    await MainActor.run {
+      NotificationCenter.default.post(
+        name: NSNotification.Name("UploadProgressUpdated"), object: nil,
+        userInfo: [
+          "fileName": progressFileName
+        ])
+    }
+
     // 1) Find all related files including itself
     let allFiles = findRelatedFiles(for: item) + [item.url]
     print(
-      "⏭️  [FILES] Will upload \(allFiles.count) files: \(allFiles.map { $0.lastPathComponent }.joined(separator: ", "))"
+      "⏭️ [FILES] Will upload \(allFiles.count) files: \(allFiles.map { $0.lastPathComponent }.joined(separator: ", "))"
     )
 
     // 2) Make a list of files and loop through them
@@ -169,6 +180,7 @@ class S3Service: ObservableObject {
 
       // Create a MediaItem for this file
       let currentItem = MediaItem(
+        id: item.id,
         url: fileURL,
         type: mediaType,
         metadata: item.metadata,
@@ -180,7 +192,7 @@ class S3Service: ObservableObject {
 
       // 4) If it is, skip to next file
       if !needsUpload {
-        print("⏭️  [SKIP] \(fileURL.lastPathComponent) already exists in S3")
+        print("⏭️ [SKIP] \(fileURL.lastPathComponent) already exists in S3")
         continue  // Skip to next file
       }
 
@@ -324,13 +336,12 @@ class S3Service: ObservableObject {
 
   func uploadNextItem() async {
     // Simple mutex using boolean flag - check if already running
-    guard !isUploadingItem else {
-      print("📋 [SKIP] uploadNextItem already running, skipping this call")
+    guard !isUploading else {
       return
     }
 
-    isUploadingItem = true
-    defer { isUploadingItem = false }
+    isUploading = true
+    defer { isUploading = false }
 
     // Process items in a loop until none remain or auto-sync is disabled
     while autoSyncEnabled {
@@ -340,8 +351,14 @@ class S3Service: ObservableObject {
           $0.s3SyncStatus != .synced
         })
       else {
-        print("✅ [COMPLETE] All items are already synced to S3")
-        print("⏰ [WAITING] Next check in 60 seconds...")
+        print("💾 [PROGRESS] Update nil as progress")
+        await MainActor.run {
+          NotificationCenter.default.post(
+            name: NSNotification.Name("UploadProgressUpdated"), object: nil,
+            userInfo: [
+              "fileName": NSNull()
+            ])
+        }
 
         // Schedule next run in 1 minute if auto-sync is still enabled
         if autoSyncEnabled {
@@ -364,7 +381,7 @@ class S3Service: ObservableObject {
         DatabaseManager.shared.updateS3SyncStatus(for: itemToUpload)
 
         // Update UI to show cloud icon immediately after successful upload
-        let itemId = itemToUpload.id.uuidString
+        let itemId = itemToUpload.id
         let statusRaw = itemToUpload.s3SyncStatus.rawValue
         await MainActor.run {
           NotificationCenter.default.post(

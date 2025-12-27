@@ -7,6 +7,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Suppress MapKit debug output
     UserDefaults.standard.set(false, forKey: "MKDefaultLogLevel")
+
+    // Start auto-sync if enabled
+    if S3Service.shared.autoSyncEnabled && S3Service.shared.config.isValid {
+      Task {
+        await S3Service.shared.uploadNextItem()
+      }
+    }
   }
 
   func applicationWillTerminate(_ notification: Notification) {

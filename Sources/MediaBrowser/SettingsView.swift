@@ -6,6 +6,8 @@ struct SettingsView: View {
   @ObservedObject private var s3Service = S3Service.shared
   @AppStorage("lastThumbnailCleanupCount") private var lastCleanupCount = 0
 
+  @State private var currentUploadItem: String?
+
   private var previewS3Uri: String {
     let bucket = s3Service.config.bucketName
     let basePath = s3Service.config.basePath
@@ -250,7 +252,7 @@ struct SettingsView: View {
                         Text("Auto Sync")
                           .font(.callout)
                           .fontWeight(.medium)
-                        Text("Automatically sync new media every minute")
+                        Text("Automatically sync new media")
                           .font(.caption)
                           .foregroundColor(.secondary)
                       }
@@ -295,54 +297,37 @@ struct SettingsView: View {
                     .font(.callout)
                     .fontWeight(.medium)
                 }
+
                 Spacer()
+
+                if s3Service.isUploading {
+                  HStack {
+                    ProgressView()
+                      .scaleEffect(0.5)
+                    Text("Uploading: \(currentUploadItem ?? "looking...")")
+                      .font(.callout)
+                      .foregroundColor(.primary)
+                      .onAppear {
+                        setupUploadProgressNotifications()
+                      }
+                    Spacer()
+                  }
+                } else {
+                  HStack {
+                    Image(systemName: "checkmark.circle")
+                      .foregroundColor(.green)
+                    Text("Ready to upload")
+                      .font(.callout)
+                      .foregroundColor(.primary)
+                    Spacer()
+                  }
+                }
               }
               .padding(.vertical, 4)
             }
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-
-        // S3 Upload Status (only show if S3 is enabled and valid)
-        if s3Service.config.isValid {
-          VStack(alignment: .leading, spacing: 12) {
-            Text("S3 Upload Status")
-              .font(.title2)
-              .fontWeight(.semibold)
-
-            if s3Service.isUploading {
-              HStack {
-                ProgressView()
-                  .scaleEffect(0.7)
-                Text("Uploading: \(s3Service.currentUploadItem ?? "Unknown")")
-                  .font(.callout)
-                  .foregroundColor(.primary)
-                Spacer()
-              }
-            } else {
-              HStack {
-                Image(systemName: "checkmark.circle")
-                  .foregroundColor(.green)
-                Text("Ready to upload")
-                  .font(.callout)
-                  .foregroundColor(.primary)
-                Spacer()
-              }
-            }
-
-            HStack {
-              Button("Upload All Media") {
-                Task {
-                  await uploadAllMedia()
-                }
-              }
-              .disabled(s3Service.isUploading)
-              .buttonStyle(.borderedProminent)
-              Spacer()
-            }
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-        }
       }
       .padding(.horizontal, 20)
       .padding(.vertical, 20)
@@ -354,26 +339,25 @@ struct SettingsView: View {
     }
   }
 
-  private func uploadAllMedia() async {
-    let items = MediaScanner.shared.items
+  /// Update uploading file name
+  func updateUploadProgress(fileName: String?) {
+    DispatchQueue.main.async {
+      self.currentUploadItem = fileName
+    }
+  }
 
-    for item in items {
-      do {
-        s3Service.currentUploadItem = item.url.lastPathComponent
-        s3Service.isUploading = true
-
-        try await s3Service.uploadMediaItem(item)
-
-        // Small delay between uploads to avoid overwhelming S3
-        try await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second
-
-      } catch {
-        print("Failed to upload \(item.url.lastPathComponent): \(error)")
-        // Continue with next item
+  /// Listen for S3 sync status updates
+  private func setupUploadProgressNotifications() {
+    NotificationCenter.default.addObserver(
+      forName: NSNotification.Name("UploadProgressUpdated"),
+      object: nil,
+      queue: .main
+    ) { notification in
+      if let userInfo = notification.userInfo,
+        let fileName = userInfo["fileName"] as? String
+      {
+        updateUploadProgress(fileName: fileName)
       }
     }
-
-    s3Service.isUploading = false
-    s3Service.currentUploadItem = nil
   }
 }

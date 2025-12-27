@@ -241,6 +241,9 @@ struct ContentView: View {
       }
     }
     .navigationTitle("Media Browser")
+    .onAppear {
+      setupS3SyncNotifications()
+    }
     .toolbar {
       ToolbarItemGroup(placement: .automatic) {
         if let progress = mediaScanner.scanProgress {
@@ -313,14 +316,13 @@ struct ContentView: View {
   }
 
   /// Update a media item
-  func updateItem(itemId: String, statusRaw: String) {
+  func updateItem(itemId: Int, statusRaw: String) {
     DispatchQueue.main.async {
-      guard let uuid = UUID(uuidString: itemId),
-        let status = S3SyncStatus(rawValue: statusRaw),
-        let index = sortedItems.firstIndex(where: { $0.id == uuid })
+      guard let status = S3SyncStatus(rawValue: statusRaw),
+        let sourceIndex = mediaScanner.items.firstIndex(where: { $0.id == itemId })
       else { return }
-      var item = sortedItems[index]
-      item.s3SyncStatus = status
+
+      mediaScanner.items[sourceIndex].s3SyncStatus = status
     }
   }
 
@@ -332,7 +334,7 @@ struct ContentView: View {
       queue: .main
     ) { notification in
       if let userInfo = notification.userInfo,
-        let itemId = userInfo["itemId"] as? String,
+        let itemId = userInfo["itemId"] as? Int,
         let statusRaw = userInfo["status"] as? String
       {
         updateItem(itemId: itemId, statusRaw: statusRaw)
