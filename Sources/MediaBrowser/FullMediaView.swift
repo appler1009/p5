@@ -107,54 +107,20 @@ struct MediaDetailsSidebar: View {
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
           )
 
-          ZStack {
-            Map(
-              coordinateRegion: .constant(region),
-              interactionModes: [],
-              showsUserLocation: false
-            )
-            .frame(height: 200)
-            .disabled(true)
-            .cornerRadius(8)
-            .overlay {
-              // Add a pin overlay at the exact coordinate location
-              VStack {
-                Spacer()
-                HStack {
-                  Spacer()
-                  VStack(spacing: 0) {
-                    // Pin point
-                    Circle()
-                      .fill(Color.red)
-                      .frame(width: 12, height: 12)
-                      .overlay(
-                        Circle()
-                          .stroke(Color.white, lineWidth: 2)
-                          .frame(width: 8, height: 8)
-                      )
-
-                    // Pin shadow/point
-                    VStack(spacing: 0) {
-                      Rectangle()
-                        .fill(Color.red)
-                        .frame(width: 2, height: 8)
-                      Triangle()
-                        .fill(Color.red)
-                        .frame(width: 12, height: 8)
-                    }
-                    .offset(y: -6)
-                  }
-                  .offset(x: -6, y: -10)  // Center of pin
-                  Spacer()
-                }
-                .padding(.bottom, 25)
-              }
+          Map(position: .constant(.region(region))) {
+            Annotation("Photo Location", coordinate: coordinate) {
+              Image(systemName: "mappin.circle.fill")
+                .foregroundColor(.red)
+                .font(.title)
             }
-            .overlay(
-              RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-            )
           }
+          .frame(height: 200)
+          .disabled(true)
+          .cornerRadius(8)
+          .overlay(
+            RoundedRectangle(cornerRadius: 8)
+              .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+          )
 
           // Coordinate details in table format
           VStack(alignment: .leading, spacing: 12) {
