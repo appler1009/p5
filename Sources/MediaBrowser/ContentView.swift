@@ -24,6 +24,7 @@ struct ContentView: View {
   @State private var clusters: [Cluster] = []
   @FocusState private var focusedField: String?
   @State private var searchTextField: NSTextField?
+  @State private var scrollTarget: Int? = nil
 
   private var itemsWithGPS: [MediaItem] {
     sortedItems.filter { $0.metadata?.gps != nil }
@@ -199,137 +200,16 @@ struct ContentView: View {
 
       VStack(spacing: 0) {
         if viewMode == "Grid" {
-          GeometryReader { geo in
-            ScrollView {
-              VStack(alignment: .leading, spacing: 16) {
-                ForEach(monthlyGroups, id: \.month) { group in
-                  Section(header: Text(group.month).font(.headline).padding(.horizontal)) {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
-                      ForEach(group.items) { item in
-                        MediaItemView(
-                          item: item,
-                          onTap: {
-                            selectedItem = item
-                            lightboxItem = item
-                          }, isSelected: item.id == selectedItem?.id)
-                      }
-                    }
-                    .padding(.horizontal, 8)
-                  }
-                }
-              }
-              .padding(.bottom, 8)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onTapGesture {
-              searchTextField?.window?.makeFirstResponder(nil)
-            }
-            .focusable()
-            .onKeyPress { press in
-              // Update window width for dynamic column calculation
-              let windowWidth = geo.size.width
-              // Grid navigation when lightbox is not open
-              if lightboxItem == nil,
-                let currentIndex = sortedItems.firstIndex(where: { $0.id == selectedItem?.id })
-              {
-                let availableWidth = windowWidth - 16  // subtract horizontal padding
-                let columns = max(1, Int(floor((availableWidth + 10) / 90)))  // spacing = 10, minWidth = 80
-                let currentRow = currentIndex / columns
-                let currentCol = currentIndex % columns
-
-                var newRow = currentRow
-                var newCol = currentCol
-
-                switch press.key {
-                case .upArrow:
-                  newRow = max(0, currentRow - 1)
-                case .downArrow:
-                  newRow = min((sortedItems.count + columns - 1) / columns - 1, currentRow + 1)
-                case .leftArrow:
-                  if currentCol == 0 && currentRow > 0 {
-                    // Wrap to previous row's last column
-                    newRow = currentRow - 1
-                    newCol = min(columns - 1, sortedItems.count - newRow * columns - 1)
-                  } else {
-                    newCol = max(0, currentCol - 1)
-                  }
-                case .rightArrow:
-                  let maxColInRow = min(columns - 1, sortedItems.count - currentRow * columns - 1)
-                  if currentCol == maxColInRow
-                    && currentRow < (sortedItems.count + columns - 1) / columns - 1
-                  {
-                    // Wrap to next row's first column
-                    newRow = currentRow + 1
-                    newCol = 0
-                  } else {
-                    newCol = min(maxColInRow, currentCol + 1)
-                  }
-                case .space, .return:
-                  if let item = selectedItem {
-                    lightboxItem = item
-                  }
-                  return .handled
-                default:
-                  return .ignored
-                }
-
-                let newIndex = newRow * columns + newCol
-                if newIndex < sortedItems.count {
-                  selectedItem = sortedItems[newIndex]
-                }
-                return .handled
-              }
-              return .ignored
-            }
-          }
-        } else if viewMode == "Map" {
-          MapView(
-            clusters: $clusters,
-            region: $region,
-            onClusterTap: { cluster in
-              if cluster.count == 1 {
-                selectedItem = cluster.items.first
-                lightboxItem = selectedItem
-              } else {
-                zoomToCluster(cluster)
-              }
-            },
-            onRegionChange: { newRegion in
-              region = newRegion
-              computeClusters()
-            }
+          MediaGridView(
+            selectedItem: $selectedItem,
+            lightboxItem: $lightboxItem,
+            searchQuery: $searchQuery
           )
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .onAppear {
-            region = regionForItems(itemsWithGPS)
-            computeClusters()
-          }
-          .onChange(of: mediaScanner.items) {
-            computeClusters()
-          }
-          .focusable()
-          .onKeyPress { press in
-            if lightboxItem == nil,
-              let currentIndex = sortedItems.firstIndex(where: { $0.id == selectedItem?.id })
-            {
-              switch press.key {
-              case .leftArrow:
-                let newIndex = max(0, currentIndex - 1)
-                selectedItem = sortedItems[newIndex]
-                return .handled
-              case .rightArrow:
-                let newIndex = min(sortedItems.count - 1, currentIndex + 1)
-                selectedItem = sortedItems[newIndex]
-                return .handled
-              case .upArrow, .downArrow:
-                // For map, up/down also navigate
-                return .ignored  // or handle same as left/right
-              default:
-                return .ignored
-              }
-            }
-            return .ignored
-          }
+        } else if viewMode == "Map" {
+          MediaMapView(
+            selectedItem: $selectedItem,
+            lightboxItem: $lightboxItem
+          )
         }
       }
 
