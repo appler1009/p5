@@ -154,9 +154,6 @@ struct MediaDetailsSidebar: View {
 
         VStack(alignment: .leading, spacing: 12) {
           detailRow("Status", s3SyncStatusText)
-          if item.s3SyncStatus == .synced {
-            detailRow("Last Synced", "Recently")
-          }
         }
       }
     }
@@ -289,7 +286,7 @@ struct FullMediaView: View {
   @State private var fullImage: NSImage?
   @State private var player: AVPlayer?
   @State private var showVideo = false
-  @State private var showSidebar = false
+  @AppStorage("fullMediaShowSidebar") private var showSidebar = false
 
   var body: some View {
     HStack(spacing: 0) {
