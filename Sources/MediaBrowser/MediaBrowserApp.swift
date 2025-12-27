@@ -10,8 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    // Clean up auto-sync timer
-    S3Service.shared.stopAutoSync()
+    // App cleanup - no auto-sync to clean up
   }
 }
 

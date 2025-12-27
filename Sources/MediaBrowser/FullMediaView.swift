@@ -83,6 +83,12 @@ struct MediaDetailsSidebar: View {
             if let shutterSpeed = metadata.shutterSpeed {
               detailRow("Shutter Speed", shutterSpeed)
             }
+
+            // File Size
+            if let fileSize = getFileSize() {
+              detailRow("File Size", formatFileSize(fileSize))
+              detailRow("Size in bytes", "\(fileSize)")
+            }
           }
         }
         .padding(.bottom, 16)
@@ -252,6 +258,25 @@ struct MediaDetailsSidebar: View {
     case .notSynced:
       return "Not Synced"
     }
+  }
+
+  private func getFileSize() -> Int? {
+    do {
+      let attributes = try FileManager.default.attributesOfItem(atPath: item.url.path)
+      if let fileSize = attributes[.size] as? NSNumber {
+        return fileSize.intValue
+      }
+    } catch {
+      print("Error getting file size: \(error)")
+    }
+    return nil
+  }
+
+  private func formatFileSize(_ bytes: Int) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: Int64(bytes))
   }
 }
 

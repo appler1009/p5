@@ -151,103 +151,95 @@ struct SettingsView: View {
             .fontWeight(.semibold)
 
           VStack(alignment: .leading, spacing: 12) {
-            Toggle("Enable S3 Sync", isOn: $s3Service.config.enabled)
+            VStack(alignment: .leading, spacing: 16) {
+              // AWS Credentials Group
+              GroupBox("AWS Credentials") {
+                VStack(alignment: .leading, spacing: 12) {
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text("Access Key ID:")
+                      .font(.callout)
+                      .foregroundColor(.primary)
+                      .fontWeight(.medium)
+                    TextField("", text: $s3Service.config.accessKeyId)
+                      .textFieldStyle(.roundedBorder)
+                      .frame(minWidth: 300)
+                  }
 
-            if s3Service.config.enabled {
-              VStack(alignment: .leading, spacing: 16) {
-                // AWS Credentials Group
-                GroupBox("AWS Credentials") {
-                  VStack(alignment: .leading, spacing: 12) {
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text("Secret Access Key:")
+                      .font(.callout)
+                      .foregroundColor(.primary)
+                      .fontWeight(.medium)
+                    SecureField("", text: $s3Service.config.secretAccessKey)
+                      .textFieldStyle(.roundedBorder)
+                      .frame(minWidth: 300)
+                  }
+                }
+                .padding(8)
+              }
+
+              // S3 Configuration Group
+              GroupBox("S3 Configuration") {
+                VStack(alignment: .leading, spacing: 12) {
+                  HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
-                      Text("Access Key ID:")
+                      Text("Region:")
                         .font(.callout)
                         .foregroundColor(.primary)
                         .fontWeight(.medium)
-                      TextField("", text: $s3Service.config.accessKeyId)
+                      TextField("", text: $s3Service.config.region)
                         .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 300)
+                        .frame(minWidth: 140)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                      Text("Secret Access Key:")
+                      Text("Bucket Name:")
                         .font(.callout)
                         .foregroundColor(.primary)
                         .fontWeight(.medium)
-                      SecureField("", text: $s3Service.config.secretAccessKey)
+                      TextField("", text: $s3Service.config.bucketName)
                         .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 300)
+                        .frame(minWidth: 160)
                     }
                   }
-                  .padding(8)
-                }
 
-                // S3 Configuration Group
-                GroupBox("S3 Configuration") {
-                  VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 16) {
-                      VStack(alignment: .leading, spacing: 4) {
-                        Text("Region:")
-                          .font(.callout)
-                          .foregroundColor(.primary)
-                          .fontWeight(.medium)
-                        TextField("", text: $s3Service.config.region)
-                          .textFieldStyle(.roundedBorder)
-                          .frame(minWidth: 140)
-                      }
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text("Base Path:")
+                      .font(.callout)
+                      .foregroundColor(.primary)
+                      .fontWeight(.medium)
+                    TextField("", text: $s3Service.config.basePath)
+                      .textFieldStyle(.roundedBorder)
+                      .frame(minWidth: 300)
+                  }
 
-                      VStack(alignment: .leading, spacing: 4) {
-                        Text("Bucket Name:")
-                          .font(.callout)
-                          .foregroundColor(.primary)
-                          .fontWeight(.medium)
-                        TextField("", text: $s3Service.config.bucketName)
-                          .textFieldStyle(.roundedBorder)
-                          .frame(minWidth: 160)
-                      }
-                    }
-
+                  // S3 URI Preview
+                  if !s3Service.config.bucketName.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                      Text("Base Path:")
+                      Text("Expected S3 Location:")
                         .font(.callout)
-                        .foregroundColor(.primary)
+                        .foregroundColor(.secondary)
                         .fontWeight(.medium)
-                      TextField("", text: $s3Service.config.basePath)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 300)
-                    }
-
-                    // S3 URI Preview
-                    if !s3Service.config.bucketName.isEmpty {
-                      VStack(alignment: .leading, spacing: 4) {
-                        Text("Expected S3 Location:")
+                      HStack {
+                        Image(systemName: "link")
+                          .foregroundColor(.accentColor)
+                          .font(.caption)
+                        Text(previewS3Uri)
                           .font(.callout)
-                          .foregroundColor(.secondary)
-                          .fontWeight(.medium)
-                        HStack {
-                          Image(systemName: "link")
-                            .foregroundColor(.accentColor)
-                            .font(.caption)
-                          Text(previewS3Uri)
-                            .font(.callout)
-                            .foregroundColor(.primary)
-                            .monospaced()
-                        }
-                        .padding(8)
-                        .background(Color(.controlBackgroundColor))
-                        .cornerRadius(6)
-                        .overlay(
-                          RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                        )
+                          .foregroundColor(.primary)
+                          .monospaced()
                       }
+                      .padding(8)
+                      .background(Color(.controlBackgroundColor))
+                      .cornerRadius(6)
+                      .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                          .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                      )
                     }
                   }
-                  .padding(8)
-                  .frame(minWidth: 320)
-                }
 
-                // Auto-Sync Toggle
-                if s3Service.config.enabled && s3Service.config.isValid {
+                  // Auto-Sync Toggle
                   VStack(alignment: .leading, spacing: 8) {
                     Divider()
                     HStack {
@@ -268,49 +260,51 @@ struct SettingsView: View {
                         .labelsHidden()
                         .onChange(of: s3Service.autoSyncEnabled) { _, newValue in
                           if newValue {
-                            s3Service.startAutoSync()
+                            // Immediately upload one item when enabling auto-sync
+                            Task {
+                              await s3Service.uploadNextItem()
+                            }
                           } else {
                             s3Service.stopAutoSync()
                           }
                         }
                     }
                   }
-                  .padding(.vertical, 4)
                 }
-
-                // Status and Validation
-                HStack(spacing: 8) {
-                  if s3Service.config.isValid {
-                    Image(systemName: "checkmark.circle.fill")
-                      .foregroundColor(.green)
-                      .font(.title3)
-                    Text("Configuration is valid")
-                      .foregroundColor(.green)
-                      .font(.callout)
-                      .fontWeight(.medium)
-
-                  } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                      .foregroundColor(.orange)
-                      .font(.title3)
-                    Text("Configuration incomplete")
-                      .foregroundColor(.orange)
-                      .font(.callout)
-                      .fontWeight(.medium)
-                  }
-                  Spacer()
-                }
-                .padding(.vertical, 4)
+                .padding(8)
+                .frame(minWidth: 320)
               }
-              .transition(.opacity)
-              .animation(.easeInOut(duration: 0.3), value: s3Service.config.enabled)
+
+              // Status and Validation
+              HStack(spacing: 8) {
+                if s3Service.config.isValid {
+                  Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.title3)
+                  Text("Configuration is valid")
+                    .foregroundColor(.green)
+                    .font(.callout)
+                    .fontWeight(.medium)
+
+                } else {
+                  Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.title3)
+                  Text("Configuration incomplete")
+                    .foregroundColor(.orange)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                }
+                Spacer()
+              }
+              .padding(.vertical, 4)
             }
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
 
         // S3 Upload Status (only show if S3 is enabled and valid)
-        if s3Service.config.enabled && s3Service.config.isValid {
+        if s3Service.config.isValid {
           VStack(alignment: .leading, spacing: 12) {
             Text("S3 Upload Status")
               .font(.title2)

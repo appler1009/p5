@@ -20,9 +20,31 @@ class S3Service: ObservableObject {
   }
 
   private var s3Client: S3Client?
-  private var autoSyncTimer: Timer?
   private let configKey = "s3Config"
+  private var pendingTasks = Set<Task<Void, Never>>()
+  private var isUploadingItem = false
   private let uploadQueue = DispatchQueue(label: "com.mediabrowser.s3upload")
+
+  private let supportedImageExtensions = [
+    "jpg", "jpeg", "png", "heic", "tiff", "tif", "raw", "cr2", "nef", "arw", "dng",
+  ]
+  private let supportedVideoExtensions = ["mov", "mp4"]
+
+  /// Check if a file exists with case-insensitive extension matching
+  private func fileExistsWithCaseInsensitiveExtension(
+    baseName: String, extensions: [String], directoryURL: URL
+  ) -> URL? {
+    for ext in extensions {
+      // Check both lowercase and uppercase versions
+      for caseVariant in [ext.lowercased(), ext.uppercased()] {
+        let fileURL = directoryURL.appendingPathComponent("\(baseName).\(caseVariant)")
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+          return fileURL
+        }
+      }
+    }
+    return nil
+  }
 
   private init() {
     loadConfig()
@@ -56,7 +78,7 @@ class S3Service: ObservableObject {
         secret: config.secretAccessKey
       )
 
-      let resolver = try StaticAWSCredentialIdentityResolver(identity)
+      let resolver = StaticAWSCredentialIdentityResolver(identity)
 
       let configuration = try S3Client.S3ClientConfiguration(
         awsCredentialIdentityResolver: resolver,
@@ -75,8 +97,8 @@ class S3Service: ObservableObject {
     setupS3Client()
   }
 
-  private func shouldUploadItem(_ item: MediaItem) async -> Bool {
-    guard config.enabled && config.isValid else { return false }
+  func shouldUploadItem(_ item: MediaItem) async -> Bool {
+    guard config.isValid else { return false }
     guard let s3Client = s3Client else { return false }
 
     let s3Key = createS3Key(for: item)
@@ -114,24 +136,69 @@ class S3Service: ObservableObject {
   }
 
   func uploadMediaItem(_ item: MediaItem) async throws {
-    guard config.enabled && config.isValid else {
+    guard config.isValid else {
       throw S3Error.notConfigured
     }
-    guard let s3Client = s3Client else {
+    guard s3Client != nil else {
       throw S3Error.clientNotInitialized
     }
 
-    let s3Key = createS3Key(for: item)
-    let fileURL = item.url
+    // 1) Find all related files including itself
+    let allFiles = findRelatedFiles(for: item) + [item.url]
+    print(
+      "⏭️  [FILES] Will upload \(allFiles.count) files: \(allFiles.map { $0.lastPathComponent }.joined(separator: ", "))"
+    )
 
-    print("Upload attempt 1 for \(item.url.lastPathComponent)")
-    print("S3 Operation: PutObject")
-    print("Bucket: \(config.bucketName)")
-    print("Key: \(s3Key)")
-    print("Region: \(config.region)")
-    print("Storage Class: INTELLIGENT_TIERING")
-    print("Content Type: \(contentType(for: fileURL))")
-    print("File Size: \((try? Data(contentsOf: fileURL).count) ?? 0) bytes")
+    // 2) Make a list of files and loop through them
+    for fileURL in allFiles {
+      // Determine the media type for this file
+      let mediaType: MediaType
+      if fileURL == item.url {
+        // This is the main item, use its existing type
+        mediaType = item.type
+      } else {
+        // This is a related file, determine type from extension
+        if supportedImageExtensions.contains(fileURL.pathExtension.lowercased()) {
+          mediaType = .photo
+        } else if supportedVideoExtensions.contains(fileURL.pathExtension.lowercased()) {
+          mediaType = .video
+        } else {
+          mediaType = .photo  // fallback
+        }
+      }
+
+      // Create a MediaItem for this file
+      let currentItem = MediaItem(
+        url: fileURL,
+        type: mediaType,
+        metadata: item.metadata,
+        displayName: item.displayName
+      )
+
+      // 3) Check for each file if already exists in S3
+      let needsUpload = await shouldUploadItem(currentItem)
+
+      // 4) If it is, skip to next file
+      if !needsUpload {
+        print("⏭️  [SKIP] \(fileURL.lastPathComponent) already exists in S3")
+        continue  // Skip to next file
+      }
+
+      // 5) If it does not exist in S3, upload file
+      do {
+        try await uploadSingleFile(fileURL, item: currentItem)
+        print("✅ [SUCCESS] \(fileURL.lastPathComponent) uploaded")
+      } catch {
+        let filename = fileURL.lastPathComponent
+        print("❌ [FAILED] \(filename) - Error: \(error.localizedDescription)")
+        // Continue with next file even if one fails
+        continue
+      }
+    }
+  }
+
+  private func uploadSingleFile(_ fileURL: URL, item: MediaItem) async throws {
+    let s3Key = createS3Key(for: item)
 
     do {
       let fileData = try Data(contentsOf: fileURL)
@@ -144,138 +211,86 @@ class S3Service: ObservableObject {
         storageClass: .intelligentTiering
       )
 
-      _ = try await s3Client.putObject(input: input)
-
-      print("Successfully uploaded \(item.url.lastPathComponent) to S3")
-
+      _ = try await s3Client!.putObject(input: input)
     } catch {
       throw error
     }
   }
 
-  func syncAllItems(_ items: [MediaItem]) async {
-    guard config.enabled && config.isValid else {
-      print("S3 sync not configured or disabled")
-      return
-    }
+  private func findRelatedFiles(for item: MediaItem) -> [URL] {
+    var relatedFiles: [URL] = []
+    let fileName = item.url.deletingPathExtension().lastPathComponent
+    let fileExtension = item.url.pathExtension
+    let directoryURL = item.url.deletingLastPathComponent()
 
-    await MainActor.run {
-      isUploading = true
-      uploadProgress.removeAll()
-    }
-
-    let totalItems = items.count
-    var completedCount = 0
-
-    for (index, item) in items.enumerated() {
-      let progressKey = item.id.uuidString
-      await MainActor.run {
-        currentUploadItem = item.url.lastPathComponent
-        uploadProgress[progressKey] = 0.0
+    // For live photos: find the paired video file with same base name
+    if item.type == .livePhoto {
+      if let videoURL = fileExistsWithCaseInsensitiveExtension(
+        baseName: fileName, extensions: supportedVideoExtensions, directoryURL: directoryURL)
+      {
+        relatedFiles.append(videoURL)
       }
+    }
 
-      do {
-        // Check if this item needs to be uploaded
-        let needsUpload = await shouldUploadItem(item)
+    // Handle edited file relationships bidirectionally
+    if let range = fileName.range(of: #"(\d+)"#, options: .regularExpression) {
+      let prefix = String(fileName[..<range.lowerBound])  // e.g., "IMG" or "IMG_"
+      let digits = String(fileName[range])  // e.g., "1234"
 
-        if !needsUpload {
-          await MainActor.run {
-            uploadProgress[progressKey] = 1.0  // Mark as completed (already exists)
+      // Check if this appears to be an edited file (has 'E' before digits in prefix)
+      if prefix.hasSuffix("E") {
+        // This is likely an edited file - find the original
+        let originalPrefix = String(prefix.dropLast())  // Remove the 'E'
+        let originalBaseName = "\(originalPrefix)\(digits)"
+
+        // Check for original file with same extension
+        if !fileExtension.isEmpty {
+          if let originalURL = fileExistsWithCaseInsensitiveExtension(
+            baseName: originalBaseName, extensions: [fileExtension], directoryURL: directoryURL)
+          {
+            relatedFiles.append(originalURL)
           }
-          print("Skipped \(item.url.lastPathComponent) - already up to date in S3")
-          completedCount += 1
-          continue
         }
 
-        // Update overall progress
-        let overallProgress = Double(index) / Double(totalItems)
-        await MainActor.run {
-          uploadProgress["overall"] = overallProgress
+        // Check for original file with any common image extension
+        let commonExtensions = ["jpg", "jpeg", "png", "heic", "tiff", "gif", "bmp"]
+        let extensionsToCheck = commonExtensions.filter { $0 != fileExtension.lowercased() }  // Skip if same as current
+        if let originalURL = fileExistsWithCaseInsensitiveExtension(
+          baseName: originalBaseName, extensions: extensionsToCheck, directoryURL: directoryURL)
+        {
+          relatedFiles.append(originalURL)
+        }
+      } else {
+        // This appears to be an original file - find edited versions
+        let editedBaseName = "\(prefix)E\(digits)"
+
+        // Check for edited file with same extension first
+        if !fileExtension.isEmpty {
+          if let editedURL = fileExistsWithCaseInsensitiveExtension(
+            baseName: editedBaseName, extensions: [fileExtension], directoryURL: directoryURL)
+          {
+            relatedFiles.append(editedURL)
+          }
         }
 
-        try await uploadMediaItem(item)
-
-        // Update database with successful sync status
-        var updatedItem = item
-        updatedItem.s3SyncStatus = .synced
-        DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
-
-        await MainActor.run {
-          uploadProgress[progressKey] = 1.0
+        // Check for edited file without extension
+        let editedURLNoExt = directoryURL.appendingPathComponent(editedBaseName)
+        if FileManager.default.fileExists(atPath: editedURLNoExt.path) {
+          relatedFiles.append(editedURLNoExt)
         }
 
-        completedCount += 1
-        print("Synced \(completedCount)/\(totalItems): \(item.url.lastPathComponent)")
-
-      } catch {
-        // Update database with failed sync status
-        var updatedItem = item
-        updatedItem.s3SyncStatus = .failed
-        DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
-
-        print("Failed to sync \(item.url.lastPathComponent): \(error)")
-        await MainActor.run {
-          uploadProgress[progressKey] = -1.0  // Indicate failure
+        // Check for edited file with any common image extension
+        let commonExtensions = ["jpg", "jpeg", "png", "heic", "tiff", "gif", "bmp"]
+        let extensionsToCheck = commonExtensions.filter { $0 != fileExtension.lowercased() }  // Skip if same as original
+        if let editedURL = fileExistsWithCaseInsensitiveExtension(
+          baseName: editedBaseName, extensions: extensionsToCheck, directoryURL: directoryURL)
+        {
+          relatedFiles.append(editedURL)
         }
       }
     }
 
-    await MainActor.run {
-      isUploading = false
-      currentUploadItem = nil
-      uploadProgress["overall"] = 1.0
-    }
-
-    print("S3 sync completed: \(completedCount)/\(totalItems) items synced")
-  }
-
-  func startAutoSync() {
-    stopAutoSync()  // Stop any existing timer
-
-    autoSyncTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
-      Task {
-        await self?.performAutoSync()
-      }
-    }
-
-    autoSyncEnabled = true
-    print("Auto S3 sync started - checking every 60 seconds")
-  }
-
-  func stopAutoSync() {
-    autoSyncTimer?.invalidate()
-    autoSyncTimer = nil
-    autoSyncEnabled = false
-    print("Auto S3 sync stopped")
-  }
-
-  private func updateAutoSync() {
-    // Auto-stop if configuration becomes invalid
-    if !config.enabled || !config.isValid {
-      if autoSyncEnabled {
-        stopAutoSync()
-      }
-    }
-    // Note: We don't auto-start here - user must explicitly enable via toggle
-  }
-
-  private func performAutoSync() async {
-    // Check if sync is enabled and configured
-    guard config.enabled && config.isValid else {
-      return  // Silently skip if not configured
-    }
-
-    // Get items that need syncing
-    let itemsToSync = DatabaseManager.shared.getAllItems().filter { $0.s3SyncStatus != .synced }
-
-    guard !itemsToSync.isEmpty else {
-      return  // Nothing to sync
-    }
-
-    print("Auto-sync: Found \(itemsToSync.count) items to sync")
-
-    // Perform the sync
-    await syncAllItems(itemsToSync)
+    return relatedFiles
   }
 
   func createS3Key(for item: MediaItem) -> String {
@@ -297,9 +312,103 @@ class S3Service: ObservableObject {
     return components.filter { !$0.isEmpty }.joined(separator: "/")
   }
 
-  func checkSyncStatus() async -> [String: S3SyncStatus] {
-    // Placeholder - would check which files exist in S3
-    return [:]
+  func stopAutoSync() {
+    autoSyncEnabled = false
+    // Cancel all pending upload tasks
+    for task in pendingTasks {
+      task.cancel()
+    }
+    pendingTasks.removeAll()
+    print("Auto S3 sync stopped")
+  }
+
+  func uploadNextItem() async {
+    // Simple mutex using boolean flag - check if already running
+    guard !isUploadingItem else {
+      print("📋 [SKIP] uploadNextItem already running, skipping this call")
+      return
+    }
+
+    isUploadingItem = true
+    defer { isUploadingItem = false }
+
+    // Process items in a loop until none remain or auto-sync is disabled
+    while autoSyncEnabled {
+      // Find the first item that hasn't been synced yet
+      guard
+        var itemToUpload = DatabaseManager.shared.getAllItems().first(where: {
+          $0.s3SyncStatus != .synced
+        })
+      else {
+        print("✅ [COMPLETE] All items are already synced to S3")
+        print("⏰ [WAITING] Next check in 60 seconds...")
+
+        // Schedule next run in 1 minute if auto-sync is still enabled
+        if autoSyncEnabled {
+          let task = Task {
+            try? await Task.sleep(nanoseconds: 60_000_000_000)  // 60 seconds
+            if !Task.isCancelled && autoSyncEnabled {
+              await self.uploadNextItem()
+            }
+          }
+          pendingTasks.insert(task)
+        }
+        return
+      }
+
+      do {
+        try await uploadMediaItem(itemToUpload)
+
+        // Update the item's sync status in database
+        itemToUpload.s3SyncStatus = .synced
+        DatabaseManager.shared.updateS3SyncStatus(for: itemToUpload)
+
+        // Update UI to show cloud icon immediately after successful upload
+        let itemId = itemToUpload.id.uuidString
+        let statusRaw = itemToUpload.s3SyncStatus.rawValue
+        await MainActor.run {
+          NotificationCenter.default.post(
+            name: NSNotification.Name("S3SyncStatusUpdated"), object: nil,
+            userInfo: [
+              "itemId": itemId, "status": statusRaw,
+            ])
+        }
+
+        // Continue to next item in the loop (no need to schedule new task)
+
+      } catch {
+        let filename = itemToUpload.url.lastPathComponent
+        print("❌ [FAILED] \(filename) - Error: \(error.localizedDescription)")
+
+        // Update the item's sync status to failed
+        itemToUpload.s3SyncStatus = .failed
+        DatabaseManager.shared.updateS3SyncStatus(for: itemToUpload)
+
+        print("💾 [STATUS] Marked \(filename) as failed - will retry later")
+
+        // On failure, break the loop and schedule retry in 1 minute
+        if autoSyncEnabled {
+          let task = Task {
+            try? await Task.sleep(nanoseconds: 60_000_000_000)  // 60 seconds
+            if !Task.isCancelled && autoSyncEnabled {
+              await self.uploadNextItem()
+            }
+          }
+          pendingTasks.insert(task)
+        }
+        return
+      }
+    }
+  }
+
+  private func updateAutoSync() {
+    // Auto-stop if configuration becomes invalid
+    if !config.isValid {
+      if autoSyncEnabled {
+        stopAutoSync()
+      }
+    }
+    // Note: We don't auto-start here - user must explicitly enable via toggle
   }
 
   private func contentType(for url: URL) -> String {
@@ -320,10 +429,9 @@ class S3Service: ObservableObject {
       return "application/octet-stream"
     }
   }
-}
-
-enum S3Error: Error {
-  case notConfigured
-  case clientNotInitialized
-  case uploadFailed(String)
+  enum S3Error: Error {
+    case notConfigured
+    case clientNotInitialized
+    case uploadFailed(String)
+  }
 }

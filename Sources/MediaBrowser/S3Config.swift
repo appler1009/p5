@@ -6,7 +6,6 @@ struct S3Config: Codable {
   var region: String = "us-west-2"
   var bucketName: String = ""
   var basePath: String = ""
-  var enabled: Bool = false
 
   var isValid: Bool {
     !accessKeyId.isEmpty && !secretAccessKey.isEmpty && !bucketName.isEmpty

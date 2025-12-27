@@ -11,10 +11,10 @@ struct Cluster: Identifiable {
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
-  @ObservedObject private var s3Service = S3Service.shared
   @Environment(\.openWindow) private var openWindow
   @State private var selectedItem: MediaItem?
   @State private var viewMode: String = UserDefaults.standard.string(forKey: "viewMode") ?? "Grid"
+  @State private var searchQuery = ""
   @State private var region = MKCoordinateRegion(
     center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
     span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)
@@ -26,7 +26,15 @@ struct ContentView: View {
   }
 
   private var sortedItems: [MediaItem] {
-    mediaScanner.items.sorted { item1, item2 in
+    let filteredItems =
+      searchQuery.isEmpty
+      ? mediaScanner.items
+      : mediaScanner.items.filter { item in
+        let filename = item.displayName ?? item.url.lastPathComponent
+        return filename.localizedCaseInsensitiveContains(searchQuery)
+      }
+
+    return filteredItems.sorted { item1, item2 in
       let date1 = item1.metadata?.creationDate ?? Date.distantPast
       let date2 = item2.metadata?.creationDate ?? Date.distantPast
       return date1 > date2  // Most recent first
@@ -247,13 +255,6 @@ struct ContentView: View {
         }
         .disabled(mediaScanner.isScanning || directoryManager.directories.isEmpty)
 
-        Button("Upload One") {
-          Task {
-            await uploadOneItem()
-          }
-        }
-        .disabled(mediaScanner.items.isEmpty || !s3Service.config.isValid)
-
         Button(action: {
           openWindow(id: "settings")
         }) {
@@ -272,6 +273,29 @@ struct ContentView: View {
           UserDefaults.standard.set(viewMode, forKey: "viewMode")
         }
       }
+
+      ToolbarItemGroup(placement: .principal) {
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass")
+            .foregroundColor(.secondary)
+          TextField("Search...", text: $searchQuery)
+            .frame(minWidth: 200, maxWidth: 300)
+            .textFieldStyle(.roundedBorder)
+        }
+        .padding(.leading, 8)
+        .overlay(alignment: .trailing) {
+          if !searchQuery.isEmpty {
+            Button(action: {
+              searchQuery = ""
+            }) {
+              Image(systemName: "xmark.circle.fill")
+                .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 8)
+          }
+        }
+      }
     }
 
   }
@@ -288,58 +312,32 @@ struct ContentView: View {
     selectedItem = sortedItems[prevIndex]
   }
 
-  private func uploadOneItem() async {
-    guard let firstItem = mediaScanner.items.first else {
-      print("No media items available to upload")
-      return
+  /// Update a media item
+  func updateItem(itemId: String, statusRaw: String) {
+    DispatchQueue.main.async {
+      guard let uuid = UUID(uuidString: itemId),
+        let status = S3SyncStatus(rawValue: statusRaw),
+        let index = sortedItems.firstIndex(where: { $0.id == uuid })
+      else { return }
+      var item = sortedItems[index]
+      item.s3SyncStatus = status
     }
+  }
 
-    print("=== UPLOAD ONE TEST ===")
-    print("Uploading item: \(firstItem.displayName ?? firstItem.url.lastPathComponent)")
-    print("File path: \(firstItem.url.path)")
-
-    do {
-      try await s3Service.uploadMediaItem(firstItem)
-
-      // Get the S3 key that was generated
-      let s3Key = s3Service.createS3Key(for: firstItem)
-      let s3Uri = "s3://\(s3Service.config.bucketName)/\(s3Key)"
-
-      print("✅ Upload successful!")
-      print("📍 S3 URI: \(s3Uri)")
-      print("🗂️  S3 Key: \(s3Key)")
-      print("📦 Bucket: \(s3Service.config.bucketName)")
-      print("🏷️  Storage Class: INTELLIGENT_TIERING")
-
-      // Update the item's sync status in database
-      var updatedItem = firstItem
-      updatedItem.s3SyncStatus = .synced
-      DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
-
-      print("💾 Database updated: sync status set to 'synced'")
-
-    } catch let error as S3Error {
-      print("❌ Upload failed with S3Error: \(error)")
-
-      // Update the item's sync status to failed
-      var updatedItem = firstItem
-      updatedItem.s3SyncStatus = .failed
-      DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
-
-      print("💾 Database updated: sync status set to 'failed'")
-
-    } catch {
-      print("❌ Upload failed with error: \(error)")
-
-      // Update the item's sync status to failed
-      var updatedItem = firstItem
-      updatedItem.s3SyncStatus = .failed
-      DatabaseManager.shared.updateS3SyncStatus(for: updatedItem)
-
-      print("💾 Database updated: sync status set to 'failed'")
+  /// Listen for S3 sync status updates
+  private func setupS3SyncNotifications() {
+    NotificationCenter.default.addObserver(
+      forName: NSNotification.Name("S3SyncStatusUpdated"),
+      object: nil,
+      queue: .main
+    ) { notification in
+      if let userInfo = notification.userInfo,
+        let itemId = userInfo["itemId"] as? String,
+        let statusRaw = userInfo["status"] as? String
+      {
+        updateItem(itemId: itemId, statusRaw: statusRaw)
+      }
     }
-
-    print("======================")
   }
 }
 

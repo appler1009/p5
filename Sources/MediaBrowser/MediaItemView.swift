@@ -10,7 +10,7 @@ struct MediaItemView: View {
       switch item.s3SyncStatus {
       case .synced:
         Image(systemName: "cloud.fill")
-          .foregroundColor(.green)
+          .foregroundColor(.white)
       case .failed:
         Image(systemName: "exclamationmark.triangle.fill")
           .foregroundColor(.red)
