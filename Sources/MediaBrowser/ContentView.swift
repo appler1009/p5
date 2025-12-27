@@ -14,6 +14,7 @@ struct ContentView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
   @Environment(\.openWindow) private var openWindow
   @State private var selectedItem: MediaItem?
+  @State private var lightboxItem: MediaItem?
   @AppStorage("viewMode") private var viewMode = "Grid"
   @State private var searchQuery = ""
   @State private var region = MKCoordinateRegion(
@@ -185,7 +186,7 @@ struct ContentView: View {
       span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1))
   }
 
-  private var mainView: some View {
+  var body: some View {
     ZStack {
       // Hidden button for `/` shortcut for search
       Button("") {
@@ -198,24 +199,88 @@ struct ContentView: View {
 
       VStack(spacing: 0) {
         if viewMode == "Grid" {
-          ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-              ForEach(monthlyGroups, id: \.month) { group in
-                Section(header: Text(group.month).font(.headline).padding(.horizontal)) {
-                  LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
-                    ForEach(group.items) { item in
-                      MediaItemView(item: item, onTap: { selectedItem = item })
+          GeometryReader { geo in
+            ScrollView {
+              VStack(alignment: .leading, spacing: 16) {
+                ForEach(monthlyGroups, id: \.month) { group in
+                  Section(header: Text(group.month).font(.headline).padding(.horizontal)) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 10) {
+                      ForEach(group.items) { item in
+                        MediaItemView(
+                          item: item,
+                          onTap: {
+                            selectedItem = item
+                            lightboxItem = item
+                          }, isSelected: item.id == selectedItem?.id)
+                      }
                     }
+                    .padding(.horizontal, 8)
                   }
-                  .padding(.horizontal, 8)
                 }
               }
+              .padding(.bottom, 8)
             }
-            .padding(.bottom, 8)
-          }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .onTapGesture {
-            searchTextField?.window?.makeFirstResponder(nil)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onTapGesture {
+              searchTextField?.window?.makeFirstResponder(nil)
+            }
+            .focusable()
+            .onKeyPress { press in
+              // Update window width for dynamic column calculation
+              let windowWidth = geo.size.width
+              // Grid navigation when lightbox is not open
+              if lightboxItem == nil,
+                let currentIndex = sortedItems.firstIndex(where: { $0.id == selectedItem?.id })
+              {
+                let availableWidth = windowWidth - 16  // subtract horizontal padding
+                let columns = max(1, Int(floor((availableWidth + 10) / 90)))  // spacing = 10, minWidth = 80
+                let currentRow = currentIndex / columns
+                let currentCol = currentIndex % columns
+
+                var newRow = currentRow
+                var newCol = currentCol
+
+                switch press.key {
+                case .upArrow:
+                  newRow = max(0, currentRow - 1)
+                case .downArrow:
+                  newRow = min((sortedItems.count + columns - 1) / columns - 1, currentRow + 1)
+                case .leftArrow:
+                  if currentCol == 0 && currentRow > 0 {
+                    // Wrap to previous row's last column
+                    newRow = currentRow - 1
+                    newCol = min(columns - 1, sortedItems.count - newRow * columns - 1)
+                  } else {
+                    newCol = max(0, currentCol - 1)
+                  }
+                case .rightArrow:
+                  let maxColInRow = min(columns - 1, sortedItems.count - currentRow * columns - 1)
+                  if currentCol == maxColInRow
+                    && currentRow < (sortedItems.count + columns - 1) / columns - 1
+                  {
+                    // Wrap to next row's first column
+                    newRow = currentRow + 1
+                    newCol = 0
+                  } else {
+                    newCol = min(maxColInRow, currentCol + 1)
+                  }
+                case .space, .return:
+                  if let item = selectedItem {
+                    lightboxItem = item
+                  }
+                  return .handled
+                default:
+                  return .ignored
+                }
+
+                let newIndex = newRow * columns + newCol
+                if newIndex < sortedItems.count {
+                  selectedItem = sortedItems[newIndex]
+                }
+                return .handled
+              }
+              return .ignored
+            }
           }
         } else if viewMode == "Map" {
           MapView(
@@ -224,6 +289,7 @@ struct ContentView: View {
             onClusterTap: { cluster in
               if cluster.count == 1 {
                 selectedItem = cluster.items.first
+                lightboxItem = selectedItem
               } else {
                 zoomToCluster(cluster)
               }
@@ -241,13 +307,36 @@ struct ContentView: View {
           .onChange(of: mediaScanner.items) {
             computeClusters()
           }
+          .focusable()
+          .onKeyPress { press in
+            if lightboxItem == nil,
+              let currentIndex = sortedItems.firstIndex(where: { $0.id == selectedItem?.id })
+            {
+              switch press.key {
+              case .leftArrow:
+                let newIndex = max(0, currentIndex - 1)
+                selectedItem = sortedItems[newIndex]
+                return .handled
+              case .rightArrow:
+                let newIndex = min(sortedItems.count - 1, currentIndex + 1)
+                selectedItem = sortedItems[newIndex]
+                return .handled
+              case .upArrow, .downArrow:
+                // For map, up/down also navigate
+                return .ignored  // or handle same as left/right
+              default:
+                return .ignored
+              }
+            }
+            return .ignored
+          }
         }
       }
 
-      if let selected = selectedItem {
+      if let selected = lightboxItem {
         FullMediaView(
           item: selected,
-          onClose: { selectedItem = nil },
+          onClose: { lightboxItem = nil },
           onNext: { nextItem() },
           onPrev: { prevItem() }
         )
@@ -255,54 +344,51 @@ struct ContentView: View {
         .transition(.opacity)
       }
     }
-  }
 
-  var body: some View {
-    mainView
-      .navigationTitle("Media Browser")
-      .onAppear {
-        setupS3SyncNotifications()
+    .navigationTitle("Media Browser")
+    .onAppear {
+      setupS3SyncNotifications()
+    }
+    .toolbar {
+      ToolbarItem {
+        Picker("View Mode", selection: $viewMode) {
+          Image(systemName: "square.grid.2x2").tag("Grid")
+          Image(systemName: "map").tag("Map")
+        }
+        .pickerStyle(.segmented)
       }
-      .toolbar {
-        ToolbarItem {
-          Picker("View Mode", selection: $viewMode) {
-            Image(systemName: "square.grid.2x2").tag("Grid")
-            Image(systemName: "map").tag("Map")
-          }
-          .pickerStyle(.segmented)
+      ToolbarItem {
+        Button(action: {
+          openWindow(id: "settings")
+        }) {
+          Image(systemName: "gear")
         }
-        ToolbarItem {
-          Button(action: {
-            openWindow(id: "settings")
-          }) {
-            Image(systemName: "gear")
-          }
-          .help("Settings")
-          .keyboardShortcut(",", modifiers: .command)
-        }
+        .help("Settings")
+        .keyboardShortcut(",", modifiers: .command)
+      }
 
-        ToolbarItemGroup(placement: .principal) {
-          HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-              .foregroundColor(.secondary)
-            FocusableTextField(text: $searchQuery, textField: $searchTextField)
-              .frame(minWidth: 200, maxWidth: 300)
-          }
-          .padding(.leading, 8)
-          .overlay(alignment: .trailing) {
-            if !searchQuery.isEmpty {
-              Button(action: {
-                searchQuery = ""
-              }) {
-                Image(systemName: "xmark.circle.fill")
-                  .foregroundColor(.secondary)
-              }
-              .buttonStyle(.plain)
-              .padding(.trailing, 8)
+      ToolbarItemGroup(placement: .principal) {
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass")
+            .foregroundColor(.secondary)
+          FocusableTextField(text: $searchQuery, textField: $searchTextField)
+            .frame(minWidth: 200, maxWidth: 300)
+        }
+        .padding(.leading, 8)
+        .overlay(alignment: .trailing) {
+          if !searchQuery.isEmpty {
+            Button(action: {
+              searchQuery = ""
+            }) {
+              Image(systemName: "xmark.circle.fill")
+                .foregroundColor(.secondary)
             }
+            .buttonStyle(.plain)
+            .padding(.trailing, 8)
           }
         }
       }
+    }
 
   }
 
@@ -310,12 +396,14 @@ struct ContentView: View {
     guard let index = sortedItems.firstIndex(where: { $0.id == selectedItem?.id }) else { return }
     let nextIndex = (index + 1) % sortedItems.count
     selectedItem = sortedItems[nextIndex]
+    lightboxItem = selectedItem
   }
 
   private func prevItem() {
     guard let index = sortedItems.firstIndex(where: { $0.id == selectedItem?.id }) else { return }
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
     selectedItem = sortedItems[prevIndex]
+    lightboxItem = selectedItem
   }
 
   /// Update a media item

@@ -3,6 +3,7 @@ import SwiftUI
 struct MediaItemView: View {
   let item: MediaItem
   let onTap: () -> Void
+  let isSelected: Bool
   @State private var thumbnail: NSImage?
 
   private var syncStatusIndicator: some View {
@@ -54,6 +55,10 @@ struct MediaItemView: View {
         .padding(4)
     }
     .aspectRatio(1, contentMode: .fit)  // Ensure square cells
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
+    )
     .help(item.metadata?.filename ?? item.url.lastPathComponent)
     .onTapGesture {
       onTap()
