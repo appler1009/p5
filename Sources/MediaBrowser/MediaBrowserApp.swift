@@ -29,6 +29,26 @@ struct MediaBrowserApp: App {
     WindowGroup {
       ContentView()
     }
+    .commands {
+      // Add items after the standard View options
+      CommandGroup(after: .sidebar) {
+        Button(action: {
+          UserDefaults.standard.set("Grid", forKey: "viewMode")
+        }) {
+          Label("Grid View", systemImage: "square.grid.2x2")
+        }
+        .keyboardShortcut("1", modifiers: .command)
+
+        Button(action: {
+          UserDefaults.standard.set("Map", forKey: "viewMode")
+        }) {
+          Label("Map View", systemImage: "map")
+        }
+        .keyboardShortcut("2", modifiers: .command)
+
+        Divider()
+      }
+    }
     WindowGroup(id: "settings") {
       SettingsView()
     }

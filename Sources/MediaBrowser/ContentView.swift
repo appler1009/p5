@@ -14,7 +14,7 @@ struct ContentView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
   @Environment(\.openWindow) private var openWindow
   @State private var selectedItem: MediaItem?
-  @State private var viewMode: String = UserDefaults.standard.string(forKey: "viewMode") ?? "Grid"
+  @AppStorage("viewMode") private var viewMode = "Grid"
   @State private var searchQuery = ""
   @State private var region = MKCoordinateRegion(
     center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
@@ -185,7 +185,7 @@ struct ContentView: View {
       span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1))
   }
 
-  var body: some View {
+  private var mainView: some View {
     ZStack {
       // Hidden button for `/` shortcut for search
       Button("") {
@@ -255,53 +255,54 @@ struct ContentView: View {
         .transition(.opacity)
       }
     }
-    .navigationTitle("Media Browser")
-    .onAppear {
-      setupS3SyncNotifications()
-    }
-    .toolbar {
-      ToolbarItem {
-        Picker("View Mode", selection: $viewMode) {
-          Image(systemName: "square.grid.2x2").tag("Grid")
-          Image(systemName: "map").tag("Map")
-        }
-        .pickerStyle(.segmented)
-        .onChange(of: viewMode) {
-          UserDefaults.standard.set(viewMode, forKey: "viewMode")
-        }
-      }
-      ToolbarItem {
-        Button(action: {
-          openWindow(id: "settings")
-        }) {
-          Image(systemName: "gear")
-        }
-        .help("Settings")
-        .keyboardShortcut(",", modifiers: .command)
-      }
+  }
 
-      ToolbarItemGroup(placement: .principal) {
-        HStack(spacing: 8) {
-          Image(systemName: "magnifyingglass")
-            .foregroundColor(.secondary)
-          FocusableTextField(text: $searchQuery, textField: $searchTextField)
-            .frame(minWidth: 200, maxWidth: 300)
+  var body: some View {
+    mainView
+      .navigationTitle("Media Browser")
+      .onAppear {
+        setupS3SyncNotifications()
+      }
+      .toolbar {
+        ToolbarItem {
+          Picker("View Mode", selection: $viewMode) {
+            Image(systemName: "square.grid.2x2").tag("Grid")
+            Image(systemName: "map").tag("Map")
+          }
+          .pickerStyle(.segmented)
         }
-        .padding(.leading, 8)
-        .overlay(alignment: .trailing) {
-          if !searchQuery.isEmpty {
-            Button(action: {
-              searchQuery = ""
-            }) {
-              Image(systemName: "xmark.circle.fill")
-                .foregroundColor(.secondary)
+        ToolbarItem {
+          Button(action: {
+            openWindow(id: "settings")
+          }) {
+            Image(systemName: "gear")
+          }
+          .help("Settings")
+          .keyboardShortcut(",", modifiers: .command)
+        }
+
+        ToolbarItemGroup(placement: .principal) {
+          HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+              .foregroundColor(.secondary)
+            FocusableTextField(text: $searchQuery, textField: $searchTextField)
+              .frame(minWidth: 200, maxWidth: 300)
+          }
+          .padding(.leading, 8)
+          .overlay(alignment: .trailing) {
+            if !searchQuery.isEmpty {
+              Button(action: {
+                searchQuery = ""
+              }) {
+                Image(systemName: "xmark.circle.fill")
+                  .foregroundColor(.secondary)
+              }
+              .buttonStyle(.plain)
+              .padding(.trailing, 8)
             }
-            .buttonStyle(.plain)
-            .padding(.trailing, 8)
           }
         }
       }
-    }
 
   }
 
