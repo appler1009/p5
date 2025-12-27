@@ -16,6 +16,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  func applicationDidBecomeActive(_ notification: Notification) {
+    // Disable window tabbing for all windows
+    NSApp.windows.forEach { $0.tabbingMode = .disallowed }
+  }
+
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    return true
+  }
+
   func applicationWillTerminate(_ notification: Notification) {
     // App cleanup - no auto-sync to clean up
   }
@@ -30,6 +39,9 @@ struct MediaBrowserApp: App {
       ContentView()
     }
     .commands {
+      // Disable New Window menu
+      CommandGroup(replacing: .newItem) {}
+
       // Add items after the standard View options
       CommandGroup(after: .sidebar) {
         Button(action: {
