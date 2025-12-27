@@ -351,7 +351,6 @@ class S3Service: ObservableObject {
           $0.s3SyncStatus != .synced
         })
       else {
-        print("💾 [PROGRESS] Update nil as progress")
         await MainActor.run {
           NotificationCenter.default.post(
             name: NSNotification.Name("UploadProgressUpdated"), object: nil,

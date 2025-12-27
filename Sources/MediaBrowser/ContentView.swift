@@ -245,27 +245,6 @@ struct ContentView: View {
       setupS3SyncNotifications()
     }
     .toolbar {
-      ToolbarItemGroup(placement: .automatic) {
-        if let progress = mediaScanner.scanProgress {
-          ProgressView(value: Double(progress.current), total: Double(progress.total))
-            .frame(width: 100)
-        }
-
-        Button("Scan") {
-          Task {
-            await MediaScanner.shared.scan(directories: directoryManager.directories)
-          }
-        }
-        .disabled(mediaScanner.isScanning || directoryManager.directories.isEmpty)
-
-        Button(action: {
-          openWindow(id: "settings")
-        }) {
-          Image(systemName: "gear")
-        }
-        .help("Settings")
-        .keyboardShortcut(",", modifiers: .command)
-      }
       ToolbarItem {
         Picker("View Mode", selection: $viewMode) {
           Image(systemName: "square.grid.2x2").tag("Grid")
@@ -275,6 +254,15 @@ struct ContentView: View {
         .onChange(of: viewMode) {
           UserDefaults.standard.set(viewMode, forKey: "viewMode")
         }
+      }
+      ToolbarItem {
+        Button(action: {
+          openWindow(id: "settings")
+        }) {
+          Image(systemName: "gear")
+        }
+        .help("Settings")
+        .keyboardShortcut(",", modifiers: .command)
       }
 
       ToolbarItemGroup(placement: .principal) {

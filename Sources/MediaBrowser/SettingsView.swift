@@ -54,6 +54,7 @@ struct SettingsView: View {
               }
               .buttonStyle(.bordered)
             }
+            .padding(.bottom, 8)
 
             // Directory List
             if !directoryManager.directories.isEmpty {
@@ -90,6 +91,19 @@ struct SettingsView: View {
                 Spacer()
               }
             }
+
+            // Scan Button
+            HStack {
+              Spacer()
+              Button("Scan") {
+                Task {
+                  await MediaScanner.shared.scan(directories: directoryManager.directories)
+                }
+              }
+              .disabled(MediaScanner.shared.isScanning || directoryManager.directories.isEmpty)
+              .buttonStyle(.borderedProminent)
+            }
+            .padding(.top)
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
