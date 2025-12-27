@@ -1,3 +1,4 @@
+import AppKit
 import MapKit
 import SwiftUI
 
@@ -20,6 +21,8 @@ struct ContentView: View {
     span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)
   )
   @State private var clusters: [Cluster] = []
+  @FocusState private var focusedField: String?
+  @State private var searchTextField: NSTextField?
 
   private var itemsWithGPS: [MediaItem] {
     sortedItems.filter { $0.metadata?.gps != nil }
@@ -184,6 +187,15 @@ struct ContentView: View {
 
   var body: some View {
     ZStack {
+      // Hidden button for `/` shortcut for search
+      Button("") {
+        DispatchQueue.main.async {
+          self.searchTextField?.window?.makeFirstResponder(self.searchTextField)
+        }
+      }
+      .keyboardShortcut("/", modifiers: [])
+      .hidden()
+
       VStack(spacing: 0) {
         if viewMode == "Grid" {
           ScrollView {
@@ -202,6 +214,9 @@ struct ContentView: View {
             .padding(.bottom, 8)
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .onTapGesture {
+            searchTextField?.window?.makeFirstResponder(nil)
+          }
         } else if viewMode == "Map" {
           MapView(
             clusters: $clusters,
@@ -269,9 +284,8 @@ struct ContentView: View {
         HStack(spacing: 8) {
           Image(systemName: "magnifyingglass")
             .foregroundColor(.secondary)
-          TextField("Search...", text: $searchQuery)
+          FocusableTextField(text: $searchQuery, textField: $searchTextField)
             .frame(minWidth: 200, maxWidth: 300)
-            .textFieldStyle(.roundedBorder)
         }
         .padding(.leading, 8)
         .overlay(alignment: .trailing) {
@@ -326,6 +340,59 @@ struct ContentView: View {
         let statusRaw = userInfo["status"] as? String
       {
         updateItem(itemId: itemId, statusRaw: statusRaw)
+      }
+    }
+  }
+}
+
+class ToolbarSearchField: NSTextField {
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    if event.keyCode == 53 {  // Escape
+      window?.makeFirstResponder(nil)
+      return true
+    }
+    return super.performKeyEquivalent(with: event)
+  }
+}
+
+struct FocusableTextField: NSViewRepresentable {
+  @Binding var text: String
+  @Binding var textField: NSTextField?
+
+  func makeNSView(context: Context) -> NSTextField {
+    let textField = ToolbarSearchField()
+    textField.stringValue = text
+    textField.placeholderString = "Search..."
+    textField.delegate = context.coordinator
+    // Store reference for focusing
+    self.textField = textField
+    return textField
+  }
+
+  func updateNSView(_ nsView: NSTextField, context: Context) {
+    if nsView.stringValue != text {
+      nsView.stringValue = text
+    }
+    // Update binding
+    if self.textField !== nsView {
+      self.textField = nsView
+    }
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(self)
+  }
+
+  class Coordinator: NSObject, NSTextFieldDelegate {
+    var parent: FocusableTextField
+
+    init(_ parent: FocusableTextField) {
+      self.parent = parent
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+      if let textField = obj.object as? NSTextField {
+        parent.text = textField.stringValue
       }
     }
   }
