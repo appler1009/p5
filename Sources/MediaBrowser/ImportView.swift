@@ -153,8 +153,6 @@ struct ImportView: View {
     isScanning = true
     detectedDevices.removeAll()
 
-    print("DEBUG: Using ImageCaptureCore for iPhone detection (initialized: \(hasInitialized))")
-
     // Use ImageCaptureCore which is the proper framework for camera devices
     deviceBrowser = ICDeviceBrowser()
 

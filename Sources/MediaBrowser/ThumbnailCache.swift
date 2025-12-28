@@ -78,11 +78,11 @@ class ThumbnailCache {
     }
 
     if var cgImage = cgImage {
-      // Crop to square if not square
+      // Crop to square if not square (with safety checks)
       let width = cgImage.width
       let height = cgImage.height
       let minDim = min(width, height)
-      if width != height {
+      if width != height && width > 0 && height > 0 {
         let x = (width - minDim) / 2
         let y = (height - minDim) / 2
         let rect = CGRect(x: x, y: y, width: minDim, height: minDim)
