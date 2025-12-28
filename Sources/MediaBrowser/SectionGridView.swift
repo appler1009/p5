@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct MonthlySectionView: View {
+struct SectionGridView: View {
   let group: (month: String, items: [MediaItem])
   @Binding var selectedItem: MediaItem?
   let onItemTap: (MediaItem) -> Void

@@ -51,7 +51,7 @@ struct MediaGridView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 16) {
           ForEach(monthlyGroups, id: \.month) { group in
-            MonthlySectionView(
+            SectionGridView(
               group: group,
               selectedItem: $selectedItem,
               onItemTap: { item in
