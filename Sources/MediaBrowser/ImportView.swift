@@ -6,6 +6,7 @@ struct ImportView: View {
   @State private var connectionMessage = "Scanning for connected iPhones..."
   @State private var detectedDevices: [String] = []
   @State private var deviceBrowser: ICDeviceBrowser?
+  @State private var deviceDelegate: DeviceDelegate?
   @State private var hasInitialized = false
   @Environment(\.dismiss) private var dismiss
 
@@ -146,6 +147,9 @@ struct ImportView: View {
         scanForDevices()
       }
     }
+    .onDisappear {
+      stopScanning()
+    }
     .frame(minWidth: 700, minHeight: 500)
   }
 
@@ -153,10 +157,16 @@ struct ImportView: View {
     isScanning = true
     detectedDevices.removeAll()
 
-    // Use ImageCaptureCore which is the proper framework for camera devices
-    deviceBrowser = ICDeviceBrowser()
+    // Stop existing browser if it's running
+    if let existingBrowser = deviceBrowser {
+      existingBrowser.stop()
+      deviceBrowser = nil
+    }
 
-    // Create a simple delegate class
+    // Create a new device browser
+    let browser = ICDeviceBrowser()
+
+    // Create delegate - no weak reference needed for struct
     let delegate = DeviceDelegate(
       onDeviceFound: { device in
         print("DEBUG: ICDevice found: \(device.name ?? "Unknown")")
@@ -176,12 +186,6 @@ struct ImportView: View {
               self.detectedDevices.append("iPhone (\(deviceName))")
               print("DEBUG: Added iPhone via ImageCapture: \(deviceName)")
             } else {
-              print("DEBUG: Device found: \(deviceName)")
-            }
-            if deviceType.contains("iphone") && !self.detectedDevices.contains(deviceName) {
-              self.detectedDevices.append("iPhone (\(deviceName))")
-              print("DEBUG: Added iPhone via ImageCapture: \(deviceName)")
-            } else {
               print("DEBUG: Device found but not identified as iPhone: \(deviceName)")
             }
           }
@@ -197,25 +201,39 @@ struct ImportView: View {
       }
     )
 
-    deviceBrowser?.delegate = delegate
-    deviceBrowser?.start()
+    browser.delegate = delegate
+    browser.start()
+
+    // Store references
+    deviceBrowser = browser
+    deviceDelegate = delegate
 
     // Stop browsing after a timeout
     DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-      isScanning = false
-      if self.detectedDevices.isEmpty {
-        self.connectionMessage = """
-          No iPhones detected via USB.
+      self.stopScanning()
+    }
+  }
 
-          Try:
-          • Unlock your iPhone
-          • Tap "Trust This Computer" on iPhone
-          • Use Apple USB-C cable
-          • Check if iPhone appears in Image Capture app
-          • Grant Full Disk Access in System Settings
-          • Restart your iPhone
-          """
-      }
+  private func stopScanning() {
+    isScanning = false
+    if let browser = deviceBrowser {
+      browser.stop()
+      deviceBrowser = nil
+    }
+    deviceDelegate = nil
+
+    if detectedDevices.isEmpty {
+      connectionMessage = """
+        No iPhones detected via USB.
+
+        Try:
+        • Unlock your iPhone
+        • Tap "Trust This Computer" on iPhone
+        • Use Apple USB-C cable
+        • Check if iPhone appears in Image Capture app
+        • Grant Full Disk Access in System Settings
+        • Restart your iPhone
+        """
     }
   }
 
