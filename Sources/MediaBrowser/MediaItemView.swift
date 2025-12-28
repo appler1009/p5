@@ -5,6 +5,7 @@ struct MediaItemView: View {
   let onTap: () -> Void
   let isSelected: Bool
   @State private var thumbnail: NSImage?
+  @State private var cornerRadius: CGFloat = 3
 
   private var syncStatusIndicator: some View {
     Group {
@@ -32,12 +33,12 @@ struct MediaItemView: View {
           .aspectRatio(contentMode: .fill)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .clipped()
-          .cornerRadius(8)
+          .cornerRadius(cornerRadius)
       } else {
         Rectangle()
           .fill(Color.gray.opacity(0.3))
           .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .cornerRadius(8)
+          .cornerRadius(cornerRadius)
           .overlay(Text("...").font(.caption))
       }
 
@@ -56,7 +57,7 @@ struct MediaItemView: View {
     }
     .aspectRatio(1, contentMode: .fit)  // Ensure square cells
     .overlay(
-      RoundedRectangle(cornerRadius: 8)
+      RoundedRectangle(cornerRadius: cornerRadius)
         .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
     )
     .help(item.metadata?.filename ?? item.url.lastPathComponent)
