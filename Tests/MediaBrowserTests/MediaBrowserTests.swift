@@ -17,9 +17,9 @@ final class MediaBrowserTests: XCTestCase {
 
   func testMediaItemInit() throws {
     let url = URL(fileURLWithPath: "/test.jpg")
-    let item = MediaItem(url: url, type: .photo, displayName: nil)
+    let item = MediaItem(id: 1, url: url, type: .photo, displayName: nil)
     XCTAssertEqual(item.url, url)
-    XCTAssertEqual(item.type, .photo)
+    XCTAssertEqual(item.type, MediaType.photo)
   }
 
   func testContentViewMonthlyGroups() throws {
@@ -145,14 +145,14 @@ final class MediaBrowserTests: XCTestCase {
       aperture: 2.8,
       shutterSpeed: "1/100"
     )
-    let item = MediaItem(url: url, type: .photo, metadata: metadata, displayName: nil)
+    let item = MediaItem(id: 2, url: url, type: .photo, metadata: metadata, displayName: nil)
 
     db.insertItem(item)
 
     let items = db.getAllItems()
     XCTAssertEqual(items.count, 1)
     XCTAssertEqual(items.first?.url, url)
-    XCTAssertEqual(items.first?.type, .photo)
+    XCTAssertEqual(items.first?.type, MediaType.photo)
     XCTAssertEqual(items.first?.metadata?.filename, "photo.jpg")
   }
 }
