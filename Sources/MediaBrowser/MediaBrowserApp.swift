@@ -38,6 +38,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     // App cleanup - no auto-sync to clean up
   }
+
 }
 
 @main
@@ -52,7 +53,7 @@ struct MediaBrowserApp: App {
       // Disable New Window menu
       CommandGroup(replacing: .newItem) {}
 
-      // Add items after the standard View options
+      // Add items after standard View options
       CommandGroup(after: .sidebar) {
         Button(action: {
           UserDefaults.standard.set("Grid", forKey: "viewMode")
@@ -69,6 +70,13 @@ struct MediaBrowserApp: App {
         .keyboardShortcut("2", modifiers: .command)
 
         Divider()
+
+        Button(action: {
+          // Try to open import window via window group
+        }) {
+          Label("Import", systemImage: "iphone.and.arrow.forward")
+        }
+        .keyboardShortcut("O", modifiers: .command)
       }
     }
     WindowGroup(id: "settings") {
@@ -76,5 +84,10 @@ struct MediaBrowserApp: App {
     }
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 600, height: 300)
+
+    WindowGroup(id: "import") {
+      ImportView()
+    }
+    .defaultSize(width: 900, height: 700)
   }
 }

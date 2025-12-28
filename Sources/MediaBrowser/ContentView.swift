@@ -246,6 +246,15 @@ struct ContentView: View {
         .help("Settings")
         .keyboardShortcut(",", modifiers: .command)
       }
+      ToolbarItem {
+        Button(action: {
+          openWindow(id: "import")
+        }) {
+          Image(systemName: "iphone.and.arrow.forward")
+        }
+        .help("Import (⌘O)")
+        .keyboardShortcut("O", modifiers: .command)
+      }
 
       ToolbarItemGroup(placement: .principal) {
         HStack(spacing: 8) {

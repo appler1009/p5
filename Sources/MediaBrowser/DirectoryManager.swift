@@ -90,6 +90,19 @@ class DirectoryManager: ObservableObject {
     return count
   }
 
+  var importDirectory: URL {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let importDir = home.appendingPathComponent("MediaBrowser/Imports")
+
+    do {
+      try FileManager.default.createDirectory(at: importDir, withIntermediateDirectories: true)
+    } catch {
+      print("Failed to create import directory: \(error)")
+    }
+
+    return importDir
+  }
+
   deinit {
     for url in accessedURLs {
       url.stopAccessingSecurityScopedResource()
