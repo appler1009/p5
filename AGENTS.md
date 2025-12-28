@@ -6,6 +6,13 @@ This file contains essential information for agentic coding assistants working o
 
 Media Browser is a SwiftUI-based macOS application for browsing and managing media files (photos/videos) with cloud synchronization, GPS mapping, and advanced search capabilities.
 
+## Agent Guidelines
+
+### Communication Style
+- Do not give extensive summary after the fix is done - just provide a simple git commit message
+- Be concise and direct in responses
+- Avoid unnecessary elaboration or explanation unless specifically requested
+
 ## Build System
 
 ### Swift Package Manager
@@ -285,6 +292,11 @@ final class MediaBrowserTests: XCTestCase {
 - Use `test` prefix
 - Describe what is being tested
 - Example: `testMediaScannerScan()`, `testDatabaseOperations()`
+
+#### Test Execution Policy
+- **Do not run unit tests automatically** - The developer will run tests manually as needed
+- Only run tests when explicitly requested by the user
+- Use `swift test` to run all tests or `swift test --filter <testName>` for specific tests
 
 ### File Organization
 
