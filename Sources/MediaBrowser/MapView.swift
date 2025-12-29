@@ -1,6 +1,14 @@
 import MapKit
 import SwiftUI
 
+// Cluster struct needed by MediaMapView and MapView
+struct Cluster: Identifiable {
+  let id = UUID()
+  let coordinate: CLLocationCoordinate2D
+  let count: Int
+  let items: [LocalFileSystemMediaItem]
+}
+
 struct MapView: NSViewRepresentable {
   @Binding var clusters: [Cluster]
   @Binding var region: MKCoordinateRegion
@@ -149,17 +157,15 @@ struct MapView: NSViewRepresentable {
           annotationView?.image = NSImage(
             systemSymbolName: "camera.fill", accessibilityDescription: nil)
 
-          let url = item.url
           Task {
-            if let thumbnail = await ThumbnailCache.shared.thumbnail(
-              for: url, size: thumbnailSize)
-            {
-              // Create rounded thumbnail with 1 pixel border
+            // Try to get cached thumbnail first
+            if let thumbnail = ThumbnailCache.shared.thumbnail(mediaItem: item) {
               let borderedImage = parent.createRoundedThumbnail(
                 from: thumbnail, size: thumbnailSize)
               await MainActor.run {
                 annotationView?.image = borderedImage
               }
+              return
             }
           }
         }

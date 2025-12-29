@@ -3,10 +3,9 @@ import SwiftUI
 struct MediaGridView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
   @Binding var selectedItem: MediaItem?
-  @Binding var lightboxItem: MediaItem?
+  @Binding var lightboxItemId: Int?
   @Binding var searchQuery: String
 
-  @State private var searchTextField: NSTextField?
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
 
@@ -15,8 +14,7 @@ struct MediaGridView: View {
       searchQuery.isEmpty
       ? mediaScanner.items
       : mediaScanner.items.filter { item in
-        let filename = item.displayName ?? item.url.lastPathComponent
-        return filename.localizedCaseInsensitiveContains(searchQuery)
+        return item.displayName.localizedCaseInsensitiveContains(searchQuery)
       }
 
     return filteredItems.sorted { item1, item2 in
@@ -52,12 +50,14 @@ struct MediaGridView: View {
         VStack(alignment: .leading, spacing: 16) {
           ForEach(monthlyGroups, id: \.month) { group in
             SectionGridView(
-              group: group,
+              title: group.month,
+              items: group.items,
               selectedItem: $selectedItem,
               onItemTap: { item in
                 selectedItem = item
-                lightboxItem = item
-              }
+                lightboxItemId = item.id
+              },
+              minCellWidth: 80
             )
           }
         }
@@ -65,15 +65,12 @@ struct MediaGridView: View {
       }
       .scrollPosition(id: $scrollTarget, anchor: scrollAnchor)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .onTapGesture {
-        searchTextField?.window?.makeFirstResponder(nil)
-      }
       .focusable()
       .onKeyPress { press in
         // Update window width for dynamic column calculation
         let windowWidth = geo.size.width
         // Grid navigation when lightbox is not open
-        if lightboxItem == nil,
+        if lightboxItemId == nil,
           let currentIndex = sortedItems.firstIndex(where: { $0.id == selectedItem?.id })
         {
           let availableWidth = windowWidth - 16  // subtract horizontal padding
@@ -110,7 +107,7 @@ struct MediaGridView: View {
             }
           case .space, .return:
             if let item = selectedItem {
-              lightboxItem = item
+              lightboxItemId = item.id
             }
             return .handled
           default:

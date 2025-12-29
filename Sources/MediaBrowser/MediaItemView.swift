@@ -4,6 +4,7 @@ struct MediaItemView: View {
   let item: MediaItem
   let onTap: () -> Void
   let isSelected: Bool
+  var externalThumbnail: Image? = nil  // For pre-loaded thumbnails (like in import view)
   @State private var thumbnail: NSImage?
   @State private var cornerRadius: CGFloat = 3
 
@@ -19,6 +20,8 @@ struct MediaItemView: View {
       case .notSynced:
         Image(systemName: "cloud")
           .foregroundColor(.white.opacity(0.7))
+      case .notApplicable:
+        EmptyView()  // No icon for items where sync is not applicable
       }
     }
     .font(.caption)
@@ -27,40 +30,45 @@ struct MediaItemView: View {
 
   var body: some View {
     ZStack {
-      if let thumbnail = thumbnail {
+      // Selection background
+      RoundedRectangle(cornerRadius: cornerRadius)
+        .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+
+      if let externalThumbnail = externalThumbnail {
+        // Use pre-loaded thumbnail (for import view)
+        externalThumbnail
+          .resizable()
+          .aspectRatio(contentMode: .fill)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+          .clipped()
+      } else if let thumbnail = thumbnail {
+        // Use loaded thumbnail (for main gallery)
         Image(nsImage: thumbnail)
           .resizable()
           .aspectRatio(contentMode: .fill)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
           .clipped()
-          .cornerRadius(cornerRadius)
       } else {
         Rectangle()
           .fill(Color.gray.opacity(0.3))
           .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .cornerRadius(cornerRadius)
           .overlay(Text("...").font(.caption))
       }
 
-    }
-    .overlay(alignment: .topLeading) {
-      if item.type == .video {
-        Image(systemName: "play.fill")
-          .foregroundColor(.white)
-          .shadow(radius: 2)
-          .padding(7)
-      }
-    }
-    .overlay(alignment: .bottomTrailing) {
+      // Sync status indicator
       syncStatusIndicator
         .padding(4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
     }
     .aspectRatio(1, contentMode: .fit)  // Ensure square cells
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))  // Apply rounded corners to entire view
     .overlay(
       RoundedRectangle(cornerRadius: cornerRadius)
         .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
     )
-    .help(item.metadata?.filename ?? item.url.lastPathComponent)
+    .help(item.displayName)
     .onTapGesture {
       onTap()
     }
@@ -71,9 +79,18 @@ struct MediaItemView: View {
 
   private func loadThumbnail() {
     Task {
-      let image = await ThumbnailCache.shared.thumbnail(
-        for: item.url, size: CGSize(width: 100, height: 100))
-      thumbnail = image
+      // First check if thumbnail is already cached
+      if let cachedImage = ThumbnailCache.shared.thumbnail(mediaItem: item) {
+        thumbnail = cachedImage
+        return
+      }
+
+      // Generate and cache thumbnail if not found
+      if let displayURL = item.displayURL {
+        let image = await ThumbnailCache.shared.generateAndCacheThumbnail(
+          for: displayURL, mediaItem: item)
+        thumbnail = image
+      }
     }
   }
 }

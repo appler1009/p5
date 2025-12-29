@@ -1,11 +1,14 @@
 import AVFoundation
 import Combine
+import CryptoKit
 import SwiftUI
 
 class ThumbnailCache {
   static let shared = ThumbnailCache()
   private var cache = NSCache<NSString, NSImage>()
   private let cacheDir: String
+  static let thumbnailSize = CGSize(width: 200, height: 200)
+  static let thumbnailExtension = "jpg"
 
   private init() {
     let cacheDirURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -14,24 +17,84 @@ class ThumbnailCache {
     try? FileManager.default.createDirectory(atPath: cacheDir, withIntermediateDirectories: true)
   }
 
-  func thumbnail(for url: URL, size: CGSize) async -> NSImage? {
-    let key = "\(url.absoluteString)_\(size.width)x\(size.height)" as NSString
+  func thumbnail(mediaItem: MediaItem) -> NSImage? {
+    return self.thumbnail(date: mediaItem.thumbnailDate, basename: mediaItem.displayName)
+  }
+
+  func thumbnail(date: Date, basename: String) -> NSImage? {
+    let filename = filenameForThumbnail(date: date, basename: basename)
+    let key = filename as NSString  // Use filename as cache key
+
     if let image = cache.object(forKey: key) {
       return image
     }
-    if let image = loadFromDisk(key: key as String) {
+    if let image = loadFromDisk(key: filename) {
       cache.setObject(image, forKey: key)
       return image
     }
-    let image = await generateThumbnail(for: url, size: size)
+    return nil  // No thumbnail available in cache
+  }
+
+  func thumbnailExists(mediaItem: MediaItem) -> Bool {
+    return self.thumbnailExists(date: mediaItem.thumbnailDate, basename: mediaItem.displayName)
+  }
+
+  func thumbnailExists(date: Date, basename: String) -> Bool {
+    let filename = filenameForThumbnail(date: date, basename: basename)
+    let key = filename as NSString
+
+    // Check in-memory cache first
+    if cache.object(forKey: key) != nil {
+      return true
+    }
+
+    // Check disk existence without loading the image
+    let filePath = cacheDir + "/" + filename
+    return FileManager.default.fileExists(atPath: filePath)
+  }
+
+  func generateAndCacheThumbnail(for url: URL, mediaItem: MediaItem) async -> NSImage? {
+    let image = await generateThumbnail(for: url)
     if let image = image {
+      // Cache the generated thumbnail
+      let filename = filenameForThumbnail(
+        date: mediaItem.thumbnailDate, basename: mediaItem.displayName)
+      let key = filename as NSString
+
       cache.setObject(image, forKey: key)
-      saveToDisk(image: image, key: key as String)
+      saveToDisk(image: image, key: filename)
     }
     return image
   }
 
-  private func generateThumbnail(for url: URL, size: CGSize) async -> NSImage? {
+  // Generate filename for pre-generated thumbnails (used by ImportView)
+  func filenameForThumbnail(date: Date, basename: String) -> String {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyyMMdd"
+    let dateString = dateFormatter.string(from: date)
+    let combined = "\(dateString)_\(basename)"
+
+    let md5Hash =
+      combined.data(using: .utf8).map { data in
+        Insecure.MD5.hash(data: data).map { String(format: "%02hhx", $0) }.joined()
+      } ?? "fallback"
+    return "\(md5Hash).\(Self.thumbnailExtension)"
+  }
+
+  // Store a pre-generated thumbnail in cache (used by ImportView for device thumbnails)
+  func storePreGeneratedThumbnail(_ nsImage: NSImage, mediaItem: MediaItem) {
+    self.storePreGeneratedThumbnail(
+      nsImage, date: mediaItem.thumbnailDate, basename: mediaItem.displayName)
+  }
+  func storePreGeneratedThumbnail(_ nsImage: NSImage, date: Date, basename: String) {
+    let filename = filenameForThumbnail(date: date, basename: basename)
+    let key = filename as NSString
+
+    cache.setObject(nsImage, forKey: key)
+    saveToDisk(image: nsImage, key: filename)
+  }
+
+  private func generateThumbnail(for url: URL) async -> NSImage? {
     var cgImage: CGImage?
     if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
       let img = CGImageSourceCreateThumbnailAtIndex(
@@ -39,7 +102,8 @@ class ThumbnailCache {
         [
           kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
           kCGImageSourceCreateThumbnailWithTransform: true,
-          kCGImageSourceThumbnailMaxPixelSize: max(size.width, size.height),
+          kCGImageSourceThumbnailMaxPixelSize: max(
+            ThumbnailCache.thumbnailSize.width, ThumbnailCache.thumbnailSize.height),
         ] as CFDictionary)
     {
       cgImage = img
@@ -47,7 +111,7 @@ class ThumbnailCache {
       // For videos, use AVAssetImageGenerator
       let asset = AVAsset(url: url)
       let generator = AVAssetImageGenerator(asset: asset)
-      generator.maximumSize = size
+      generator.maximumSize = ThumbnailCache.thumbnailSize
       generator.appliesPreferredTrackTransform = true
       do {
         let duration = try await asset.load(.duration)
@@ -71,7 +135,7 @@ class ThumbnailCache {
         }
       }
       if let cgImage = cgImage {
-        let image = NSImage(cgImage: cgImage, size: size)
+        let image = NSImage(cgImage: cgImage, size: ThumbnailCache.thumbnailSize)
         return image
       }
       return nil
@@ -90,7 +154,7 @@ class ThumbnailCache {
           cgImage = cropped
         }
       }
-      let image = NSImage(cgImage: cgImage, size: size)
+      let image = NSImage(cgImage: cgImage, size: ThumbnailCache.thumbnailSize)
       return image
     }
     return nil
@@ -100,8 +164,8 @@ class ThumbnailCache {
     let fileManager = FileManager.default
     var deletedCount = 0
     guard let files = try? fileManager.contentsOfDirectory(atPath: cacheDir) else { return 0 }
-    for file in files where file.hasSuffix(".png") {
-      let key = String(file.dropLast(4))  // remove .png
+    for file in files where file.hasSuffix(".\(Self.thumbnailExtension)") {
+      let key = String(file.dropLast(Self.thumbnailExtension.count + 1))  // remove .extension
       if let lastUnderscore = key.lastIndex(of: "_") {
         let urlString = String(key[..<lastUnderscore])
         if let url = URL(string: urlString), !fileManager.fileExists(atPath: url.path) {
@@ -118,15 +182,15 @@ class ThumbnailCache {
   }
 
   private func loadFromDisk(key: String) -> NSImage? {
-    let filePath = cacheDir + "/" + key + ".png"
+    let filePath = cacheDir + "/" + key
     return NSImage(contentsOfFile: filePath)
   }
 
   private func saveToDisk(image: NSImage, key: String) {
-    let filePath = cacheDir + "/" + key + ".png"
+    let filePath = cacheDir + "/" + key
     if let tiffData = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiffData) {
-      let pngData = bitmap.representation(using: .png, properties: [:])
-      try? pngData?.write(to: URL(fileURLWithPath: filePath))
+      let jpgData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.85])
+      try? jpgData?.write(to: URL(fileURLWithPath: filePath))
     }
   }
 }

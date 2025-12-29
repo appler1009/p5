@@ -3,15 +3,16 @@ import SwiftUI
 
 struct MediaMapView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
-  @Binding var selectedItem: MediaItem?
-  @Binding var lightboxItem: MediaItem?
+  @Binding var lightboxItemId: Int?
+  @Binding var searchQuery: String
+
   @State private var region = MKCoordinateRegion(
     center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
     span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)
   )
   @State private var clusters: [Cluster] = []
 
-  private var itemsWithGPS: [MediaItem] {
+  private var itemsWithGPS: [LocalFileSystemMediaItem] {
     let filteredItems = mediaScanner.items.filter { $0.metadata?.gps != nil }
     return filteredItems.sorted { item1, item2 in
       let date1 = item1.metadata?.creationDate ?? Date.distantPast
@@ -20,7 +21,7 @@ struct MediaMapView: View {
     }
   }
 
-  private var sortedItems: [MediaItem] {
+  private var sortedItems: [LocalFileSystemMediaItem] {
     return mediaScanner.items.sorted { item1, item2 in
       let date1 = item1.metadata?.creationDate ?? Date.distantPast
       let date2 = item2.metadata?.creationDate ?? Date.distantPast
@@ -40,7 +41,7 @@ struct MediaMapView: View {
     return 6371 * c  // km
   }
 
-  private func averageCoordinate(_ items: [MediaItem]) -> CLLocationCoordinate2D {
+  private func averageCoordinate(_ items: [LocalFileSystemMediaItem]) -> CLLocationCoordinate2D {
     let coords = items.map {
       CLLocationCoordinate2D(
         latitude: $0.metadata!.gps!.latitude, longitude: $0.metadata!.gps!.longitude)
@@ -155,8 +156,11 @@ struct MediaMapView: View {
       region: $region,
       onClusterTap: { cluster in
         if cluster.count == 1 {
-          selectedItem = cluster.items.first
-          lightboxItem = selectedItem
+          if let firstItem = cluster.items.first,
+            let selectedItem = firstItem as LocalFileSystemMediaItem?
+          {
+            lightboxItemId = selectedItem.id
+          }
         } else {
           zoomToCluster(cluster)
         }
@@ -175,27 +179,5 @@ struct MediaMapView: View {
       computeClusters()
     }
     .focusable()
-    .onKeyPress { press in
-      if lightboxItem == nil,
-        let currentIndex = sortedItems.firstIndex(where: { $0.id == selectedItem?.id })
-      {
-        switch press.key {
-        case .leftArrow:
-          let newIndex = max(0, currentIndex - 1)
-          selectedItem = sortedItems[newIndex]
-          return .handled
-        case .rightArrow:
-          let newIndex = min(sortedItems.count - 1, currentIndex + 1)
-          selectedItem = sortedItems[newIndex]
-          return .handled
-        case .upArrow, .downArrow:
-          // For map, up/down also navigate
-          return .ignored  // or handle same as left/right
-        default:
-          return .ignored
-        }
-      }
-      return .ignored
-    }
   }
 }

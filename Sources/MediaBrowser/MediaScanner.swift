@@ -1,57 +1,9 @@
 import Foundation
 
-enum S3SyncStatus: String, Codable {
-  case notSynced = "not_synced"
-  case synced = "synced"
-  case failed = "failed"
-}
-
-enum MediaType {
-  case photo
-  case livePhoto
-  case video
-}
-
-struct MediaItem: Identifiable, Equatable {
-  let id: Int
-  let url: URL
-  let type: MediaType
-  var metadata: MediaMetadata?  // to be filled later
-  var displayName: String?  // for edited versions, show original name
-  var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
-
-  static func == (lhs: MediaItem, rhs: MediaItem) -> Bool {
-    return lhs.id == rhs.id
-  }
-}
-
-struct MediaMetadata {
-  var filePath: String
-  var filename: String
-  var creationDate: Date?
-  var modificationDate: Date?
-  var dimensions: CGSize?
-  var exifDate: Date?
-  var gps: GPSLocation?
-  var duration: TimeInterval?  // for videos
-  var make: String?
-  var model: String?
-  var lens: String?
-  var iso: Int?
-  var aperture: Double?
-  var shutterSpeed: String?
-}
-
-struct GPSLocation {
-  let latitude: Double
-  let longitude: Double
-  var altitude: Double?
-}
-
 class MediaScanner: ObservableObject {
   static let shared = MediaScanner()
 
-  @Published var items: [MediaItem] = []
+  @Published var items: [LocalFileSystemMediaItem] = []
   @Published var isScanning = false
   @Published var scanProgress: (current: Int, total: Int)? = nil
 
@@ -167,14 +119,10 @@ class MediaScanner: ObservableObject {
         isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
       {
         if let type = mediaType(for: url) {
-          var item = MediaItem(id: -1, url: url, type: type, displayName: nil)
-          if isEdited(base: base) {
-            item.displayName = getOriginalBase(base: base) + "." + url.pathExtension.uppercased()
-          }
+          var item = LocalFileSystemMediaItem(id: -1, type: type, original: url)
           await extractMetadata(for: &item)
-          // Generate thumbnail
-          let _ = await ThumbnailCache.shared.thumbnail(
-            for: url, size: CGSize(width: 100, height: 100))
+          // Pre-generate and cache thumbnail
+          let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: url, mediaItem: item)
           items.append(item)
           if let progress = scanProgress, progress.current + 1 <= progress.total {
             await MainActor.run {

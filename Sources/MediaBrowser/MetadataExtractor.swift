@@ -4,11 +4,9 @@ import Foundation
 import ImageIO
 
 extension MediaScanner {
-  func extractMetadata(for item: inout MediaItem) async {
-    let url = item.url
+  func extractMetadata(for item: inout LocalFileSystemMediaItem) async {
+    let url = item.originalUrl
     var metadata = MediaMetadata(
-      filePath: url.path,
-      filename: url.lastPathComponent,
       creationDate: nil,
       modificationDate: nil,
       dimensions: nil,

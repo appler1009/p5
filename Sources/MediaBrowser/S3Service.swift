@@ -99,11 +99,11 @@ class S3Service: ObservableObject {
     setupS3Client()
   }
 
-  func shouldUploadItem(_ item: MediaItem) async -> Bool {
+  func shouldUploadFile(fileDate: Date, fileURL: URL) async -> Bool {
     guard config.isValid else { return false }
     guard let s3Client = s3Client else { return false }
 
-    let s3Key = createS3Key(for: item)
+    let s3Key = createS3Key(for: fileDate, fileURL: fileURL)
 
     do {
       // Check if object exists in S3
@@ -111,12 +111,10 @@ class S3Service: ObservableObject {
       let headOutput = try await s3Client.headObject(input: headInput)
 
       // If object exists, compare timestamps
-      if let s3LastModified = headOutput.lastModified,
-        let localFileDate = item.metadata?.creationDate ?? item.metadata?.exifDate
-      {
+      if let s3LastModified = headOutput.lastModified {
 
         // Only upload if local file is newer than S3 object
-        return localFileDate > s3LastModified
+        return fileDate > s3LastModified
       }
 
       // If we can't determine timestamps, assume we should upload
@@ -137,7 +135,8 @@ class S3Service: ObservableObject {
     }
   }
 
-  func uploadMediaItem(_ item: MediaItem) async throws {
+  func uploadMediaItem(_ item: LocalFileSystemMediaItem) async throws {
+    // S3 upload only works for items with local URLs
     guard config.isValid else {
       throw S3Error.notConfigured
     }
@@ -145,7 +144,7 @@ class S3Service: ObservableObject {
       throw S3Error.clientNotInitialized
     }
 
-    let progressFileName = item.displayName ?? item.url.lastPathComponent
+    let progressFileName = item.displayName
     await MainActor.run {
       NotificationCenter.default.post(
         name: NSNotification.Name("UploadProgressUpdated"), object: nil,
@@ -155,40 +154,23 @@ class S3Service: ObservableObject {
     }
 
     // 1) Find all related files including itself
-    let allFiles = findRelatedFiles(for: item) + [item.url]
+    // 2) Make a list of files and loop through them
+    var allFiles = [item.originalUrl]
+    if let editedUrl = item.editedUrl {
+      allFiles.append(editedUrl)
+    }
+    if let liveUrl = item.liveUrl {
+      allFiles.append(liveUrl)
+    }
     print(
       "⏭️ [FILES] Will upload \(allFiles.count) files: \(allFiles.map { $0.lastPathComponent }.joined(separator: ", "))"
     )
 
-    // 2) Make a list of files and loop through them
     for fileURL in allFiles {
-      // Determine the media type for this file
-      let mediaType: MediaType
-      if fileURL == item.url {
-        // This is the main item, use its existing type
-        mediaType = item.type
-      } else {
-        // This is a related file, determine type from extension
-        if supportedImageExtensions.contains(fileURL.pathExtension.lowercased()) {
-          mediaType = .photo
-        } else if supportedVideoExtensions.contains(fileURL.pathExtension.lowercased()) {
-          mediaType = .video
-        } else {
-          mediaType = .photo  // fallback
-        }
-      }
-
-      // Create a MediaItem for this file
-      let currentItem = MediaItem(
-        id: item.id,
-        url: fileURL,
-        type: mediaType,
-        metadata: item.metadata,
-        displayName: item.displayName
-      )
+      let fileDate = item.thumbnailDate
 
       // 3) Check for each file if already exists in S3
-      let needsUpload = await shouldUploadItem(currentItem)
+      let needsUpload = await shouldUploadFile(fileDate: fileDate, fileURL: fileURL)
 
       // 4) If it is, skip to next file
       if !needsUpload {
@@ -198,7 +180,7 @@ class S3Service: ObservableObject {
 
       // 5) If it does not exist in S3, upload file
       do {
-        try await uploadSingleFile(fileURL, item: currentItem)
+        try await uploadSingleFile(fileDate: fileDate, fileURL: fileURL)
         print("✅ [SUCCESS] \(fileURL.lastPathComponent) uploaded")
       } catch {
         let filename = fileURL.lastPathComponent
@@ -209,8 +191,8 @@ class S3Service: ObservableObject {
     }
   }
 
-  private func uploadSingleFile(_ fileURL: URL, item: MediaItem) async throws {
-    let s3Key = createS3Key(for: item)
+  private func uploadSingleFile(fileDate: Date, fileURL: URL) async throws {
+    let s3Key = createS3Key(for: fileDate, fileURL: fileURL)
 
     do {
       let fileData = try Data(contentsOf: fileURL)
@@ -229,97 +211,19 @@ class S3Service: ObservableObject {
     }
   }
 
-  private func findRelatedFiles(for item: MediaItem) -> [URL] {
-    var relatedFiles: [URL] = []
-    let fileName = item.url.deletingPathExtension().lastPathComponent
-    let fileExtension = item.url.pathExtension
-    let directoryURL = item.url.deletingLastPathComponent()
-
-    // For live photos: find the paired video file with same base name
-    if item.type == .livePhoto {
-      if let videoURL = fileExistsWithCaseInsensitiveExtension(
-        baseName: fileName, extensions: supportedVideoExtensions, directoryURL: directoryURL)
-      {
-        relatedFiles.append(videoURL)
-      }
-    }
-
-    // Handle edited file relationships bidirectionally
-    if let range = fileName.range(of: #"(\d+)"#, options: .regularExpression) {
-      let prefix = String(fileName[..<range.lowerBound])  // e.g., "IMG" or "IMG_"
-      let digits = String(fileName[range])  // e.g., "1234"
-
-      // Check if this appears to be an edited file (has 'E' before digits in prefix)
-      if prefix.hasSuffix("E") {
-        // This is likely an edited file - find the original
-        let originalPrefix = String(prefix.dropLast())  // Remove the 'E'
-        let originalBaseName = "\(originalPrefix)\(digits)"
-
-        // Check for original file with same extension
-        if !fileExtension.isEmpty {
-          if let originalURL = fileExistsWithCaseInsensitiveExtension(
-            baseName: originalBaseName, extensions: [fileExtension], directoryURL: directoryURL)
-          {
-            relatedFiles.append(originalURL)
-          }
-        }
-
-        // Check for original file with any common image extension
-        let commonExtensions = ["jpg", "jpeg", "png", "heic", "tiff", "gif", "bmp"]
-        let extensionsToCheck = commonExtensions.filter { $0 != fileExtension.lowercased() }  // Skip if same as current
-        if let originalURL = fileExistsWithCaseInsensitiveExtension(
-          baseName: originalBaseName, extensions: extensionsToCheck, directoryURL: directoryURL)
-        {
-          relatedFiles.append(originalURL)
-        }
-      } else {
-        // This appears to be an original file - find edited versions
-        let editedBaseName = "\(prefix)E\(digits)"
-
-        // Check for edited file with same extension first
-        if !fileExtension.isEmpty {
-          if let editedURL = fileExistsWithCaseInsensitiveExtension(
-            baseName: editedBaseName, extensions: [fileExtension], directoryURL: directoryURL)
-          {
-            relatedFiles.append(editedURL)
-          }
-        }
-
-        // Check for edited file without extension
-        let editedURLNoExt = directoryURL.appendingPathComponent(editedBaseName)
-        if FileManager.default.fileExists(atPath: editedURLNoExt.path) {
-          relatedFiles.append(editedURLNoExt)
-        }
-
-        // Check for edited file with any common image extension
-        let commonExtensions = ["jpg", "jpeg", "png", "heic", "tiff", "gif", "bmp"]
-        let extensionsToCheck = commonExtensions.filter { $0 != fileExtension.lowercased() }  // Skip if same as original
-        if let editedURL = fileExistsWithCaseInsensitiveExtension(
-          baseName: editedBaseName, extensions: extensionsToCheck, directoryURL: directoryURL)
-        {
-          relatedFiles.append(editedURL)
-        }
-      }
-    }
-
-    return relatedFiles
-  }
-
-  func createS3Key(for item: MediaItem) -> String {
+  func createS3Key(for fileDate: Date, fileURL: URL) -> String {
     var components = [config.basePath]
 
-    if let date = item.metadata?.creationDate ?? item.metadata?.exifDate {
-      let calendar = Calendar.current
-      let year = calendar.component(.year, from: date)
-      let month = String(format: "%02d", calendar.component(.month, from: date))
-      let day = String(format: "%02d", calendar.component(.day, from: date))
+    let calendar = Calendar.current
+    let year = calendar.component(.year, from: fileDate)
+    let month = String(format: "%02d", calendar.component(.month, from: fileDate))
+    let day = String(format: "%02d", calendar.component(.day, from: fileDate))
 
-      components.append("\(year)")
-      components.append(month)
-      components.append(day)
-    }
+    components.append("\(year)")
+    components.append(month)
+    components.append(day)
 
-    components.append(item.url.lastPathComponent)
+    components.append(fileURL.lastPathComponent)
 
     return components.filter { !$0.isEmpty }.joined(separator: "/")
   }
@@ -347,7 +251,7 @@ class S3Service: ObservableObject {
     while autoSyncEnabled {
       // Find the first item that hasn't been synced yet
       guard
-        var itemToUpload = DatabaseManager.shared.getAllItems().first(where: {
+        let itemToUpload = DatabaseManager.shared.getAllItems().first(where: {
           $0.s3SyncStatus != .synced
         })
       else {
@@ -393,7 +297,7 @@ class S3Service: ObservableObject {
         // Continue to next item in the loop (no need to schedule new task)
 
       } catch {
-        let filename = itemToUpload.url.lastPathComponent
+        let filename = itemToUpload.originalUrl.lastPathComponent
         print("❌ [FAILED] \(filename) - Error: \(error.localizedDescription)")
 
         // Update the item's sync status to failed
@@ -449,5 +353,6 @@ class S3Service: ObservableObject {
     case notConfigured
     case clientNotInitialized
     case uploadFailed(String)
+    case invalidItem(String)
   }
 }

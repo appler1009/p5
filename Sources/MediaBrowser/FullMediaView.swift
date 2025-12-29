@@ -14,7 +14,7 @@ struct Triangle: Shape {
 }
 
 struct MediaDetailsSidebar: View {
-  let item: MediaItem
+  let item: LocalFileSystemMediaItem
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -33,9 +33,9 @@ struct MediaDetailsSidebar: View {
         VStack(alignment: .leading, spacing: 12) {
           // Basic Information
           Group {
-            detailRow("Filename", item.displayName ?? item.url.lastPathComponent)
+            detailRow("Filename", item.displayName)
             detailRow("Type", mediaTypeString)
-            detailRow("Path", item.url.path)
+            detailRow("Path", item.originalUrl.path)  // TODO show original, edited, live, all three.
           }
 
           if let metadata = item.metadata {
@@ -243,6 +243,8 @@ struct MediaDetailsSidebar: View {
       return "exclamationmark.triangle.fill"
     case .notSynced:
       return "cloud.fill"
+    case .notApplicable:
+      return ""  // No icon for items where sync is not applicable
     }
   }
 
@@ -254,12 +256,15 @@ struct MediaDetailsSidebar: View {
       return "Sync Failed"
     case .notSynced:
       return "Not Synced"
+    case .notApplicable:
+      return ""  // No status text for items where sync is not applicable
     }
   }
 
   private func getFileSize() -> Int? {
+    // TODO show all three files' sizes
     do {
-      let attributes = try FileManager.default.attributesOfItem(atPath: item.url.path)
+      let attributes = try FileManager.default.attributesOfItem(atPath: item.originalUrl.path)
       if let fileSize = attributes[.size] as? NSNumber {
         return fileSize.intValue
       }
@@ -278,7 +283,7 @@ struct MediaDetailsSidebar: View {
 }
 
 struct FullMediaView: View {
-  let item: MediaItem
+  let item: LocalFileSystemMediaItem
   let onClose: () -> Void
   let onNext: () -> Void
   let onPrev: () -> Void
@@ -342,7 +347,7 @@ struct FullMediaView: View {
         }
       }
       .overlay(alignment: .bottom) {
-        Text(item.displayName ?? item.url.lastPathComponent)
+        Text(item.displayName)
           .padding(8)
           .background(Color.black.opacity(0.7))
           .foregroundColor(.white)
@@ -480,15 +485,17 @@ struct FullMediaView: View {
   }
 
   private func loadImage() {
-    fullImage = NSImage(contentsOf: item.url)
+    fullImage = NSImage(contentsOf: item.displayURL)
   }
 
   private func loadVideo() {
     let videoURL =
       item.type == .livePhoto
-      ? item.url.deletingPathExtension().appendingPathExtension("mov") : item.url
-    player = AVPlayer(url: videoURL)
-    player?.play()
+      ? item.liveUrl : item.originalUrl
+    if let videoURL = videoURL {
+      player = AVPlayer(url: videoURL)
+      player?.play()
+    }
   }
 }
 

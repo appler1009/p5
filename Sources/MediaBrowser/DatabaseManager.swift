@@ -13,14 +13,14 @@ class DatabaseManager {
       try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
       let dbPath = "\(path)/media.db"
 
-      // If DB exists and media_items table lacks s3_sync_status column, add it
+      // If DB exists and local_media_items table lacks s3_sync_status column, add it
       if FileManager.default.fileExists(atPath: dbPath) {
         let tempQueue = try DatabaseQueue(path: dbPath)
         try tempQueue.write { db in
-          if try db.tableExists("media_items") {
-            let columns = try db.columns(in: "media_items").map { $0.name }
+          if try db.tableExists("local_media_items") {
+            let columns = try db.columns(in: "local_media_items").map { $0.name }
             if !columns.contains("s3_sync_status") {
-              try db.alter(table: "media_items") { t in
+              try db.alter(table: "local_media_items") { t in
                 t.add(column: "s3_sync_status", .text).defaults(to: S3SyncStatus.notSynced.rawValue)
               }
             }
@@ -81,7 +81,7 @@ class DatabaseManager {
   func clearAll() {
     do {
       try dbQueue?.write { db in
-        try db.execute(sql: "DELETE FROM media_items")
+        try db.execute(sql: "DELETE FROM local_media_items")
       }
     } catch {
       print("Clear error: \(error)")
@@ -92,8 +92,8 @@ class DatabaseManager {
     do {
       try dbQueue?.write { db in
         try db.execute(
-          sql: "UPDATE media_items SET s3_sync_status = ? WHERE url = ?",
-          arguments: [item.s3SyncStatus.rawValue, item.url.absoluteString]
+          sql: "UPDATE local_media_items SET s3_sync_status = ? WHERE id = ?",
+          arguments: [item.s3SyncStatus.rawValue, item.id]
         )
       }
     } catch {
@@ -103,21 +103,22 @@ class DatabaseManager {
 
   private func createTable() throws {
     try dbQueue?.write { db in
-      try db.create(table: "media_items", ifNotExists: true) { t in
+      try db.create(table: "local_media_items", ifNotExists: true) { t in
         t.column("id", .integer).primaryKey(autoincrement: true)
-        t.column("url", .text).unique()
+        t.column("original_url", .text).unique()
+        t.column("edited_url", .text)
+        t.column("live_video_url", .text)
         t.column("type", .text)
-        t.column("filename", .text)
         t.column("creation_date", .datetime)
         t.column("modification_date", .datetime)
+        t.column("exif_date", .datetime)
         t.column("width", .double)
         t.column("height", .double)
-        t.column("exif_date", .datetime)
         t.column("latitude", .double)
         t.column("longitude", .double)
-        t.column("blurhash", .text)
         t.column("exif", .text)
-        t.column("s3_sync_status", .text).defaults(to: S3SyncStatus.notSynced.rawValue)
+        t.column("s3_sync_status", .text).defaults(to: S3SyncStatus.notApplicable.rawValue)
+        t.column("directory_id", .integer)
       }
       try db.create(table: "directories", ifNotExists: true) { t in
         t.column("id", .integer).primaryKey(autoincrement: true)
@@ -127,7 +128,7 @@ class DatabaseManager {
     }
   }
 
-  func insertItem(_ item: MediaItem) {
+  func insertItem(_ item: LocalFileSystemMediaItem) {
     guard let metadata = item.metadata else { return }
     let exifDict: [String: Any] = [
       "altitude": metadata.gps?.altitude as Any,
@@ -146,21 +147,47 @@ class DatabaseManager {
       try dbQueue?.write { db in
         try db.execute(
           sql: """
-            INSERT OR REPLACE INTO media_items (url, type, filename, creation_date, modification_date, width, height, exif_date, latitude, longitude, exif, s3_sync_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO local_media_items (
+              original_url,
+              edited_url,
+              live_video_url,
+              type,
+
+              creation_date,
+              modification_date,
+              exif_date,
+              width,
+
+              height,
+              latitude,
+              longitude,
+              exif,
+
+              s3_sync_status
+            )
+            VALUES (
+              ?, ?, ?, ?,
+              ?, ?, ?, ?,
+              ?, ?, ?, ?,
+              ?
+            )
             """,
           arguments: [
-            item.url.absoluteString,
+            item.originalUrl.absoluteString,
+            item.editedUrl?.absoluteString,
+            item.liveUrl?.absoluteString,
             String(describing: item.type),
-            metadata.filename,
+
             metadata.creationDate,
             metadata.modificationDate,
-            metadata.dimensions?.width,
-            metadata.dimensions?.height,
             metadata.exifDate,
+            metadata.dimensions?.width,
+
+            metadata.dimensions?.height,
             metadata.gps?.latitude,
             metadata.gps?.longitude,
             exifString,
+
             item.s3SyncStatus.rawValue,
           ]
         )
@@ -170,15 +197,15 @@ class DatabaseManager {
     }
   }
 
-  func getAllItems() -> [MediaItem] {
-    var items: [MediaItem] = []
+  func getAllItems() -> [LocalFileSystemMediaItem] {
+    var items: [LocalFileSystemMediaItem] = []
     do {
       try dbQueue?.read { db in
-        let rows = try Row.fetchAll(db, sql: "SELECT * FROM media_items")
+        let rows = try Row.fetchAll(db, sql: "SELECT * FROM local_media_items")
         for row in rows {
           guard let itemId = row["id"] as Int?,
-            let urlString = row["url"] as String?,
-            let url = URL(string: urlString),
+            let originalUrlString = row["original_url"] as String?,
+            let originalUrl = URL(string: originalUrlString),
             let typeString = row["type"] as String?
           else { continue }
           let itemType: MediaType
@@ -189,8 +216,6 @@ class DatabaseManager {
           default: continue
           }
           var meta = MediaMetadata(
-            filePath: url.path,
-            filename: row["filename"] as String? ?? "",
             creationDate: row["creation_date"] as Date?,
             modificationDate: row["modification_date"] as Date?,
             dimensions: {
@@ -231,8 +256,8 @@ class DatabaseManager {
           let syncStatusString = row["s3_sync_status"] as String?
           let syncStatus = syncStatusString.flatMap { S3SyncStatus(rawValue: $0) } ?? .notSynced
 
-          var item = MediaItem(
-            id: itemId, url: url, type: itemType, metadata: meta, displayName: nil)
+          let item = LocalFileSystemMediaItem(id: itemId, type: itemType, original: originalUrl)
+          item.metadata = meta
           item.s3SyncStatus = syncStatus
           items.append(item)
         }
