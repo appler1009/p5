@@ -2,54 +2,6 @@ import CryptoKit
 import ImageCaptureCore
 import SwiftUI
 
-// MARK: - Device Media Item (for grouping)
-
-struct DevizeMediaItem: Identifiable {
-  let cameraItems: [ICCameraItem]  // Can contain multiple related items (Live Photo, etc.)
-  var thumbnail: Image?
-  var isThumbnailLoading = false
-
-  // Primary camera item (first one, typically the image for Live Photos)
-  var cameraItem: ICCameraItem { cameraItems.first! }
-
-  var id: String {
-    // Create stable string ID from primary camera item properties for disk caching
-    let components = [
-      cameraItem.name ?? "",
-      cameraItem.uti ?? "",
-      // Include device name for uniqueness across different devices
-      cameraItem.device?.name ?? "",
-    ]
-    return components.joined(separator: "|")
-  }
-
-  var name: String? { cameraItem.name }
-  var uti: String? { cameraItem.uti }
-
-  // Determine the media type based on the items
-  var mediaType: MediaType {
-    if cameraItems.count > 1
-      && cameraItems.contains(where: { $0.uti == "com.apple.quicktime-movie" })
-    {
-      return .photo  // Live Photo (treated as photo with video component)
-    } else if cameraItems.first?.uti == "com.apple.quicktime-movie"
-      || cameraItems.first?.uti == "public.mpeg-4"
-    {
-      return .video
-    } else {
-      return .photo
-    }
-  }
-
-  init(cameraItem: ICCameraItem) {
-    self.cameraItems = [cameraItem]
-  }
-
-  init(cameraItems: [ICCameraItem]) {
-    self.cameraItems = cameraItems
-  }
-}
-
 // MARK: - Import View
 
 struct ImportView: View {
@@ -60,7 +12,7 @@ struct ImportView: View {
   @State private var deviceDelegate: DeviceDelegate?
   @State private var hasInitialized = false
   @State private var selectedDevice: ICCameraDevice?
-  @State private var selectedDeviceMediaItem: ConnectedDeviceMediaItem?
+  @State private var selectedDeviceMediaItem: MediaItem?
   @State private var deviceMediaItems: [ConnectedDeviceMediaItem] = []
   @State private var isLoadingDeviceContents = false
   @State private var deviceConnectionError: String?
@@ -70,7 +22,7 @@ struct ImportView: View {
 
   // Thumbnail coordination
   private let thumbnailState = ThumbnailState()
-  private let limiter = ConcurrencyLimiter(limit: 5)
+  private let limiter = ConcurrencyLimiter(limit: 15)
 
   var deviceContent: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -82,7 +34,7 @@ struct ImportView: View {
           .fontWeight(.semibold)
         Spacer()
         Button("Import Selected") {
-          if let selectedItem = selectedDeviceMediaItem {
+          if let selectedItem = selectedDeviceMediaItem as? ConnectedDeviceMediaItem {
             importSelectedItem(selectedItem)
           }
         }
@@ -158,20 +110,10 @@ struct ImportView: View {
             SectionGridView(
               items: deviceMediaItems,
               selectedItem: $selectedDeviceMediaItem,
-              minCellWidth: 80
-            ) { item in
-              // Constrain MediaItemView to prevent overflow in grid cells
-              ZStack {
-                MediaItemView(
-                  item: item,
-                  onTap: {},
-                  isSelected: selectedDeviceMediaItem?.id == item.id,
-                )
-              }
-              .frame(width: 80, height: 80)  // Strict size constraint
-              .clipped()  // Prevent any overflow
-              .help(item.displayName)
-            }
+              onItemTap: { item in
+              },
+              minCellWidth: 80,
+            )
           }
           .padding()
         }
@@ -526,12 +468,8 @@ struct ImportView: View {
     // Create delegate - no weak reference needed for struct
     let delegate = DeviceDelegate(
       onDeviceFound: { device in
-        print("DEBUG: ICDevice found: \(device.name ?? "Unknown")")
 
         if let cameraDevice = device as? ICCameraDevice {
-          print("DEBUG: ICCameraDevice found: \(cameraDevice.name ?? "Unknown")")
-          print("DEBUG: Device capabilities: \(cameraDevice.capabilities)")
-          print("DEBUG: Device name: \(cameraDevice.name ?? "Unknown")")
 
           // Check for iPhone indicators
           let deviceName = cameraDevice.name ?? "Unknown"
@@ -543,7 +481,7 @@ struct ImportView: View {
               && !self.detectedDevices.contains(where: { $0.name == cameraDevice.name })
             {
               self.detectedDevices.append(cameraDevice)
-              print("DEBUG: Added iPhone via ImageCapture: \(deviceName)")
+
             } else {
               print("DEBUG: Device found but not identified as iPhone: \(deviceName)")
             }
@@ -648,8 +586,6 @@ struct ImportView: View {
           return
         }
 
-        print("DEBUG: Session opened successfully, accessing contents...")
-
         // Try to access contents directly after opening session
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
           Task {
@@ -661,18 +597,7 @@ struct ImportView: View {
   }
 
   private func checkDeviceContents(_ device: ICCameraDevice) async {
-    print("DEBUG: Checking device contents...")
-    print("DEBUG: Device capabilities: \(device.capabilities)")
-    print("DEBUG: Device contents count: \(device.contents?.count ?? 0)")
-
-    // Debug: print all contents regardless of type
     if let contents = device.contents {
-      print("DEBUG: All contents items:")
-      for (index, item) in contents.enumerated() {
-        print(
-          "DEBUG: Item \(index): name=\(item.name ?? "nil"), uti=\(item.uti ?? "nil"), type=\(type(of: item))"
-        )
-      }
 
       // Check if we found the DCIM folder - this is a good sign!
       let dcimFolder = contents.first { item in
@@ -680,7 +605,7 @@ struct ImportView: View {
       }
 
       if let dcimFolder = dcimFolder as? ICCameraFolder {
-        print("DEBUG: Found DCIM folder! Checking its contents...")
+
         // Check DCIM folder contents directly
         await self.checkDCIMContents(dcimFolder)
         return
@@ -757,16 +682,14 @@ struct ImportView: View {
   }
 
   private func checkDCIMContents(_ dcimFolder: ICCameraFolder) async {
-    print("DEBUG: Checking DCIM folder contents...")
     if let folderContents = dcimFolder.contents {
-      print("DEBUG: DCIM folder has \(folderContents.count) items")
 
       // Look for subfolders (like 100APPLE, 101APPLE, etc.) or media files
       var allCameraItems: [ICCameraItem] = []
 
       for item in folderContents {
         if let subfolder = item as? ICCameraFolder {
-          print("DEBUG: Found subfolder: \(subfolder.name ?? "unnamed")")
+
           if let subfolderContents = subfolder.contents {
             let mediaInSubfolder = subfolderContents.filter { subItem in
               if let uti = subItem.uti {
@@ -775,9 +698,7 @@ struct ImportView: View {
               return false
             }
             allCameraItems.append(contentsOf: mediaInSubfolder)
-            print(
-              "DEBUG: Found \(mediaInSubfolder.count) media items in \(subfolder.name ?? "unnamed")"
-            )
+
           }
         } else if let uti = item.uti, uti.hasPrefix("public.image") || uti.hasPrefix("public.video")
         {
@@ -787,10 +708,9 @@ struct ImportView: View {
       }
 
       // Create DeviceMediaItem objects
-      print("DEBUG: Total raw items found: \(allCameraItems.count)")
+
       self.deviceMediaItems = self.groupRelatedCameraItems(allCameraItems)
       self.isLoadingDeviceContents = false
-      print("DEBUG: Total media items found: \(self.deviceMediaItems.count)")
 
       await self.requestThumbnails()
 
@@ -829,6 +749,11 @@ struct ImportView: View {
   private func requestThumbnails() async {
     await withTaskGroup(of: Void.self) { group in
       for mediaItem in deviceMediaItems {
+        // Check if thumbnail already exists in local cache
+        if ThumbnailCache.shared.thumbnailExists(mediaItem: mediaItem) {
+          continue
+        }
+
         let id = String(describing: mediaItem.id)
         let requested = await thumbnailState.markRequestedIfNeeded(id: id)
         guard requested else { continue }
@@ -1146,7 +1071,7 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
 
   // ICDeviceDelegate methods
   func deviceDidBecomeReady(_ device: ICDevice) {
-    print("DEBUG: ICDevice became ready: \(device.name ?? "Unknown")")
+
   }
 
   func device(_ device: ICDevice, didOpenSessionWithError error: Error?) {
@@ -1219,7 +1144,7 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didAdd items: [ICCameraItem]) {
     // Handle items being added to the camera device
-    print("DEBUG: Camera device added \(items.count) items")
+
   }
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didRemove items: [ICCameraItem]) {
@@ -1234,7 +1159,7 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
 
   func cameraDeviceDidChangeCapability(_ cameraDevice: ICCameraDevice) {
     // Handle capability changes
-    print("DEBUG: Camera device capability changed")
+
   }
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didReceivePTPEvent eventData: Data) {
@@ -1244,12 +1169,12 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
 
   func deviceDidBecomeReady(withCompleteContentCatalog device: ICCameraDevice) {
     // Handle when device is ready with complete content catalog
-    print("DEBUG: Camera device became ready with complete content catalog")
+
   }
 
   func cameraDeviceDidRemoveAccessRestriction(_ device: ICDevice) {
     // Handle access restriction removal
-    print("DEBUG: Camera device access restriction removed")
+
   }
 
   func cameraDeviceDidEnableAccessRestriction(_ device: ICDevice) {

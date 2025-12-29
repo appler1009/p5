@@ -5,6 +5,7 @@ struct MediaItemView: View {
   let onTap: () -> Void
   let isSelected: Bool
   var externalThumbnail: Image? = nil  // For pre-loaded thumbnails (like in import view)
+  var shouldReloadThumbnail: Bool = false  // Trigger to reload thumbnail
   @State private var thumbnail: NSImage?
   @State private var cornerRadius: CGFloat = 3
 
@@ -74,6 +75,11 @@ struct MediaItemView: View {
     }
     .onAppear {
       loadThumbnail()
+    }
+    .onChange(of: shouldReloadThumbnail) { _, newValue in
+      if newValue {
+        loadThumbnail()
+      }
     }
   }
 

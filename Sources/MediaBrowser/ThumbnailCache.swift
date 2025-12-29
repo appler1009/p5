@@ -3,6 +3,10 @@ import Combine
 import CryptoKit
 import SwiftUI
 
+extension Notification.Name {
+  static let thumbnailDidBecomeAvailable = Notification.Name("ThumbnailDidBecomeAvailable")
+}
+
 class ThumbnailCache {
   static let shared = ThumbnailCache()
   private var cache = NSCache<NSString, NSImage>()
@@ -83,15 +87,24 @@ class ThumbnailCache {
 
   // Store a pre-generated thumbnail in cache (used by ImportView for device thumbnails)
   func storePreGeneratedThumbnail(_ nsImage: NSImage, mediaItem: MediaItem) {
-    self.storePreGeneratedThumbnail(
-      nsImage, date: mediaItem.thumbnailDate, basename: mediaItem.displayName)
-  }
-  func storePreGeneratedThumbnail(_ nsImage: NSImage, date: Date, basename: String) {
+    let date = mediaItem.thumbnailDate
+    let basename = mediaItem.displayName
     let filename = filenameForThumbnail(date: date, basename: basename)
     let key = filename as NSString
 
     cache.setObject(nsImage, forKey: key)
     saveToDisk(image: nsImage, key: filename)
+
+    // Notify observers that thumbnail became available
+    NotificationCenter.default.post(
+      name: .thumbnailDidBecomeAvailable,
+      object: nil,
+      userInfo: [
+        "date": date,
+        "basename": basename,
+        "mediaItemId": mediaItem.id,
+      ]
+    )
   }
 
   private func generateThumbnail(for url: URL) async -> NSImage? {
