@@ -5,7 +5,15 @@ class DirectoryManager: ObservableObject {
   static let shared = DirectoryManager()
   @Published var directories: [URL] = []
 
+  // Import directory configuration
+  @Published var customImportDirectory: URL? {
+    didSet {
+      saveCustomImportDirectory()
+    }
+  }
+
   private let bookmarkKey = "selectedDirectories"
+  private let importDirectoryKey = "customImportDirectory"
   private var accessedURLs: Set<URL> = []
   private var bookmarksFile: String {
     let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -14,6 +22,7 @@ class DirectoryManager: ObservableObject {
 
   private init() {
     loadBookmarks()
+    loadCustomImportDirectory()
   }
 
   func addDirectory() {
@@ -90,7 +99,75 @@ class DirectoryManager: ObservableObject {
     return count
   }
 
+  // Import directory management
+  func chooseExistingImportDirectory() {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = true
+    panel.prompt = "Select"
+    panel.message = "Select a folder where imported photos will be stored"
+
+    if panel.runModal() == .OK, let url = panel.url {
+      customImportDirectory = url
+      if url.startAccessingSecurityScopedResource() {
+        accessedURLs.insert(url)
+      }
+    }
+  }
+
+  func clearCustomImportDirectory() {
+    if let url = customImportDirectory {
+      url.stopAccessingSecurityScopedResource()
+      accessedURLs.remove(url)
+    }
+    customImportDirectory = nil
+  }
+
+  private func saveCustomImportDirectory() {
+    if let url = customImportDirectory {
+      do {
+        let bookmarkData = try url.bookmarkData(
+          options: .withSecurityScope,
+          includingResourceValuesForKeys: nil,
+          relativeTo: nil
+        )
+        let bookmarkBase64 = bookmarkData.base64EncodedString()
+        UserDefaults.standard.set(bookmarkBase64, forKey: importDirectoryKey)
+      } catch {
+        print("Error saving custom import directory bookmark: \(error)")
+      }
+    } else {
+      UserDefaults.standard.removeObject(forKey: importDirectoryKey)
+    }
+  }
+
+  private func loadCustomImportDirectory() {
+    if let bookmarkBase64 = UserDefaults.standard.string(forKey: importDirectoryKey),
+      let bookmarkData = Data(base64Encoded: bookmarkBase64)
+    {
+      var isStale = false
+      if let url = try? URL(
+        resolvingBookmarkData: bookmarkData,
+        options: .withSecurityScope,
+        relativeTo: nil,
+        bookmarkDataIsStale: &isStale
+      ), !isStale {
+        customImportDirectory = url
+        if url.startAccessingSecurityScopedResource() {
+          accessedURLs.insert(url)
+        }
+      }
+    }
+  }
+
   var importDirectory: URL {
+    // Use custom directory if set, otherwise use default
+    if let customDir = customImportDirectory {
+      return customDir
+    }
+
     let home = FileManager.default.homeDirectoryForCurrentUser
     let importDir = home.appendingPathComponent("MediaBrowser/Imports")
 

@@ -846,6 +846,7 @@ struct ImportView: View {
     // ICCameraFile is the subclass that supports downloading
     if let cameraFile = cameraItem as? ICCameraFile {
       // Request download of the camera file with completion handler
+      // TODO: Add download directory option when ICDownloadsDirectoryURL is properly imported
       cameraFile.requestDownload(options: nil) { downloadID, error in
         if let error = error {
           print(
@@ -1127,9 +1128,19 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
         "DEBUG: Download completed: \(file?.name ?? "unknown file") -> \(destination.lastPathComponent)"
       )
 
-      // Move the downloaded file to the final destination
-      // The file is already downloaded to a temporary location by ImageCapture
-      // We may want to move it to our media directory or process it further
+      // If using custom import directory, move file there if needed
+      let importDir = DirectoryManager.shared.importDirectory
+      if destination.deletingLastPathComponent() != importDir {
+        let fileName = destination.lastPathComponent
+        let finalDestination = importDir.appendingPathComponent(fileName)
+
+        do {
+          try FileManager.default.moveItem(at: destination, to: finalDestination)
+          print("DEBUG: Moved downloaded file to import directory: \(finalDestination.path)")
+        } catch {
+          print("DEBUG: Failed to move downloaded file: \(error.localizedDescription)")
+        }
+      }
 
       // Trigger media scan to pick up the new file
       Task {
