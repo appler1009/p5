@@ -102,6 +102,8 @@ class ConnectedDeviceMediaItem: MediaItem {
     return Date()  // FIXME
   }
 
+  private static var nextId = 1
+
   init(
     id: Int, type: MediaType, original: ICCameraItem, edited: ICCameraItem? = nil,
     live: ICCameraItem? = nil
@@ -109,7 +111,11 @@ class ConnectedDeviceMediaItem: MediaItem {
     originalItem = original
     editedItem = edited
     liveItem = live
-    super.init(id: id, type: type)
+    let actualId = id == -1 ? ConnectedDeviceMediaItem.nextId : id
+    if id == -1 {
+      ConnectedDeviceMediaItem.nextId += 1
+    }
+    super.init(id: actualId, type: type)
   }
 
   init(_ original: ICCameraItem, edited: ICCameraItem? = nil, live: ICCameraItem? = nil) {
@@ -126,7 +132,8 @@ class ConnectedDeviceMediaItem: MediaItem {
       type = .photo
     }
 
-    super.init(id: -1, type: type)
+    super.init(id: ConnectedDeviceMediaItem.nextId, type: type)
+    ConnectedDeviceMediaItem.nextId += 1
   }
 
   // ✅ Stable hash: item.name + UTI + creationDate

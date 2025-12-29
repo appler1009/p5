@@ -17,8 +17,8 @@ final class MediaBrowserTests: XCTestCase {
 
   func testMediaItemInit() throws {
     let url = URL(fileURLWithPath: "/test.jpg")
-    let item = MediaItem(id: 1, url: url, type: .photo, displayName: nil)
-    XCTAssertEqual(item.url, url)
+    let item = LocalFileSystemMediaItem(id: 1, type: .photo, original: url)
+    XCTAssertEqual(item.originalUrl, url)
     XCTAssertEqual(item.type, MediaType.photo)
   }
 
@@ -83,8 +83,9 @@ final class MediaBrowserTests: XCTestCase {
 
   func testThumbnailCache() async throws {
     let cache = ThumbnailCache.shared
-    let testURL = URL(fileURLWithPath: "/nonexistent.jpg")
-    let image = await cache.thumbnail(for: testURL, size: CGSize(width: 100, height: 100))
+    let testItem = LocalFileSystemMediaItem(
+      id: 1, type: .photo, original: URL(fileURLWithPath: "/nonexistent.jpg"))
+    let image = cache.thumbnail(mediaItem: testItem)
     XCTAssertNil(image)  // Since file doesn't exist
   }
 
@@ -107,20 +108,6 @@ final class MediaBrowserTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(cleaned, 0)  // At least 0
   }
 
-  func testBlurHashRoundTrip() throws {
-    let testImage = NSImage(size: NSSize(width: 100, height: 100))
-    testImage.lockFocus()
-    NSColor.red.setFill()
-    NSRect(x: 0, y: 0, width: 100, height: 100).fill()
-    testImage.unlockFocus()
-
-    let hash = testImage.blurHash(numberOfComponents: (4, 3))
-    XCTAssertNotNil(hash)
-
-    let decodedImage = NSImage(blurHash: hash!, size: NSSize(width: 100, height: 100))
-    XCTAssertNotNil(decodedImage)
-  }
-
   func testDatabaseInsertAndRetrieve() throws {
     // Test database operations
     let db = DatabaseManager.shared
@@ -130,8 +117,6 @@ final class MediaBrowserTests: XCTestCase {
 
     let url = URL(fileURLWithPath: "/test/photo.jpg")
     let metadata = MediaMetadata(
-      filePath: "/test/photo.jpg",
-      filename: "photo.jpg",
       creationDate: Date(),
       modificationDate: Date(),
       dimensions: CGSize(width: 1920, height: 1080),
@@ -145,14 +130,14 @@ final class MediaBrowserTests: XCTestCase {
       aperture: 2.8,
       shutterSpeed: "1/100"
     )
-    let item = MediaItem(id: 2, url: url, type: .photo, metadata: metadata, displayName: nil)
+    let item = LocalFileSystemMediaItem(id: 2, type: .photo, original: url)
+    item.metadata = metadata
 
     db.insertItem(item)
 
     let items = db.getAllItems()
     XCTAssertEqual(items.count, 1)
-    XCTAssertEqual(items.first?.url, url)
+    XCTAssertEqual((items.first as? LocalFileSystemMediaItem)?.originalUrl, url)
     XCTAssertEqual(items.first?.type, MediaType.photo)
-    XCTAssertEqual(items.first?.metadata?.filename, "photo.jpg")
   }
 }

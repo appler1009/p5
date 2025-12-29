@@ -361,7 +361,7 @@ struct ImportView: View {
     return mediaGroups.compactMap { group in
       if let original = itemLookup[group.main] {
         return ConnectedDeviceMediaItem(
-          id: -1,
+          id: -1,  // Will be replaced with a unique sequence number
           type: .livePhoto,
           original: original,
           edited: group.edited != nil ? itemLookup[group.edited!] : nil,
@@ -1188,7 +1188,9 @@ extension ICCameraItem {
 
   public override var hash: Int {
     var hasher = Hasher()
-    self.hash(into: &hasher)
+    hasher.combine(name)
+    hasher.combine(uti)
+    hasher.combine(creationDate)
     return hasher.finalize()
   }
 }
