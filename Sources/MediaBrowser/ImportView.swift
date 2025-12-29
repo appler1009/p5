@@ -70,7 +70,7 @@ struct ImportView: View {
 
   // Thumbnail coordination
   private let thumbnailState = ThumbnailState()
-  private let limiter = ConcurrencyLimiter(limit: 20)
+  private let limiter = ConcurrencyLimiter(limit: 5)
 
   var deviceContent: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -697,6 +697,8 @@ struct ImportView: View {
         return false
       }
 
+      print("DEBUG: Found \(self.deviceMediaItems.count) raw items at root level")
+
       // Group related camera items and create DeviceMediaItem objects
       self.deviceMediaItems = self.groupRelatedCameraItems(cameraItems)
 
@@ -737,7 +739,9 @@ struct ImportView: View {
         }
       }
 
-      self.isLoadingDeviceContents = false
+      DispatchQueue.main.async {
+        self.isLoadingDeviceContents = false
+      }
     } else {
       print("DEBUG: device.contents is nil, retrying...")
       // Retry after a short delay in case contents aren't ready yet
@@ -783,30 +787,42 @@ struct ImportView: View {
       }
 
       // Create DeviceMediaItem objects
-      self.deviceMediaItems = allCameraItems.map { ConnectedDeviceMediaItem($0) }
-      print("DEBUG: Total media items found: \(allCameraItems.count)")
+      print("DEBUG: Total raw items found: \(allCameraItems.count)")
+      self.deviceMediaItems = self.groupRelatedCameraItems(allCameraItems)
+      self.isLoadingDeviceContents = false
+      print("DEBUG: Total media items found: \(self.deviceMediaItems.count)")
 
       await self.requestThumbnails()
 
       if allCameraItems.isEmpty {
-        self.deviceConnectionError = """
-          ✅ DCIM folder found and accessible!
+        await MainActor.run {
+          self.deviceConnectionError = """
+            ✅ DCIM folder found and accessible!
 
-          However, no photos or videos were found inside. This could mean:
-          1. Your Camera Roll is empty
-          2. Photos are only in iCloud (not downloaded to device)
-          3. Media files are in a different location
+            However, no photos or videos were found inside. This could mean:
+            1. Your Camera Roll is empty
+            2. Photos are only in iCloud (not downloaded to device)
+            3. Media files are in a different location
 
-          Check your iPhone's Photos app - do you have any photos in your Camera Roll?
-          """
+            Check your iPhone's Photos app - do you have any photos in your Camera Roll?
+            """
+        }
       }
 
-      self.isLoadingDeviceContents = false
+      print("DEBUG: About to set isLoadingDeviceContents = false")
+      await MainActor.run {
+        self.isLoadingDeviceContents = false
+        print(
+          "DEBUG: Set isLoadingDeviceContents = false on MainActor, deviceMediaItems.count = \(self.deviceMediaItems.count)"
+        )
+      }
     } else {
       print("DEBUG: DCIM folder contents is nil")
-      self.deviceConnectionError =
-        "DCIM folder found but contents are not accessible. Try reconnecting the device."
-      self.isLoadingDeviceContents = false
+      await MainActor.run {
+        self.deviceConnectionError =
+          "DCIM folder found but contents are not accessible. Try reconnecting the device."
+        self.isLoadingDeviceContents = false
+      }
     }
   }
 
@@ -844,16 +860,39 @@ struct ImportView: View {
       }
       if Task.isCancelled { return }
       if let thumbnail = thumbnail {
-        await MainActor.run { storeThumbnail(mediaItem: mediaItem, thumbnail: thumbnail) }
+        await MainActor.run {
+          storeThumbnail(mediaItem: mediaItem, thumbnail: thumbnail)
+        }
       }
     } catch {
-      print("requestThumbnail failed: \(error)")
+      print("requestThumbnail failed for \(mediaItem.displayName): \(error)")
     }
   }
 
   private func storeThumbnail(mediaItem: ConnectedDeviceMediaItem, thumbnail: NSImage) {
-    ThumbnailCache.shared.storePreGeneratedThumbnail(thumbnail, mediaItem: mediaItem)
-    print("DEBUG: Loaded thumbnail for \(mediaItem.displayName)")
+    guard let cgImage = thumbnail.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      return
+    }
+
+    let width = cgImage.width
+    let height = cgImage.height
+    let side = min(width, height)
+
+    let cropRect = CGRect(
+      x: (width - side) / 2,
+      y: (height - side) / 2,
+      width: side,
+      height: side
+    )
+
+    guard let croppedCG = cgImage.cropping(to: cropRect) else {
+      return
+    }
+
+    let squareThumbnail = NSImage(size: NSSize(width: side, height: side))
+    squareThumbnail.addRepresentation(NSBitmapImageRep(cgImage: croppedCG))
+
+    ThumbnailCache.shared.storePreGeneratedThumbnail(squareThumbnail, mediaItem: mediaItem)
   }
 
   private func importSelectedItem(_ item: ConnectedDeviceMediaItem) {
@@ -1070,7 +1109,7 @@ actor ConcurrencyLimiter {
 }
 
 // MARK: - Device Delegate for ImageCaptureCore
-class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate {
+class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCameraDeviceDelegate {
   weak var thumbnailStateRef: AnyObject?
 
   let onDeviceFound: (ICDevice) -> Void
@@ -1176,6 +1215,46 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate {
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didCompleteDeleteFilesWithError error: Error?) {
     // Handle delete completion
+  }
+
+  func cameraDevice(_ cameraDevice: ICCameraDevice, didAdd items: [ICCameraItem]) {
+    // Handle items being added to the camera device
+    print("DEBUG: Camera device added \(items.count) items")
+  }
+
+  func cameraDevice(_ cameraDevice: ICCameraDevice, didRemove items: [ICCameraItem]) {
+    // Handle items being removed from the camera device
+    print("DEBUG: Camera device removed \(items.count) items")
+  }
+
+  func cameraDevice(_ cameraDevice: ICCameraDevice, didRenameItems items: [ICCameraItem]) {
+    // Handle items being renamed on the camera device
+    print("DEBUG: Camera device renamed \(items.count) items")
+  }
+
+  func cameraDeviceDidChangeCapability(_ cameraDevice: ICCameraDevice) {
+    // Handle capability changes
+    print("DEBUG: Camera device capability changed")
+  }
+
+  func cameraDevice(_ cameraDevice: ICCameraDevice, didReceivePTPEvent eventData: Data) {
+    // Handle PTP events from the camera device
+    print("DEBUG: Camera device received PTP event")
+  }
+
+  func deviceDidBecomeReady(withCompleteContentCatalog device: ICCameraDevice) {
+    // Handle when device is ready with complete content catalog
+    print("DEBUG: Camera device became ready with complete content catalog")
+  }
+
+  func cameraDeviceDidRemoveAccessRestriction(_ device: ICDevice) {
+    // Handle access restriction removal
+    print("DEBUG: Camera device access restriction removed")
+  }
+
+  func cameraDeviceDidEnableAccessRestriction(_ device: ICDevice) {
+    // Handle access restriction enable
+    print("DEBUG: Camera device access restriction enabled")
   }
 }
 
