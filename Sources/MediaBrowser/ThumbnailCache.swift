@@ -59,14 +59,26 @@ class ThumbnailCache {
 
   func generateAndCacheThumbnail(for url: URL, mediaItem: MediaItem) async -> NSImage? {
     let image = await generateThumbnail(for: url)
+    let date = mediaItem.thumbnailDate
+    let basename = mediaItem.displayName
     if let image = image {
       // Cache the generated thumbnail
-      let filename = filenameForThumbnail(
-        date: mediaItem.thumbnailDate, basename: mediaItem.displayName)
+      let filename = filenameForThumbnail(date: date, basename: basename)
       let key = filename as NSString
 
       cache.setObject(image, forKey: key)
       saveToDisk(image: image, key: filename)
+
+      // Notify observers that thumbnail became available
+      NotificationCenter.default.post(
+        name: .thumbnailDidBecomeAvailable,
+        object: nil,
+        userInfo: [
+          "date": date,
+          "basename": basename,
+          "mediaItemId": mediaItem.id,
+        ]
+      )
     }
     return image
   }

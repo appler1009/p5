@@ -162,9 +162,6 @@ class S3Service: ObservableObject {
     if let liveUrl = item.liveUrl {
       allFiles.append(liveUrl)
     }
-    print(
-      "⏭️ [FILES] Will upload \(allFiles.count) files: \(allFiles.map { $0.lastPathComponent }.joined(separator: ", "))"
-    )
 
     for fileURL in allFiles {
       let fileDate = item.thumbnailDate
@@ -174,7 +171,7 @@ class S3Service: ObservableObject {
 
       // 4) If it is, skip to next file
       if !needsUpload {
-        print("⏭️ [SKIP] \(fileURL.lastPathComponent) already exists in S3")
+
         continue  // Skip to next file
       }
 

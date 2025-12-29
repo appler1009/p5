@@ -6,7 +6,7 @@ struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
   @Environment(\.openWindow) private var openWindow
-  @State private var selectedItem: MediaItem?
+  @State private var selectedItems: Set<MediaItem> = []
   @State private var lightboxItemId: Int?
   @AppStorage("viewMode") private var viewMode = "Grid"
   @State private var searchQuery = ""
@@ -64,7 +64,7 @@ struct ContentView: View {
       VStack(spacing: 0) {
         if viewMode == "Grid" {
           MediaGridView(
-            selectedItem: $selectedItem,
+            selectedItems: $selectedItems,
             lightboxItemId: $lightboxItemId,
             searchQuery: $searchQuery
           )
@@ -149,25 +149,21 @@ struct ContentView: View {
   }
 
   private func nextItem() {
-    guard let index = sortedItems.firstIndex(where: { $0.id == selectedItem?.id }) else { return }
+    guard let firstSelected = selectedItems.first,
+      let index = sortedItems.firstIndex(where: { $0.id == firstSelected.id })
+    else { return }
     let nextIndex = (index + 1) % sortedItems.count
-    selectedItem = sortedItems[nextIndex]
-    if let selectedItem = selectedItem {
-      lightboxItemId = selectedItem.id
-    } else {
-      lightboxItemId = nil
-    }
+    selectedItems = [sortedItems[nextIndex]]
+    lightboxItemId = sortedItems[nextIndex].id
   }
 
   private func prevItem() {
-    guard let index = sortedItems.firstIndex(where: { $0.id == selectedItem?.id }) else { return }
+    guard let firstSelected = selectedItems.first,
+      let index = sortedItems.firstIndex(where: { $0.id == firstSelected.id })
+    else { return }
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
-    selectedItem = sortedItems[prevIndex]
-    if let selectedItem = selectedItem {
-      lightboxItemId = selectedItem.id
-    } else {
-      lightboxItemId = nil
-    }
+    selectedItems = [sortedItems[prevIndex]]
+    lightboxItemId = sortedItems[prevIndex].id
   }
 
   /// Update a media item

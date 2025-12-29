@@ -2,12 +2,13 @@ import SwiftUI
 
 struct MediaGridView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
-  @Binding var selectedItem: MediaItem?
+  @Binding var selectedItems: Set<MediaItem>
   @Binding var lightboxItemId: Int?
   @Binding var searchQuery: String
 
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
+  @FocusState private var isGridFocused: Bool
 
   private var sortedItems: [MediaItem] {
     let filteredItems =
@@ -52,9 +53,11 @@ struct MediaGridView: View {
             SectionGridView(
               title: group.month,
               items: group.items,
-              selectedItem: $selectedItem,
-              onItemTap: { item in
-                selectedItem = item
+              selectedItems: $selectedItems,
+              onSelectionChange: { newSelectedItems in
+                selectedItems = newSelectedItems
+              },
+              onItemDoubleTap: { item in
                 lightboxItemId = item.id
               },
               minCellWidth: 80
@@ -66,12 +69,18 @@ struct MediaGridView: View {
       .scrollPosition(id: $scrollTarget, anchor: scrollAnchor)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .focusable()
+      .focused($isGridFocused)
+      .onAppear {
+        isGridFocused = true
+      }
       .onKeyPress { press in
         // Update window width for dynamic column calculation
         let windowWidth = geo.size.width
         // Grid navigation when lightbox is not open
         if lightboxItemId == nil,
-          let currentIndex = sortedItems.firstIndex(where: { $0.id == selectedItem?.id })
+          selectedItems.count == 1,
+          let firstSelectedItem = selectedItems.first,
+          let currentIndex = sortedItems.firstIndex(where: { $0.id == firstSelectedItem.id })
         {
           let availableWidth = windowWidth - 16  // subtract horizontal padding
           let columns = max(1, Int(floor((availableWidth + 10) / 90)))  // spacing = 10, minWidth = 80
@@ -106,7 +115,7 @@ struct MediaGridView: View {
               newCol = min(maxColInRow, currentCol + 1)
             }
           case .space, .return:
-            if let item = selectedItem {
+            if let item = selectedItems.first {
               lightboxItemId = item.id
             }
             return .handled
@@ -116,7 +125,7 @@ struct MediaGridView: View {
 
           let newIndex = newRow * columns + newCol
           if newIndex < sortedItems.count {
-            selectedItem = sortedItems[newIndex]
+            selectedItems = [sortedItems[newIndex]]
 
             // Calculate total rows and visible rows to determine optimal anchor
             let totalRows = (sortedItems.count + columns - 1) / columns
@@ -136,7 +145,7 @@ struct MediaGridView: View {
               // Middle - center
               scrollAnchor = .center
             }
-            scrollTarget = selectedItem?.id
+            scrollTarget = selectedItems.first?.id
           }
           return .handled
         }

@@ -123,7 +123,9 @@ class MediaScanner: ObservableObject {
           await extractMetadata(for: &item)
           // Pre-generate and cache thumbnail
           let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: url, mediaItem: item)
-          items.append(item)
+          await MainActor.run { [item] in
+            items.append(item)
+          }
           if let progress = scanProgress, progress.current + 1 <= progress.total {
             await MainActor.run {
               scanProgress = (progress.current + 1, progress.total)

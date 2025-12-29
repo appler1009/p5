@@ -12,11 +12,13 @@ struct ImportView: View {
   @State private var deviceDelegate: DeviceDelegate?
   @State private var hasInitialized = false
   @State private var selectedDevice: ICCameraDevice?
-  @State private var selectedDeviceMediaItem: MediaItem?
+  @State private var selectedDeviceMediaItems: Set<MediaItem> = []
   @State private var deviceMediaItems: [ConnectedDeviceMediaItem] = []
   @State private var isLoadingDeviceContents = false
   @State private var deviceConnectionError: String?
   @State private var thumbnailOperationsCancelled = false
+  @State private var importStatus: String?
+  @State private var isDownloading = false
 
   @Environment(\.dismiss) private var dismiss
 
@@ -34,12 +36,42 @@ struct ImportView: View {
           .fontWeight(.semibold)
         Spacer()
         Button("Import Selected") {
-          if let selectedItem = selectedDeviceMediaItem as? ConnectedDeviceMediaItem {
-            importSelectedItem(selectedItem)
+          for selectedItem in selectedDeviceMediaItems {
+            if let connectedItem = selectedItem as? ConnectedDeviceMediaItem {
+              importSelectedItem(connectedItem)
+            }
           }
         }
         .buttonStyle(.borderedProminent)
         .disabled(deviceMediaItems.isEmpty)
+      }
+
+      // Status messages
+      if let status = importStatus {
+        HStack {
+          Image(systemName: "info.circle")
+            .foregroundColor(.blue)
+          Text(status)
+            .foregroundColor(.blue)
+          Spacer()
+        }
+        .padding()
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(8)
+      }
+
+      if let error = deviceConnectionError {
+        HStack {
+          Image(systemName: "exclamationmark.triangle")
+            .foregroundColor(.red)
+          Text(error)
+            .foregroundColor(.red)
+            .lineLimit(nil)
+          Spacer()
+        }
+        .padding()
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(8)
       }
 
       if isLoadingDeviceContents {
@@ -109,9 +141,11 @@ struct ImportView: View {
           VStack(spacing: 4) {
             SectionGridView(
               items: deviceMediaItems,
-              selectedItem: $selectedDeviceMediaItem,
-              onItemTap: { item in
+              selectedItems: $selectedDeviceMediaItems,
+              onSelectionChange: { selectedItems in
+                selectedDeviceMediaItems = selectedItems
               },
+              onItemDoubleTap: { _ in },  // No-op for import view
               minCellWidth: 80,
             )
           }
@@ -321,7 +355,7 @@ struct ImportView: View {
     let live: String?
   }
 
-  private func groupRelatedMedia(_ items: [String]) -> [MediaEntry] {
+  func groupRelatedMedia(_ items: [String]) -> [MediaEntry] {
     var groups: [String: MediaEntry] = [:]
 
     let photoExtensions = [
@@ -344,12 +378,12 @@ struct ImportView: View {
       if let group = groups[baseName] {
         if group.main.count > photoName.count {
           // longer name must be the edited name
-          groups[photoName] = .init(main: photoName, edited: group.main, live: nil)
+          groups[baseName] = .init(main: photoName, edited: group.main, live: nil)
         } else {
-          groups[group.main] = .init(main: group.main, edited: photoName, live: nil)
+          groups[baseName] = .init(main: group.main, edited: photoName, live: nil)
         }
       } else {
-        groups[photoName] = .init(main: photoName, edited: nil, live: nil)
+        groups[baseName] = .init(main: photoName, edited: nil, live: nil)
       }
     }
 
@@ -380,76 +414,41 @@ struct ImportView: View {
   }
 
   // Extract base name from filename (remove extension and edit markers)
-  private func extractBaseName(from filename: String) -> String {
+  func extractBaseName(from filename: String) -> String {
     var baseName = filename
 
-    // Remove common extensions
-    let extensions = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".mov", ".mp4", ".m4v"]
-    for ext in extensions {
-      if baseName.lowercased().hasSuffix(ext) {
-        baseName = String(baseName.dropLast(ext.count))
-        break
-      }
-    }
-
+    // Remove edit markers first (before extensions)
     // Remove edit markers (e.g., "IMG_1234" from "IMG_1234 (Edited)")
     if let editMarkerRange = baseName.range(of: " \\(Edited\\)", options: .regularExpression) {
       baseName = String(baseName[..<editMarkerRange.lowerBound])
     }
 
-    // Remove iOS edit markers (E suffix) - similar to MediaScanner.isEdited()
-    if isEditedIOS(base: baseName) {
-      baseName = removeEditSuffix(from: baseName)
+    // Remove iOS edit markers (E in the middle)
+    if let firstDigitIndex = baseName.firstIndex(where: { $0.isNumber }) {
+      let beforeDigits = baseName[..<firstDigitIndex]
+      if beforeDigits.hasSuffix("E") {
+        // Remove the E without adding separator
+        let prefix = String(beforeDigits.dropLast())
+        let digits = String(baseName[firstDigitIndex...])
+        baseName = prefix + digits
+      }
+    }
+
+    // Then remove common extensions (remove all matching extensions)
+    let extensions = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".mov", ".mp4", ".m4v"]
+    var changed = true
+    while changed {
+      changed = false
+      for ext in extensions {
+        if baseName.lowercased().hasSuffix(ext) {
+          baseName = String(baseName.dropLast(ext.count))
+          changed = true
+          break
+        }
+      }
     }
 
     return baseName
-  }
-
-  // Check if filename has iOS edit marker (similar to MediaScanner.isEdited)
-  private func isEditedIOS(base: String) -> Bool {
-    // Check for separators first
-    let separators = ["_", "-"]
-    for sep in separators {
-      if let range = base.range(of: sep, options: .backwards) {
-        let after = base[range.upperBound...]
-        if after.hasPrefix("E") {
-          return true
-        }
-      }
-    }
-    // Check for E before digits without separator
-    if let firstDigitIndex = base.firstIndex(where: { $0.isNumber }) {
-      let beforeDigits = base[..<firstDigitIndex]
-      if beforeDigits.hasSuffix("E") {
-        return true
-      }
-    }
-    return false
-  }
-
-  // Remove edit suffix to get base name (similar to MediaScanner logic)
-  private func removeEditSuffix(from base: String) -> String {
-    // Check for separators first
-    let separators = ["_", "-"]
-    for sep in separators {
-      if let range = base.range(of: sep, options: .backwards) {
-        let after = base[range.upperBound...]
-        if after.hasPrefix("E") {
-          return String(base[..<range.lowerBound])
-        }
-      }
-    }
-    // Check for E before digits without separator (iOS style: IMG_E1234 -> IMG_1234)
-    if let firstDigitIndex = base.firstIndex(where: { $0.isNumber }) {
-      let beforeDigits = base[..<firstDigitIndex]
-      if beforeDigits.hasSuffix("E") {
-        // Remove the E and add separator before digits
-        let prefix = String(beforeDigits.dropLast())
-        let digits = String(base[firstDigitIndex...])
-        return prefix + "_" + digits
-      }
-    }
-    return base
   }
 
   private func scanForDevices() {
@@ -528,6 +527,23 @@ struct ImportView: View {
               await self.limiter.cancelAll()
             }
           }
+        }
+      },
+      onDownloadError: { error, file in
+        DispatchQueue.main.async {
+          let nsError = error as NSError
+          if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934 {
+            self.showError(
+              "Download failed: Device is busy or not ready. Please ensure the device is not taking photos, recording video, or syncing. Try again in a moment."
+            )
+          } else {
+            self.showError("Download failed: \(error.localizedDescription)")
+          }
+        }
+      },
+      onDownloadSuccess: { file in
+        DispatchQueue.main.async {
+          self.showStatus("Successfully imported \(file?.name ?? "file")")
         }
       },
       thumbnailStateRef: thumbnailState
@@ -836,30 +852,98 @@ struct ImportView: View {
 
     DispatchQueue.main.async {
       // Clear selection after import
-      self.selectedDeviceMediaItem = nil
+      self.selectedDeviceMediaItems.removeAll()
     }
   }
 
-  private func importCameraItem(_ cameraItem: ICCameraItem) {
-    print("DEBUG: Starting download for: \(cameraItem.name ?? "unnamed")")
+  private func showStatus(_ message: String) {
+    importStatus = message
+    // Auto-clear after 10 seconds
+    DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+      if self.importStatus == message {
+        self.importStatus = nil
+      }
+    }
+  }
+
+  private func showError(_ message: String) {
+    deviceConnectionError = message
+    // Keep error visible until user acknowledges or retries
+  }
+
+  private func importCameraItem(_ cameraItem: ICCameraItem, retryCount: Int = 0) {
+    let maxRetries = 3
+    let baseDelay: TimeInterval = 2.0
+
+    // Prevent concurrent downloads
+    guard !isDownloading else {
+      showError("Another download is in progress. Please wait.")
+      return
+    }
+
+    // Check device connection
+    guard let device = selectedDevice, device.hasOpenSession else {
+      showError("Device disconnected. Please reconnect and try again.")
+      return
+    }
+
+    print(
+      "DEBUG: Starting download for: \(cameraItem.name ?? "unnamed") (attempt \(retryCount + 1)/\(maxRetries + 1))"
+    )
 
     // ICCameraFile is the subclass that supports downloading
-    if let cameraFile = cameraItem as? ICCameraFile {
-      // Request download of the camera file with completion handler
-      // TODO: Add download directory option when ICDownloadsDirectoryURL is properly imported
-      cameraFile.requestDownload(options: nil) { downloadID, error in
-        if let error = error {
-          print(
-            "DEBUG: Download request failed for \(cameraItem.name ?? "unnamed"): \(error.localizedDescription)"
-          )
-        } else {
-          print(
-            "DEBUG: Download request successful for \(cameraItem.name ?? "unnamed"), ID: \(downloadID ?? "none")"
-          )
-        }
-      }
-    } else {
+    guard let cameraFile = cameraItem as? ICCameraFile else {
       print("DEBUG: Cannot download \(cameraItem.name ?? "unnamed") - not a file")
+      return
+    }
+
+    isDownloading = true
+
+    // Request download of the camera file with completion handler
+    let importDir = DirectoryManager.shared.importDirectory
+    let options: [ICDownloadOption: Any] = [
+      .downloadsDirectoryURL: importDir
+    ]
+    cameraFile.requestDownload(options: options) { downloadID, error in
+      print("DEBUG: Download ID for \(cameraItem.name ?? "unnamed"): \(downloadID ?? "unknown")")
+
+      DispatchQueue.main.async {
+        self.isDownloading = false
+      }
+
+      if let error = error {
+        let nsError = error as NSError
+        print(
+          "DEBUG: Download request failed for \(cameraItem.name ?? "unnamed"): \(error.localizedDescription)"
+        )
+
+        // Handle specific error codes
+        if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934
+          && retryCount < maxRetries
+        {
+          // Device not ready - retry with exponential backoff
+          let delay = baseDelay * pow(2.0, Double(retryCount))
+          self.showStatus(
+            "Device busy, retrying in \(Int(delay)) seconds... (\(retryCount + 1)/\(maxRetries))")
+
+          DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            self.importCameraItem(cameraItem, retryCount: retryCount + 1)
+          }
+        } else {
+          let errorMessage =
+            if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934 {
+              "Download failed: Device is busy or not ready. Please ensure the device is not taking photos, recording video, or syncing. Try again in a moment."
+            } else {
+              "Download failed: \(error.localizedDescription)"
+            }
+          self.showError(errorMessage)
+        }
+      } else {
+        print(
+          "DEBUG: Download request successful for \(cameraItem.name ?? "unnamed"), ID: \(downloadID ?? "none")"
+        )
+        self.showStatus("Download started successfully")
+      }
     }
 
     // The actual download completion will be handled by the device delegate
@@ -933,7 +1017,7 @@ struct ImportView: View {
         }
 
         let mediaItem = LocalFileSystemMediaItem(
-          id: Int.random(in: 1...Int.max),
+          id: -1,
           type: mediaType,
           original: destinationUrl,
         )
@@ -1041,16 +1125,22 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
   let onDeviceFound: (ICDevice) -> Void
   let onDeviceRemoved: (ICDevice) -> Void
   let onDeviceDisconnected: (ICDevice) -> Void
+  let onDownloadError: (Error, ICCameraFile?) -> Void
+  let onDownloadSuccess: (ICCameraFile?) -> Void
 
   init(
     onDeviceFound: @escaping (ICDevice) -> Void,
     onDeviceRemoved: @escaping (ICDevice) -> Void,
     onDeviceDisconnected: @escaping (ICDevice) -> Void,
+    onDownloadError: @escaping (Error, ICCameraFile?) -> Void,
+    onDownloadSuccess: @escaping (ICCameraFile?) -> Void,
     thumbnailStateRef: AnyObject? = nil
   ) {
     self.onDeviceFound = onDeviceFound
     self.onDeviceRemoved = onDeviceRemoved
     self.onDeviceDisconnected = onDeviceDisconnected
+    self.onDownloadError = onDownloadError
+    self.onDownloadSuccess = onDownloadSuccess
     self.thumbnailStateRef = thumbnailStateRef
   }
 
@@ -1123,26 +1213,18 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
     if let error = error {
       print(
         "DEBUG: Download failed for \(file?.name ?? "unknown file"): \(error.localizedDescription)")
-    } else if fileURL != nil, let destination = destination {
+      // Call the error handler
+      onDownloadError(error, file)
+    } else if let fileURL = fileURL {
       print(
-        "DEBUG: Download completed: \(file?.name ?? "unknown file") -> \(destination.lastPathComponent)"
+        "DEBUG: Download completed: \(file?.name ?? "unknown file") -> \(fileURL.lastPathComponent)"
       )
 
-      // If using custom import directory, move file there if needed
-      let importDir = DirectoryManager.shared.importDirectory
-      if destination.deletingLastPathComponent() != importDir {
-        let fileName = destination.lastPathComponent
-        let finalDestination = importDir.appendingPathComponent(fileName)
+      // Call the success handler
+      onDownloadSuccess(file)
 
-        do {
-          try FileManager.default.moveItem(at: destination, to: finalDestination)
-          print("DEBUG: Moved downloaded file to import directory: \(finalDestination.path)")
-        } catch {
-          print("DEBUG: Failed to move downloaded file: \(error.localizedDescription)")
-        }
-      }
-
-      // Trigger media scan to pick up the new file
+      // File is already in the correct location due to downloadsDirectoryURL option
+      // No need to move it - trigger media scan to pick up the new file
       Task {
         await MediaScanner.shared.scan(directories: DirectoryManager.shared.directories)
       }

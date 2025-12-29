@@ -137,7 +137,139 @@ final class MediaBrowserTests: XCTestCase {
 
     let items = db.getAllItems()
     XCTAssertEqual(items.count, 1)
-    XCTAssertEqual((items.first as? LocalFileSystemMediaItem)?.originalUrl, url)
+    XCTAssertEqual(items.first?.originalUrl, url)
     XCTAssertEqual(items.first?.type, MediaType.photo)
+    // Note: id may be auto-assigned by DB, so we don't check it
+  }
+
+  func testGroupRelatedMedia() throws {
+    // Create a mock ImportView to access the private method
+    let importView = ImportView()
+
+    // Test case 1: Single photo
+    let singlePhoto = ["IMG_1234.JPG"]
+    let result1 = importView.groupRelatedMedia(singlePhoto)
+    XCTAssertEqual(result1.count, 1)
+    XCTAssertEqual(result1[0].main, "IMG_1234.JPG")
+    XCTAssertNil(result1[0].edited)
+    XCTAssertNil(result1[0].live)
+
+    // Test case 2: Original and edited photo
+    let originalAndEdited = ["IMG_1234.JPG", "IMG_1234 (Edited).JPG"]
+    let result2 = importView.groupRelatedMedia(originalAndEdited)
+    XCTAssertEqual(result2.count, 1)
+    // The shorter name becomes main, longer becomes edited
+    XCTAssertEqual(result2[0].main, "IMG_1234.JPG")
+    XCTAssertEqual(result2[0].edited, "IMG_1234 (Edited).JPG")
+    XCTAssertNil(result2[0].live)
+
+    // Test case 3: Live photo (HEIC + MOV)
+    let livePhoto = ["IMG_5678.HEIC", "IMG_5678.MOV"]
+    let result3 = importView.groupRelatedMedia(livePhoto)
+    XCTAssertEqual(result3.count, 1)
+    XCTAssertEqual(result3[0].main, "IMG_5678.HEIC")
+    XCTAssertNil(result3[0].edited)
+    XCTAssertEqual(result3[0].live, "IMG_5678.MOV")
+
+    // Test case 4: Live photo with edited version
+    let livePhotoEdited = ["IMG_9999.HEIC", "IMG_9999 (Edited).HEIC", "IMG_9999.MOV"]
+    let result4 = importView.groupRelatedMedia(livePhotoEdited)
+    XCTAssertEqual(result4.count, 1)
+    XCTAssertEqual(result4[0].main, "IMG_9999.HEIC")
+    XCTAssertEqual(result4[0].edited, "IMG_9999 (Edited).HEIC")
+    XCTAssertEqual(result4[0].live, "IMG_9999.MOV")
+
+    // Test case 5: Separate video file (not live photo)
+    let separateVideo = ["VIDEO_001.MP4"]
+    let result5 = importView.groupRelatedMedia(separateVideo)
+    XCTAssertEqual(result5.count, 1)
+    XCTAssertEqual(result5[0].main, "VIDEO_001.MP4")
+    XCTAssertNil(result5[0].edited)
+    XCTAssertNil(result5[0].live)
+
+    // Test case 6: Mixed content - photo, live photo, and separate video
+    let mixedContent = [
+      "IMG_1111.JPG",  // Single photo
+      "IMG_2222.HEIC", "IMG_2222.MOV",  // Live photo
+      "VIDEO_3333.MP4",  // Separate video
+      "IMG_4444.HEIC", "IMG_E4444.HEIC",  // Eedited photo
+    ]
+    let result6 = importView.groupRelatedMedia(mixedContent)
+    XCTAssertEqual(result6.count, 4)
+
+    // Find each group
+    let photoGroup = result6.first { $0.main == "IMG_1111.JPG" }
+    XCTAssertNotNil(photoGroup)
+    XCTAssertNil(photoGroup?.edited)
+    XCTAssertNil(photoGroup?.live)
+
+    let liveGroup = result6.first { $0.main == "IMG_2222.HEIC" }
+    XCTAssertNotNil(liveGroup)
+    XCTAssertNil(liveGroup?.edited)
+    XCTAssertEqual(liveGroup?.live, "IMG_2222.MOV")
+
+    let videoGroup = result6.first { $0.main == "VIDEO_3333.MP4" }
+    XCTAssertNotNil(videoGroup)
+    XCTAssertNil(videoGroup?.edited)
+    XCTAssertNil(videoGroup?.live)
+
+    let editedPhotoGroup = result6.first { $0.main == "IMG_4444.HEIC" }
+    XCTAssertNotNil(editedPhotoGroup)
+    XCTAssertEqual(editedPhotoGroup?.edited, "IMG_E4444.HEIC")
+    XCTAssertNil(editedPhotoGroup?.live)
+
+    // Test case 7: iOS edited photo shows up first in the list
+    let iosEdited = ["IMG_E1234.JPG", "IMG_1234.JPG"]
+    let result7 = importView.groupRelatedMedia(iosEdited)
+    XCTAssertEqual(result7.count, 1)
+    XCTAssertEqual(result7[0].main, "IMG_1234.JPG")
+    XCTAssertEqual(result7[0].edited, "IMG_E1234.JPG")
+    XCTAssertNil(result7[0].live)
+
+    // Test case 8: Empty input
+    let emptyInput: [String] = []
+    let result8 = importView.groupRelatedMedia(emptyInput)
+    XCTAssertEqual(result8.count, 0)
+
+    // Test case 9: Unsupported file types
+    let unsupported = ["document.txt", "archive.zip"]
+    let result9 = importView.groupRelatedMedia(unsupported)
+    XCTAssertEqual(result9.count, 0)
+  }
+
+  func testExtractBaseName() throws {
+    let importView = ImportView()
+
+    // Test case 1: Basic filename
+    XCTAssertEqual(importView.extractBaseName(from: "IMG_1234.JPG"), "IMG_1234")
+
+    // Test case 2: Edited photo
+    XCTAssertEqual(importView.extractBaseName(from: "IMG_1234 (Edited).JPG"), "IMG_1234")
+
+    // Test case 3: iOS edited photo (E suffix)
+    XCTAssertEqual(importView.extractBaseName(from: "IMG_E1234.JPG"), "IMG_1234")
+
+    // Test case 4: iOS edited photo with separator
+    XCTAssertEqual(importView.extractBaseName(from: "IMG_E1234.JPG"), "IMG_1234")
+
+    // Test case 5: Different extensions
+    XCTAssertEqual(importView.extractBaseName(from: "PHOTO_9999.HEIC"), "PHOTO_9999")
+    XCTAssertEqual(importView.extractBaseName(from: "VIDEO_1111.MP4"), "VIDEO_1111")
+
+    // Test case 6: Case insensitive extensions
+    XCTAssertEqual(importView.extractBaseName(from: "test.jpeg"), "test")
+    XCTAssertEqual(importView.extractBaseName(from: "test.JPEG"), "test")
+
+    // Test case 7: No extension
+    XCTAssertEqual(importView.extractBaseName(from: "IMG_1234"), "IMG_1234")
+
+    // Test case 8: Complex edited filename
+    XCTAssertEqual(importView.extractBaseName(from: "IMG_E9999 (Edited).HEIC"), "IMG_9999")
+
+    // Test case 9: Multiple extensions (unknown extension not removed)
+    XCTAssertEqual(importView.extractBaseName(from: "test.jpg.backup"), "test.jpg.backup")
+
+    // Test case 10: iOS edited photo with E suffix at end
+    XCTAssertEqual(importView.extractBaseName(from: "ABCDE1234.JPG"), "ABCD1234")
   }
 }

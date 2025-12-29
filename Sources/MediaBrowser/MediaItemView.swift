@@ -1,8 +1,20 @@
 import SwiftUI
 
+struct ConditionalTapGestureModifier: ViewModifier {
+  let onTap: (() -> Void)?
+
+  func body(content: Content) -> some View {
+    if let onTap = onTap {
+      content.onTapGesture(perform: onTap)
+    } else {
+      content
+    }
+  }
+}
+
 struct MediaItemView: View {
   let item: MediaItem
-  let onTap: () -> Void
+  let onTap: (() -> Void)?
   let isSelected: Bool
   var externalThumbnail: Image? = nil  // For pre-loaded thumbnails (like in import view)
   var shouldReloadThumbnail: Bool = false  // Trigger to reload thumbnail
@@ -30,57 +42,59 @@ struct MediaItemView: View {
   }
 
   var body: some View {
-    ZStack {
-      // Selection background
-      RoundedRectangle(cornerRadius: cornerRadius)
-        .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+    AnyView(
+      ZStack {
+        // Selection background
+        RoundedRectangle(cornerRadius: cornerRadius)
+          .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
 
-      if let externalThumbnail = externalThumbnail {
-        // Use pre-loaded thumbnail (for import view)
-        externalThumbnail
-          .resizable()
-          .aspectRatio(contentMode: .fill)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-          .clipped()
-      } else if let thumbnail = thumbnail {
-        // Use loaded thumbnail (for main gallery)
-        Image(nsImage: thumbnail)
-          .resizable()
-          .aspectRatio(contentMode: .fill)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-          .clipped()
-      } else {
-        Rectangle()
-          .fill(Color.gray.opacity(0.3))
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .overlay(Text("...").font(.caption))
+        if let externalThumbnail = externalThumbnail {
+          // Use pre-loaded thumbnail (for import view)
+          externalThumbnail
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .clipped()
+        } else if let thumbnail = thumbnail {
+          // Use loaded thumbnail (for main gallery)
+          Image(nsImage: thumbnail)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .clipped()
+        } else {
+          Rectangle()
+            .fill(Color.gray.opacity(0.3))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(Text("...").font(.caption))
+        }
+
+        // Sync status indicator
+        syncStatusIndicator
+          .padding(4)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
       }
-
-      // Sync status indicator
-      syncStatusIndicator
-        .padding(4)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-    }
-    .aspectRatio(1, contentMode: .fit)  // Ensure square cells
-    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))  // Apply rounded corners to entire view
-    .overlay(
-      RoundedRectangle(cornerRadius: cornerRadius)
-        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
-    )
-    .help(item.displayName)
-    .onTapGesture {
-      onTap()
-    }
-    .onAppear {
-      loadThumbnail()
-    }
-    .onChange(of: shouldReloadThumbnail) { _, newValue in
-      if newValue {
+      .aspectRatio(1, contentMode: .fit)  // Ensure square cells
+      .clipShape(RoundedRectangle(cornerRadius: cornerRadius))  // Apply rounded corners to entire view
+      .overlay(
+        RoundedRectangle(cornerRadius: cornerRadius)
+          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
+      )
+      .help(item.displayName)
+      .modifier(
+        ConditionalTapGestureModifier(onTap: onTap)
+      )
+      .onAppear {
         loadThumbnail()
       }
-    }
+      .onChange(of: shouldReloadThumbnail) { _, newValue in
+        if newValue {
+          loadThumbnail()
+        }
+      }
+    )
   }
 
   private func loadThumbnail() {

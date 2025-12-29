@@ -33,6 +33,8 @@ class MediaItem: Identifiable, Equatable, Hashable {
 }
 
 class LocalFileSystemMediaItem: MediaItem {
+  private static var nextId = 1
+
   let originalUrl: URL
   let editedUrl: URL?
   let liveUrl: URL?
@@ -62,7 +64,11 @@ class LocalFileSystemMediaItem: MediaItem {
     originalUrl = original
     editedUrl = edited
     liveUrl = live
-    super.init(id: id, type: type)
+    let actualId = id == -1 ? LocalFileSystemMediaItem.nextId : id
+    if id == -1 {
+      LocalFileSystemMediaItem.nextId += 1
+    }
+    super.init(id: actualId, type: type)
   }
 
   // ✅ Stable hash: URL path + type
@@ -116,6 +122,7 @@ class ConnectedDeviceMediaItem: MediaItem {
       ConnectedDeviceMediaItem.nextId += 1
     }
     super.init(id: actualId, type: type)
+    self.s3SyncStatus = .notApplicable  // Connected device items are not synced to S3
   }
 
   init(_ original: ICCameraItem, edited: ICCameraItem? = nil, live: ICCameraItem? = nil) {
@@ -134,6 +141,7 @@ class ConnectedDeviceMediaItem: MediaItem {
 
     super.init(id: ConnectedDeviceMediaItem.nextId, type: type)
     ConnectedDeviceMediaItem.nextId += 1
+    self.s3SyncStatus = .notApplicable  // Connected device items are not synced to S3
   }
 
   // ✅ Stable hash: item.name + UTI + creationDate
