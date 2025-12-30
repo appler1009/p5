@@ -399,16 +399,24 @@ struct ImportView: View {
       if let group = groups[baseName] {
         groups[baseName] = .init(main: group.main, edited: group.edited, live: videoName)
       }
-      if let group = groups[videoName] {
-        groups[videoName] = .init(main: group.main, edited: group.edited, live: videoName)
-      }
     }
 
     // 3rd pass - add rest of videos as separate videos
     for videoName in videoNames {
       let baseName = extractBaseName(from: videoName)
-      if groups[baseName] == nil && groups[videoName] == nil {
-        groups[videoName] = .init(main: videoName, edited: nil, live: nil)
+      if let group = groups[baseName] {
+        if group.live == videoName {
+          // it's other video's live video; skip
+          continue
+        }
+        if group.main.count > videoName.count {
+          // longer name must be the edited version
+          groups[baseName] = .init(main: videoName, edited: group.main, live: nil)
+        } else {
+          groups[baseName] = .init(main: group.main, edited: videoName, live: nil)
+        }
+      } else {
+        groups[baseName] = .init(main: videoName, edited: nil, live: nil)
       }
     }
 

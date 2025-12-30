@@ -219,22 +219,30 @@ final class MediaBrowserTests: XCTestCase {
     XCTAssertNil(editedPhotoGroup?.live)
 
     // Test case 7: iOS edited photo shows up first in the list
-    let iosEdited = ["IMG_E1234.JPG", "IMG_1234.JPG"]
-    let result7 = importView.groupRelatedMedia(iosEdited)
+    let iosEditedPic = ["IMG_E1234.JPG", "IMG_1234.JPG"]
+    let result7 = importView.groupRelatedMedia(iosEditedPic)
     XCTAssertEqual(result7.count, 1)
     XCTAssertEqual(result7[0].main, "IMG_1234.JPG")
     XCTAssertEqual(result7[0].edited, "IMG_E1234.JPG")
     XCTAssertNil(result7[0].live)
 
+    // Test case 8: iOS edited photo shows up first in the list
+    let iosEditedVid = ["IMG_E1234.MOV", "IMG_1234.MOV"]
+    let result8 = importView.groupRelatedMedia(iosEditedVid)
+    XCTAssertEqual(result8.count, 1)
+    XCTAssertEqual(result8[0].main, "IMG_1234.MOV")
+    XCTAssertEqual(result8[0].edited, "IMG_E1234.MOV")
+    XCTAssertNil(result8[0].live)
+
     // Test case 8: Empty input
     let emptyInput: [String] = []
-    let result8 = importView.groupRelatedMedia(emptyInput)
-    XCTAssertEqual(result8.count, 0)
+    let result9 = importView.groupRelatedMedia(emptyInput)
+    XCTAssertEqual(result9.count, 0)
 
     // Test case 9: Unsupported file types
     let unsupported = ["document.txt", "archive.zip"]
-    let result9 = importView.groupRelatedMedia(unsupported)
-    XCTAssertEqual(result9.count, 0)
+    let result10 = importView.groupRelatedMedia(unsupported)
+    XCTAssertEqual(result10.count, 0)
   }
 
   func testExtractBaseName() throws {
