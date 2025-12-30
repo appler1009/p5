@@ -110,7 +110,6 @@ class DatabaseManager {
         t.column("edited_url", .text)
         t.column("live_video_url", .text)
         t.column("display_name", .text)
-        t.column("type", .text)
         t.column("creation_date", .datetime)
         t.column("modification_date", .datetime)
         t.column("exif_date", .datetime)
@@ -155,24 +154,23 @@ class DatabaseManager {
               live_video_url,
               display_name,
 
-              type,
               creation_date,
               modification_date,
               exif_date,
-
               width,
+
               height,
               latitude,
               longitude,
-
               exif,
+
               s3_sync_status
             )
             VALUES (
               ?, ?, ?, ?,
               ?, ?, ?, ?,
               ?, ?, ?, ?,
-              ?, ?
+              ?
             )
             """,
           arguments: [
@@ -181,17 +179,16 @@ class DatabaseManager {
             item.liveUrl?.absoluteString,
             item.originalUrl.lastPathComponent,
 
-            String(describing: item.type),
             metadata.creationDate,
             metadata.modificationDate,
             metadata.exifDate,
-
             metadata.dimensions?.width,
+
             metadata.dimensions?.height,
             metadata.gps?.latitude,
             metadata.gps?.longitude,
-
             exifString,
+
             item.s3SyncStatus.rawValue,
           ]
         )
@@ -209,16 +206,8 @@ class DatabaseManager {
         for row in rows {
           guard let itemId = row["id"] as Int?,
             let originalUrlString = row["original_url"] as String?,
-            let originalUrl = URL(string: originalUrlString),
-            let typeString = row["type"] as String?
+            let originalUrl = URL(string: originalUrlString)
           else { continue }
-          let itemType: MediaType
-          switch typeString {
-          case "photo": itemType = .photo
-          case "livePhoto": itemType = .livePhoto
-          case "video": itemType = .video
-          default: continue
-          }
           var meta = MediaMetadata(
             creationDate: row["creation_date"] as Date?,
             modificationDate: row["modification_date"] as Date?,
@@ -260,7 +249,7 @@ class DatabaseManager {
           let syncStatusString = row["s3_sync_status"] as String?
           let syncStatus = syncStatusString.flatMap { S3SyncStatus(rawValue: $0) } ?? .notSynced
 
-          let item = LocalFileSystemMediaItem(id: itemId, type: itemType, original: originalUrl)
+          let item = LocalFileSystemMediaItem(id: itemId, original: originalUrl)
           item.metadata = meta
           item.s3SyncStatus = syncStatus
           items.append(item)

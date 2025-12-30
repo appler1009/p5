@@ -3,7 +3,6 @@ import SwiftUI
 
 class MediaItem: Identifiable, Equatable, Hashable, ObservableObject {
   let id: Int
-  let type: MediaType
   var metadata: MediaMetadata?  // to be filled later
   @Published var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
   var displayName: String {
@@ -15,11 +14,13 @@ class MediaItem: Identifiable, Equatable, Hashable, ObservableObject {
   var thumbnailDate: Date {
     fatalError("Subclasses must override thumbnailDate")
   }
+  var type: MediaType {
+    fatalError("Subclasses must override type")
+  }
 
   // private to prevent instantiation, always use subclass
-  fileprivate init(id: Int, type: MediaType) {
+  fileprivate init(id: Int) {
     self.id = id
-    self.type = type
   }
 
   static func == (lhs: MediaItem, rhs: MediaItem) -> Bool {
@@ -60,8 +61,16 @@ class LocalFileSystemMediaItem: MediaItem {
     }
     return Date()  // FIXME fallback to file's creation date
   }
+  override var type: MediaType {
+    if originalUrl.isVideo() {
+      return .video
+    } else if liveUrl != nil {
+      return .livePhoto
+    }
+    return .photo
+  }
 
-  init(id: Int, type: MediaType, original: URL, edited: URL? = nil, live: URL? = nil) {
+  init(id: Int, original: URL, edited: URL? = nil, live: URL? = nil) {
     originalUrl = original
     editedUrl = edited
     liveUrl = live
@@ -69,7 +78,7 @@ class LocalFileSystemMediaItem: MediaItem {
     if id == -1 {
       LocalFileSystemMediaItem.nextId += 1
     }
-    super.init(id: actualId, type: type)
+    super.init(id: actualId)
   }
 
   // ✅ Stable hash: URL path + type
@@ -108,11 +117,19 @@ class ConnectedDeviceMediaItem: MediaItem {
     }
     return Date()  // FIXME
   }
+  override var type: MediaType {
+    if originalItem.isVideo() {
+      return .video
+    } else if liveItem != nil {
+      return .livePhoto
+    }
+    return .photo
+  }
 
   private static var nextId = 1
 
   init(
-    id: Int, type: MediaType, original: ICCameraItem, edited: ICCameraItem? = nil,
+    id: Int, original: ICCameraItem, edited: ICCameraItem? = nil,
     live: ICCameraItem? = nil
   ) {
     originalItem = original
@@ -122,7 +139,7 @@ class ConnectedDeviceMediaItem: MediaItem {
     if id == -1 {
       ConnectedDeviceMediaItem.nextId += 1
     }
-    super.init(id: actualId, type: type)
+    super.init(id: actualId)
     self.s3SyncStatus = .notApplicable  // Connected device items are not synced to S3
   }
 
@@ -131,16 +148,7 @@ class ConnectedDeviceMediaItem: MediaItem {
     editedItem = edited
     liveItem = live
 
-    let type: MediaType
-    if originalItem.uti == "com.apple.quicktime-movie" || originalItem.uti == "public.mpeg-4" {
-      type = .video
-    } else if live != nil {
-      type = .livePhoto
-    } else {
-      type = .photo
-    }
-
-    super.init(id: ConnectedDeviceMediaItem.nextId, type: type)
+    super.init(id: ConnectedDeviceMediaItem.nextId)
     ConnectedDeviceMediaItem.nextId += 1
     self.s3SyncStatus = .notApplicable  // Connected device items are not synced to S3
   }

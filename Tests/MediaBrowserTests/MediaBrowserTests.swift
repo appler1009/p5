@@ -17,7 +17,7 @@ final class MediaBrowserTests: XCTestCase {
 
   func testMediaItemInit() throws {
     let url = URL(fileURLWithPath: "/test.jpg")
-    let item = LocalFileSystemMediaItem(id: 1, type: .photo, original: url)
+    let item = LocalFileSystemMediaItem(id: 1, original: url)
     XCTAssertEqual(item.originalUrl, url)
     XCTAssertEqual(item.type, MediaType.photo)
   }
@@ -44,17 +44,6 @@ final class MediaBrowserTests: XCTestCase {
       )
     }
     XCTAssertEqual(monthlyGroups.count, 0)
-  }
-
-  func testMediaScannerMediaType() throws {
-    let scanner = MediaScanner.shared
-    let jpgURL = URL(fileURLWithPath: "/test.jpg")
-    let movURL = URL(fileURLWithPath: "/test.mov")
-    let unknownURL = URL(fileURLWithPath: "/test.txt")
-
-    XCTAssertEqual(scanner.mediaType(for: jpgURL), .photo)
-    XCTAssertEqual(scanner.mediaType(for: movURL), .video)
-    XCTAssertNil(scanner.mediaType(for: unknownURL))
   }
 
   func testMediaScannerScan() async throws {
@@ -84,7 +73,7 @@ final class MediaBrowserTests: XCTestCase {
   func testThumbnailCache() async throws {
     let cache = ThumbnailCache.shared
     let testItem = LocalFileSystemMediaItem(
-      id: 1, type: .photo, original: URL(fileURLWithPath: "/nonexistent.jpg"))
+      id: 1, original: URL(fileURLWithPath: "/nonexistent.jpg"))
     let image = cache.thumbnail(mediaItem: testItem)
     XCTAssertNil(image)  // Since file doesn't exist
   }
@@ -130,7 +119,7 @@ final class MediaBrowserTests: XCTestCase {
       aperture: 2.8,
       shutterSpeed: "1/100"
     )
-    let item = LocalFileSystemMediaItem(id: 2, type: .photo, original: url)
+    let item = LocalFileSystemMediaItem(id: 2, original: url)
     item.metadata = metadata
 
     db.insertItem(item)
@@ -272,8 +261,8 @@ final class MediaBrowserTests: XCTestCase {
     // Test case 8: Complex edited filename
     XCTAssertEqual("IMG_E9999 (Edited).HEIC".extractBaseName(), "IMG_9999")
 
-    // Test case 9: Multiple extensions (unknown extension not removed)
-    XCTAssertEqual("test.jpg.backup".extractBaseName(), "test.jpg.backup")
+    // Test case 9: Multiple extensions (unknown extension also removed)
+    XCTAssertEqual("test.jpg.backup".extractBaseName(), "test.jpg")
 
     // Test case 10: iOS edited photo with E suffix at end
     XCTAssertEqual("ABCDE1234.JPG".extractBaseName(), "ABCD1234")

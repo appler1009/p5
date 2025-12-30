@@ -147,7 +147,7 @@ struct ImportView: View {
               },
               onItemDoubleTap: { _ in },  // No-op for import view
               minCellWidth: 80,
-              disableDuplicates: true
+              disableDuplicates: false
             )
           }
           .padding()
@@ -341,7 +341,6 @@ struct ImportView: View {
       if let original = itemLookup[group.main] {
         return ConnectedDeviceMediaItem(
           id: -1,  // Will be replaced with a unique sequence number
-          type: .livePhoto,
           original: original,
           edited: group.edited != nil ? itemLookup[group.edited!] : nil,
           live: group.live != nil ? itemLookup[group.live!] : nil
@@ -806,12 +805,27 @@ struct ImportView: View {
     selectedDeviceMediaItems.forEach { mediaItem in
       guard let connectedDeviceMediaItem = mediaItem as? ConnectedDeviceMediaItem else { return }
       cameraItems.append(connectedDeviceMediaItem.originalItem)
+      print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") originalItem added")
       if let edited = connectedDeviceMediaItem.editedItem {
         cameraItems.append(edited)
+        print(
+          "\(connectedDeviceMediaItem.originalItem.name ?? "unknown") \(edited.name ?? "unknown") editedItem added"
+        )
+      } else {
+        print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") no editedItem added")
       }
       if let live = connectedDeviceMediaItem.liveItem {
         cameraItems.append(live)
+        print(
+          "\(connectedDeviceMediaItem.originalItem.name ?? "unknown") \(live.name ?? "unknown") liveItem added"
+        )
+      } else {
+        print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") no liveItem available")
       }
+    }
+    print("Items to download: \(cameraItems.count)")
+    for item in cameraItems {
+      print("Camera item: \(item.name ?? "unknown")")
     }
 
     await withTaskGroup(of: Void.self) { group in
@@ -974,19 +988,8 @@ struct ImportView: View {
         try FileManager.default.copyItem(at: url, to: destinationUrl)
 
         // Add to MediaScanner
-        let mediaType: MediaType
-        if url.pathExtension.lowercased().contains("jpg")
-          || url.pathExtension.lowercased().contains("heic")
-          || url.pathExtension.lowercased().contains("png")
-        {
-          mediaType = .photo
-        } else {
-          mediaType = .video
-        }
-
         let mediaItem = LocalFileSystemMediaItem(
           id: -1,
-          type: mediaType,
           original: destinationUrl,
         )
 
@@ -1277,21 +1280,43 @@ extension String {
       }
     }
 
-    // Then remove common extensions (remove all matching extensions)
-    let extensions = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".mov", ".mp4", ".m4v"]
-    var changed = true
-    while changed {
-      changed = false
-      for ext in extensions {
-        if baseName.lowercased().hasSuffix(ext) {
-          baseName = String(baseName.dropLast(ext.count))
-          changed = true
-          break
-        }
-      }
+    // Then remove common extensions (remove all extensions)
+    if let dotIndex = baseName.lastIndex(of: ".") {
+      baseName = String(baseName[..<dotIndex])
     }
 
     return baseName
+  }
+}
+
+extension URL {
+  private static let imageExtensions: Set<String> = [
+    // Standard image formats
+    "jpg", "jpeg", "png", "tiff", "tif", "gif", "bmp", "heic", "heif", "webp", "svg", "icns", "psd",
+    "ico",
+
+    // Raw image formats from various camera manufacturers
+    "cr2", "crw", "nef", "nrw", "arw", "srf", "rw2", "rwl", "raf", "orf", "ori", "pef", "dng",
+    "rwl", "3fr", "fff", "iiq", "mos", "dcr", "kdc", "x3f", "erf", "mef", "dng", "mrw", "orf",
+    "rw2", "srw", "dng",
+  ]
+
+  private static let videoExtensions: Set<String> = [
+    // Standard video formats
+    "mp4", "avi", "mov", "m4v", "mpg", "mpeg", "3gp", "3g2", "dv", "flc", "m2ts", "mts", "m4v",
+    "mkv", "webm", "wmv", "asf", "rm", "divx", "xvid", "ogv", "vob",
+  ]
+
+  func isImage() -> Bool {
+    return Self.imageExtensions.contains(pathExtension.lowercased())
+  }
+
+  func isVideo() -> Bool {
+    return Self.videoExtensions.contains(pathExtension.lowercased())
+  }
+
+  func isMedia() -> Bool {
+    return isImage() || isVideo()
   }
 }
 

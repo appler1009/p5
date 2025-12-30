@@ -27,11 +27,6 @@ class S3Service: ObservableObject {
   private var pendingTasks = Set<Task<Void, Never>>()
   private let uploadQueue = DispatchQueue(label: "com.mediabrowser.s3upload")
 
-  private let supportedImageExtensions = [
-    "jpg", "jpeg", "png", "heic", "tiff", "tif", "raw", "cr2", "nef", "arw", "dng",
-  ]
-  private let supportedVideoExtensions = ["mov", "mp4"]
-
   /// Check if a file exists with case-insensitive extension matching
   private func fileExistsWithCaseInsensitiveExtension(
     baseName: String, extensions: [String], directoryURL: URL

@@ -12,11 +12,6 @@ class MediaScanner: ObservableObject {
   @Published var isScanning = false
   @Published var scanProgress: (current: Int, total: Int)? = nil
 
-  private let supportedImageExtensions = [
-    "jpg", "jpeg", "png", "heic", "tiff", "tif", "raw", "cr2", "nef", "arw", "dng",
-  ]
-  private let supportedVideoExtensions = ["mov", "mp4"]
-
   private init() {
     loadFromDB()
   }
@@ -76,7 +71,7 @@ class MediaScanner: ObservableObject {
 
     var baseToURLs = [String: [URL]]()
     while let fileURL = enumerator.nextObject() as? URL {
-      if supportedExtensions.contains(fileURL.pathExtension.lowercased()) {
+      if fileURL.isMedia() {
         let base = fileURL.deletingPathExtension().lastPathComponent
         baseToURLs[base, default: []].append(fileURL)
       }
@@ -84,7 +79,7 @@ class MediaScanner: ObservableObject {
 
     var count = 0
     for (base, urls) in baseToURLs {
-      let imageURL = urls.first { supportedImageExtensions.contains($0.pathExtension.lowercased()) }
+      let imageURL = urls.first { $0.isImage() }
       let preferredURL = imageURL ?? urls.first
       if preferredURL != nil,
         isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
@@ -105,7 +100,7 @@ class MediaScanner: ObservableObject {
 
     var allURLs: [URL] = []
     while let fileURL = enumerator.nextObject() as? URL {
-      if supportedExtensions.contains(fileURL.pathExtension.lowercased()) {
+      if fileURL.isMedia() {
         allURLs.append(fileURL)
       }
     }
@@ -118,23 +113,21 @@ class MediaScanner: ObservableObject {
 
     for (base, urls) in baseToURLs {
       // Prefer image over video for the same base
-      let imageURL = urls.first { supportedImageExtensions.contains($0.pathExtension.lowercased()) }
+      let imageURL = urls.first { $0.isImage() }
       let preferredURL = imageURL ?? urls.first
       if let url = preferredURL,
         isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
       {
-        if let type = mediaType(for: url) {
-          var item = LocalFileSystemMediaItem(id: -1, type: type, original: url)
-          await extractMetadata(for: &item)
-          // Pre-generate and cache thumbnail
-          let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: url, mediaItem: item)
-          await MainActor.run { [item] in
-            items.append(item)
-          }
-          if let progress = scanProgress, progress.current + 1 <= progress.total {
-            await MainActor.run {
-              scanProgress = (progress.current + 1, progress.total)
-            }
+        var item = LocalFileSystemMediaItem(id: -1, original: url)
+        await extractMetadata(for: &item)
+        // Pre-generate and cache thumbnail
+        let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: url, mediaItem: item)
+        await MainActor.run { [item] in
+          items.append(item)
+        }
+        if let progress = scanProgress, progress.current + 1 <= progress.total {
+          await MainActor.run {
+            scanProgress = (progress.current + 1, progress.total)
           }
         }
       }
@@ -204,27 +197,5 @@ class MediaScanner: ObservableObject {
       }
     }
     return base
-  }
-
-  private var supportedExtensions: [String] {
-    supportedImageExtensions + supportedVideoExtensions
-  }
-
-  func mediaType(for url: URL) -> MediaType? {
-    let pathExtension = url.pathExtension.lowercased()
-    if supportedImageExtensions.contains(pathExtension) {
-      // Check if it's a Live Photo: look for paired .mov
-      let movURL = url.deletingPathExtension().appendingPathExtension("mov")
-      if supportedVideoExtensions.contains(movURL.pathExtension.lowercased())
-        && FileManager.default.fileExists(atPath: movURL.path)
-      {
-        return .livePhoto
-      } else {
-        return .photo
-      }
-    } else if supportedVideoExtensions.contains(pathExtension) {
-      return .video
-    }
-    return nil
   }
 }
