@@ -15,6 +15,7 @@ struct SectionGridView: View {
   @State private var thumbnailObserver: NSObjectProtocol?
   @State private var lastSelectedItem: MediaItem?
   @State private var duplicateIds: Set<Int> = []
+  @State private var hoveredItemId: Int? = nil
 
   var sortedItems: [MediaItem] { items.sorted(by: { $0.thumbnailDate > $1.thumbnailDate }) }
 
@@ -57,6 +58,11 @@ struct SectionGridView: View {
             externalThumbnail: nil,
             shouldReloadThumbnail: itemsNeedingThumbnailUpdate.contains(item.id)
           )
+          .onHover { hovering in
+            hoveredItemId = hovering ? item.id : nil
+          }
+          .scaleEffect(hoveredItemId == item.id ? 1.05 : 1.0)
+          .animation(.easeInOut(duration: 0.2), value: hoveredItemId)
           .contentShape(Rectangle())
           .onTapGesture {
             handleItemSelection(item)

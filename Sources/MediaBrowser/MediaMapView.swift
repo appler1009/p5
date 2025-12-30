@@ -178,6 +178,5 @@ struct MediaMapView: View {
     .onChange(of: mediaScanner.items) {
       computeClusters()
     }
-    .focusable()
   }
 }

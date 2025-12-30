@@ -9,6 +9,67 @@ struct Cluster: Identifiable {
   let items: [LocalFileSystemMediaItem]
 }
 
+class HoverAnnotationView: MKAnnotationView {
+  private var trackingArea: NSTrackingArea?
+
+  override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+    super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+    wantsLayer = true
+    // Note: We don't manually set anchorPoint here as it can interfere
+    // with MapKit's internal alignment logic. We handle it in the transform.
+    updateTrackingAreas()
+  }
+
+  required init?(coder aDecoder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    if let trackingArea = trackingArea {
+      removeTrackingArea(trackingArea)
+    }
+    trackingArea = NSTrackingArea(
+      rect: bounds,
+      options: [.mouseEnteredAndExited, .activeAlways],
+      owner: self
+    )
+    addTrackingArea(trackingArea!)
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    super.mouseEntered(with: event)
+    NSCursor.pointingHand.set()
+    applyScale(1.1)
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    super.mouseExited(with: event)
+    NSCursor.arrow.set()
+    applyScale(1.0)
+  }
+
+  private func applyScale(_ scale: CGFloat) {
+    guard let layer = self.layer else { return }
+
+    // 1. Move to center, 2. Scale, 3. Move back
+    // This effectively scales from the "dead center" regardless of the anchorPoint
+    let b = bounds
+    let centerTransform = CATransform3DMakeTranslation(b.midX, b.midY, 0)
+    let scaled = CATransform3DScale(centerTransform, scale, scale, 1.0)
+    let finalTransform = CATransform3DTranslate(scaled, -b.midX, -b.midY, 0)
+
+    let animation = CABasicAnimation(keyPath: "transform")
+    animation.fromValue = layer.presentation()?.transform ?? CATransform3DIdentity
+    animation.toValue = finalTransform
+    animation.duration = 0.1
+    animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+
+    layer.transform = finalTransform
+    layer.add(animation, forKey: "hoverScale")
+  }
+}
+
 struct MapView: NSViewRepresentable {
   @Binding var clusters: [Cluster]
   @Binding var region: MKCoordinateRegion
@@ -136,10 +197,11 @@ struct MapView: NSViewRepresentable {
       guard let annotation = annotation as? MapAnnotation else { return nil }
 
       let identifier = annotation.cluster.count < 5 ? "PhotoPin" : "ClusterPin"
-      var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+      var annotationView =
+        mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? HoverAnnotationView
 
       if annotationView == nil {
-        annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+        annotationView = HoverAnnotationView(annotation: annotation, reuseIdentifier: identifier)
         annotationView?.canShowCallout = false
         annotationView?.centerOffset = CGPoint(x: 0, y: -20)
       } else {
