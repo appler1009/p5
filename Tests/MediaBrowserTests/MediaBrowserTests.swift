@@ -246,38 +246,36 @@ final class MediaBrowserTests: XCTestCase {
   }
 
   func testExtractBaseName() throws {
-    let importView = ImportView()
-
     // Test case 1: Basic filename
-    XCTAssertEqual(importView.extractBaseName(from: "IMG_1234.JPG"), "IMG_1234")
+    XCTAssertEqual("IMG_1234.JPG".extractBaseName(), "IMG_1234")
 
     // Test case 2: Edited photo
-    XCTAssertEqual(importView.extractBaseName(from: "IMG_1234 (Edited).JPG"), "IMG_1234")
+    XCTAssertEqual("IMG_1234 (Edited).JPG".extractBaseName(), "IMG_1234")
 
     // Test case 3: iOS edited photo (E suffix)
-    XCTAssertEqual(importView.extractBaseName(from: "IMG_E1234.JPG"), "IMG_1234")
+    XCTAssertEqual("IMG_E1234.JPG".extractBaseName(), "IMG_1234")
 
     // Test case 4: iOS edited photo with separator
-    XCTAssertEqual(importView.extractBaseName(from: "IMG_E1234.JPG"), "IMG_1234")
+    XCTAssertEqual("IMG_E1234.JPG".extractBaseName(), "IMG_1234")
 
     // Test case 5: Different extensions
-    XCTAssertEqual(importView.extractBaseName(from: "PHOTO_9999.HEIC"), "PHOTO_9999")
-    XCTAssertEqual(importView.extractBaseName(from: "VIDEO_1111.MP4"), "VIDEO_1111")
+    XCTAssertEqual("PHOTO_9999.HEIC".extractBaseName(), "PHOTO_9999")
+    XCTAssertEqual("VIDEO_1111.MP4".extractBaseName(), "VIDEO_1111")
 
     // Test case 6: Case insensitive extensions
-    XCTAssertEqual(importView.extractBaseName(from: "test.jpeg"), "test")
-    XCTAssertEqual(importView.extractBaseName(from: "test.JPEG"), "test")
+    XCTAssertEqual("test.jpeg".extractBaseName(), "test")
+    XCTAssertEqual("test.JPEG".extractBaseName(), "test")
 
     // Test case 7: No extension
-    XCTAssertEqual(importView.extractBaseName(from: "IMG_1234"), "IMG_1234")
+    XCTAssertEqual("IMG_1234".extractBaseName(), "IMG_1234")
 
     // Test case 8: Complex edited filename
-    XCTAssertEqual(importView.extractBaseName(from: "IMG_E9999 (Edited).HEIC"), "IMG_9999")
+    XCTAssertEqual("IMG_E9999 (Edited).HEIC".extractBaseName(), "IMG_9999")
 
     // Test case 9: Multiple extensions (unknown extension not removed)
-    XCTAssertEqual(importView.extractBaseName(from: "test.jpg.backup"), "test.jpg.backup")
+    XCTAssertEqual("test.jpg.backup".extractBaseName(), "test.jpg.backup")
 
     // Test case 10: iOS edited photo with E suffix at end
-    XCTAssertEqual(importView.extractBaseName(from: "ABCDE1234.JPG"), "ABCD1234")
+    XCTAssertEqual("ABCDE1234.JPG".extractBaseName(), "ABCD1234")
   }
 }

@@ -1,4 +1,9 @@
 import Foundation
+import SwiftUI
+
+extension Notification.Name {
+  static let newMediaItemImported = Notification.Name("newMediaItemImported")
+}
 
 class MediaScanner: ObservableObject {
   static let shared = MediaScanner()

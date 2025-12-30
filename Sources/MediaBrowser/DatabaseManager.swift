@@ -12,6 +12,7 @@ class DatabaseManager {
         + "/MediaBrowser"
       try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
       let dbPath = "\(path)/media.db"
+      print(dbPath)
 
       // If DB exists and local_media_items table lacks s3_sync_status column, add it
       if FileManager.default.fileExists(atPath: dbPath) {
@@ -108,6 +109,7 @@ class DatabaseManager {
         t.column("original_url", .text).unique()
         t.column("edited_url", .text)
         t.column("live_video_url", .text)
+        t.column("display_name", .text)
         t.column("type", .text)
         t.column("creation_date", .datetime)
         t.column("modification_date", .datetime)
@@ -151,43 +153,45 @@ class DatabaseManager {
               original_url,
               edited_url,
               live_video_url,
-              type,
+              display_name,
 
+              type,
               creation_date,
               modification_date,
               exif_date,
-              width,
 
+              width,
               height,
               latitude,
               longitude,
-              exif,
 
+              exif,
               s3_sync_status
             )
             VALUES (
               ?, ?, ?, ?,
               ?, ?, ?, ?,
               ?, ?, ?, ?,
-              ?
+              ?, ?
             )
             """,
           arguments: [
             item.originalUrl.absoluteString,
             item.editedUrl?.absoluteString,
             item.liveUrl?.absoluteString,
-            String(describing: item.type),
+            item.originalUrl.lastPathComponent,
 
+            String(describing: item.type),
             metadata.creationDate,
             metadata.modificationDate,
             metadata.exifDate,
-            metadata.dimensions?.width,
 
+            metadata.dimensions?.width,
             metadata.dimensions?.height,
             metadata.gps?.latitude,
             metadata.gps?.longitude,
-            exifString,
 
+            exifString,
             item.s3SyncStatus.rawValue,
           ]
         )
@@ -266,5 +270,41 @@ class DatabaseManager {
       print("Query error: \(error)")
     }
     return items
+  }
+
+  func hasDuplicate(baseName: String, date: Date) -> Bool {
+    guard let dbQueue = dbQueue else { return false }
+    let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+    guard let year = components.year, let month = components.month, let day = components.day else {
+      return false
+    }
+    let startOfDay = Calendar.current.date(
+      from: DateComponents(year: year, month: month, day: day))!
+    let endOfDay = Calendar.current.date(
+      from: DateComponents(year: year, month: month, day: day + 1))!
+    let count = try? dbQueue.read { db in
+      try Int.fetchOne(
+        db,
+        sql: """
+          SELECT
+            COUNT(*)
+          FROM
+            local_media_items
+          WHERE
+            (
+              (
+                creation_date >= ?
+                AND creation_date < ?
+              )
+              OR (
+                exif_date >= ?
+                AND exif_date < ?
+              )
+            )
+            AND display_name LIKE ?
+          """,
+        arguments: [startOfDay, endOfDay, startOfDay, endOfDay, "\(baseName).%"]) ?? 0
+    }
+    return (count ?? 0) > 0
   }
 }

@@ -147,6 +147,7 @@ struct ImportView: View {
               },
               onItemDoubleTap: { _ in },  // No-op for import view
               minCellWidth: 80,
+              disableDuplicates: true
             )
           }
           .padding()
@@ -376,7 +377,7 @@ struct ImportView: View {
       return photoExtensions.contains { $0.caseInsensitiveCompare(ext) == .orderedSame }
     }
     for photoName in photoNames {
-      let baseName = extractBaseName(from: photoName)
+      let baseName = photoName.extractBaseName()
       if let group = groups[baseName] {
         if group.main.count > photoName.count {
           // longer name must be the edited name
@@ -395,7 +396,7 @@ struct ImportView: View {
       return videoExtensions.contains { $0.caseInsensitiveCompare(ext) == .orderedSame }
     }
     for videoName in videoNames {
-      let baseName = extractBaseName(from: videoName)
+      let baseName = videoName.extractBaseName()
       if let group = groups[baseName] {
         groups[baseName] = .init(main: group.main, edited: group.edited, live: videoName)
       }
@@ -403,7 +404,7 @@ struct ImportView: View {
 
     // 3rd pass - add rest of videos as separate videos
     for videoName in videoNames {
-      let baseName = extractBaseName(from: videoName)
+      let baseName = videoName.extractBaseName()
       if let group = groups[baseName] {
         if group.live == videoName {
           // it's other video's live video; skip
@@ -421,44 +422,6 @@ struct ImportView: View {
     }
 
     return Array(groups.values)
-  }
-
-  // Extract base name from filename (remove extension and edit markers)
-  func extractBaseName(from filename: String) -> String {
-    var baseName = filename
-
-    // Remove edit markers first (before extensions)
-    // Remove edit markers (e.g., "IMG_1234" from "IMG_1234 (Edited)")
-    if let editMarkerRange = baseName.range(of: " \\(Edited\\)", options: .regularExpression) {
-      baseName = String(baseName[..<editMarkerRange.lowerBound])
-    }
-
-    // Remove iOS edit markers (E in the middle)
-    if let firstDigitIndex = baseName.firstIndex(where: { $0.isNumber }) {
-      let beforeDigits = baseName[..<firstDigitIndex]
-      if beforeDigits.hasSuffix("E") {
-        // Remove the E without adding separator
-        let prefix = String(beforeDigits.dropLast())
-        let digits = String(baseName[firstDigitIndex...])
-        baseName = prefix + digits
-      }
-    }
-
-    // Then remove common extensions (remove all matching extensions)
-    let extensions = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".mov", ".mp4", ".m4v"]
-    var changed = true
-    while changed {
-      changed = false
-      for ext in extensions {
-        if baseName.lowercased().hasSuffix(ext) {
-          baseName = String(baseName.dropLast(ext.count))
-          changed = true
-          break
-        }
-      }
-    }
-
-    return baseName
   }
 
   private func scanForDevices() {
@@ -855,7 +818,6 @@ struct ImportView: View {
       for cameraItem in cameraItems {
         // ICCameraFile is the subclass that supports downloading
         guard let cameraFile = cameraItem as? ICCameraFile else {
-          print("DEBUG: Cannot download \(cameraItem.name ?? "unnamed") - not a file")
           return
         }
 
@@ -865,18 +827,13 @@ struct ImportView: View {
 
         group.addTask { [downloadState, downloadLimiter] in
           await downloadLimiter.acquire()
-          print("Download limiter acquired for \(cameraFileId)")
           let task = Task { [downloadState] in
             if Task.isCancelled { return }
             await self.checkForDownload(
               for: cameraFile,
               onComplete: {
-                Task {
-                  await downloadLimiter.release()
-                  print("Download limiter released for \(cameraFileId)")
-                }
+                Task { await downloadLimiter.release() }
                 await downloadState.clearRunningTask(for: cameraFileId)
-                print("Download task finished for \(cameraFileId)")
               })
           }
           await downloadState.setRunningTask(task, for: cameraFileId)
@@ -1006,6 +963,7 @@ struct ImportView: View {
 
   private func importManualFiles(_ urls: [URL]) {
     let importDirectory = DirectoryManager.shared.importDirectory
+    var newImportedItems: [LocalFileSystemMediaItem] = []
 
     for url in urls {
       let fileName = url.lastPathComponent
@@ -1033,6 +991,7 @@ struct ImportView: View {
         )
 
         MediaScanner.shared.items.append(mediaItem)
+        newImportedItems.append(mediaItem)
 
       } catch {
         print("Failed to import file \(url.lastPathComponent): \(error)")
@@ -1042,6 +1001,15 @@ struct ImportView: View {
     // Trigger metadata extraction and refresh
     Task {
       await MediaScanner.shared.scan(directories: DirectoryManager.shared.directories)
+
+      // Notify about new imported items that are duplicates
+      for item in newImportedItems {
+        let baseName = item.displayName.extractBaseName()
+        if DatabaseManager.shared.hasDuplicate(baseName: baseName, date: item.thumbnailDate) {
+          NotificationCenter.default.post(name: .newMediaItemImported, object: item.id)
+        }
+      }
+
       dismiss()
     }
   }
@@ -1283,6 +1251,47 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
   func cameraDeviceDidEnableAccessRestriction(_ device: ICDevice) {
     // Handle access restriction enable
     print("DEBUG: Camera device access restriction enabled")
+  }
+}
+
+// MARK: - extract base name
+extension String {
+  // Extract base name from filename (remove extension and edit markers)
+  func extractBaseName() -> String {
+    var baseName = self
+
+    // Remove edit markers first (before extensions)
+    // Remove edit markers (e.g., "IMG_1234" from "IMG_1234 (Edited)")
+    if let editMarkerRange = baseName.range(of: " \\(Edited\\)", options: .regularExpression) {
+      baseName = String(baseName[..<editMarkerRange.lowerBound])
+    }
+
+    // Remove iOS edit markers (E in the middle)
+    if let firstDigitIndex = baseName.firstIndex(where: { $0.isNumber }) {
+      let beforeDigits = baseName[..<firstDigitIndex]
+      if beforeDigits.hasSuffix("E") {
+        // Remove the E without adding separator
+        let prefix = String(beforeDigits.dropLast())
+        let digits = String(baseName[firstDigitIndex...])
+        baseName = prefix + digits
+      }
+    }
+
+    // Then remove common extensions (remove all matching extensions)
+    let extensions = [".jpg", ".jpeg", ".png", ".heic", ".heif", ".mov", ".mp4", ".m4v"]
+    var changed = true
+    while changed {
+      changed = false
+      for ext in extensions {
+        if baseName.lowercased().hasSuffix(ext) {
+          baseName = String(baseName.dropLast(ext.count))
+          changed = true
+          break
+        }
+      }
+    }
+
+    return baseName
   }
 }
 

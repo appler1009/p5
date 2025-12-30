@@ -16,6 +16,7 @@ struct MediaItemView: View {
   let item: MediaItem
   let onTap: (() -> Void)?
   let isSelected: Bool
+  let isDuplicate: Bool
   var externalThumbnail: Image? = nil  // For pre-loaded thumbnails (like in import view)
   var shouldReloadThumbnail: Bool = false  // Trigger to reload thumbnail
   @State private var thumbnail: NSImage?
@@ -86,6 +87,7 @@ struct MediaItemView: View {
       .modifier(
         ConditionalTapGestureModifier(onTap: onTap)
       )
+      .opacity(isDuplicate ? 0.2 : 1.0)
       .onAppear {
         loadThumbnail()
       }

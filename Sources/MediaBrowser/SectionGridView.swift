@@ -8,10 +8,12 @@ struct SectionGridView: View {
   let onSelectionChange: (Set<MediaItem>) -> Void
   let onItemDoubleTap: (MediaItem) -> Void
   let minCellWidth: CGFloat
+  let disableDuplicates: Bool
 
   @State private var itemsNeedingThumbnailUpdate: Set<Int> = []
   @State private var thumbnailObserver: NSObjectProtocol?
   @State private var lastSelectedItem: MediaItem?
+  @State private var duplicateIds: Set<Int> = []
 
   var sortedItems: [MediaItem] { items.sorted(by: { $0.thumbnailDate > $1.thumbnailDate }) }
 
@@ -22,7 +24,8 @@ struct SectionGridView: View {
     selectedItems: Binding<Set<MediaItem>>,
     onSelectionChange: @escaping (Set<MediaItem>) -> Void,
     onItemDoubleTap: @escaping (MediaItem) -> Void,
-    minCellWidth: CGFloat = 120
+    minCellWidth: CGFloat = 120,
+    disableDuplicates: Bool = false
   ) {
     self.title = title
     self.items = items
@@ -30,6 +33,7 @@ struct SectionGridView: View {
     self.onSelectionChange = onSelectionChange
     self.onItemDoubleTap = onItemDoubleTap
     self.minCellWidth = minCellWidth
+    self.disableDuplicates = disableDuplicates
   }
 
   var body: some View {
@@ -46,6 +50,8 @@ struct SectionGridView: View {
             item: item,
             onTap: nil,
             isSelected: selectedItems.contains(item),
+            isDuplicate: duplicateIds.contains(item.id),
+            externalThumbnail: nil,
             shouldReloadThumbnail: itemsNeedingThumbnailUpdate.contains(item.id)
           )
           .contentShape(Rectangle())
@@ -63,9 +69,15 @@ struct SectionGridView: View {
     }
     .onAppear {
       setupThumbnailObserver()
+      checkForDuplicates()
     }
     .onDisappear {
       cleanupThumbnailObserver()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .newMediaItemImported)) { notification in
+      if let itemId = notification.object as? Int {
+        duplicateIds.insert(itemId)
+      }
     }
   }
 
@@ -99,7 +111,22 @@ struct SectionGridView: View {
     }
   }
 
+  private func checkForDuplicates() {
+    guard disableDuplicates else { return }
+    Task {
+      var newDuplicates: Set<Int> = []
+      for item in items {
+        let baseName = item.displayName.extractBaseName()
+        if DatabaseManager.shared.hasDuplicate(baseName: baseName, date: item.thumbnailDate) {
+          newDuplicates.insert(item.id)
+        }
+      }
+      duplicateIds = newDuplicates
+    }
+  }
+
   private func handleItemSelection(_ item: MediaItem) {
+    if duplicateIds.contains(item.id) { return }
     let eventModifierFlags = NSApp.currentEvent?.modifierFlags ?? []
 
     if eventModifierFlags.contains(.command) {
@@ -137,7 +164,7 @@ struct SectionGridView: View {
     }
 
     let range = min(startIndex, endIndex)...max(startIndex, endIndex)
-    let itemsInRange = sortedItems[range]
+    let itemsInRange = sortedItems[range].filter { !duplicateIds.contains($0.id) }
 
     // Replace current selection with items in range
     selectedItems = Set(itemsInRange)
