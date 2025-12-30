@@ -80,7 +80,7 @@ struct MediaItemView: View {
       .clipShape(RoundedRectangle(cornerRadius: cornerRadius))  // Apply rounded corners to entire view
       .overlay(
         RoundedRectangle(cornerRadius: cornerRadius)
-          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
+          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 4)
       )
       .help(item.displayName)
       .modifier(
