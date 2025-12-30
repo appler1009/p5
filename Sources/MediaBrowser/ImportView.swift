@@ -633,13 +633,7 @@ struct ImportView: View {
 
       // Fallback: filter for any media items at root level
       let cameraItems = contents.filter { item in
-        if let uti = item.uti {
-          let isMedia = uti.hasPrefix("public.image") || uti.hasPrefix("public.video")
-          print("DEBUG: Item uti=\(uti), isMedia=\(isMedia)")
-          return isMedia
-        }
-        print("DEBUG: Item has no uti")
-        return false
+        return item.isMedia()
       }
 
       print("DEBUG: Found \(self.deviceMediaItems.count) raw items at root level")
@@ -712,16 +706,12 @@ struct ImportView: View {
 
           if let subfolderContents = subfolder.contents {
             let mediaInSubfolder = subfolderContents.filter { subItem in
-              if let uti = subItem.uti {
-                return uti.hasPrefix("public.image") || uti.hasPrefix("public.video")
-              }
-              return false
+              return subItem.isMedia()
             }
             allCameraItems.append(contentsOf: mediaInSubfolder)
 
           }
-        } else if let uti = item.uti, uti.hasPrefix("public.image") || uti.hasPrefix("public.video")
-        {
+        } else if item.isMedia() {
           allCameraItems.append(item)
           print("DEBUG: Found media item: \(item.name ?? "unnamed")")
         }
@@ -861,27 +851,37 @@ struct ImportView: View {
           return
         }
 
-        let id = String(describing: cameraFile.name)  // FIXME
-        let requested = await downloadState.markRequestedIfNeeded(id: id)
+        let cameraFileId = String(describing: cameraFile.name!)  // FIXME
+        let requested = await downloadState.markRequestedIfNeeded(id: cameraFileId)
         guard requested else { return }
 
         group.addTask { [downloadState, downloadLimiter] in
           await downloadLimiter.acquire()
+          print("Download limiter acquired for \(cameraFileId)")
           let task = Task { [downloadState] in
-            defer { Task { await downloadLimiter.release() } }
             if Task.isCancelled { return }
-            await self.checkForDownload(for: cameraFile)
-            await downloadState.clearRunningTask(for: id)
+            await self.checkForDownload(
+              for: cameraFile,
+              onComplete: {
+                Task {
+                  await downloadLimiter.release()
+                  print("Download limiter released for \(cameraFileId)")
+                }
+                await downloadState.clearRunningTask(for: cameraFileId)
+                print("Download task finished for \(cameraFileId)")
+              })
           }
-          await downloadState.setRunningTask(task, for: id)
+          await downloadState.setRunningTask(task, for: cameraFileId)
           await task.value
         }
       }
     }
   }
 
-  private func checkForDownload(for cameraFile: ICCameraFile) async {
-    let cameraFileId = String(describing: cameraFile.name)  // FIXME
+  private func checkForDownload(
+    for cameraFile: ICCameraFile, onComplete: @escaping () async -> Void
+  ) async {
+    let cameraFileId = String(describing: cameraFile.name!)  // FIXME
     do {
       if Task.isCancelled { return }
       let _ = try await withCheckedThrowingContinuation {
@@ -910,6 +910,26 @@ struct ImportView: View {
               "DEBUG: Download request successful for \(cameraFileId), ID: \(downloadID ?? "none")")
             self.showStatus("Download started successfully")
           }
+
+          if let fileName = cameraFile.name {
+            let importDir = DirectoryManager.shared.importDirectory
+            let downloadedPath = importDir.appendingPathComponent(fileName)
+            do {
+              let attributes = try FileManager.default.attributesOfItem(atPath: downloadedPath.path)
+              if let downloadedSize = attributes[.size] as? NSNumber {
+                if downloadedSize.uint64Value == cameraFile.fileSize {
+                  print("Downloaded file size matches: \(downloadedSize)")
+                } else {
+                  print(
+                    "Downloaded file size does not match: downloaded \(downloadedSize), expected \(cameraFile.fileSize)"
+                  )
+                }
+              }
+            } catch {
+              print("Failed to get downloaded file size: \(error)")
+            }
+          }
+          Task { await onComplete() }
         }
       }
     } catch {
@@ -1271,5 +1291,115 @@ extension ICCameraItem {
     hasher.combine(uti)
     hasher.combine(creationDate)
     return hasher.finalize()
+  }
+
+}
+
+extension ICCameraItem {
+  private static let imageUTIs: Set<String> = [
+    // Standard image formats
+    "public.jpeg",
+    "public.png",
+    "public.tiff",
+    "public.gif",
+    "public.bmp",
+    "public.heic",
+    "public.heif",
+    "public.webp",
+    "public.svg-image",
+    "com.apple.icns",
+    "com.adobe.photoshop-image",
+    "com.microsoft.bmp",
+    "com.microsoft.ico",
+
+    // Raw image formats from various camera manufacturers
+    "com.canon.cr2",
+    "com.canon.crw",
+    "com.nikon.nef",
+    "com.nikon.nrw",
+    "com.sony.arw",
+    "com.sony.srf",
+    "com.panasonic.rw2",
+    "com.panasonic.rwl",
+    "com.fuji.raw",
+    "com.fuji.raf",
+    "com.olympus.orf",
+    "com.olympus.ori",
+    "com.pentax.raw",
+    "com.pentax.pef",
+    "com.leica.raw",
+    "com.leica.rwl",
+    "com.hasselblad.3fr",
+    "com.hasselblad.fff",
+    "com.phaseone.iiq",
+    "com.leaf.mos",
+    "com.kodak.dcr",
+    "com.kodak.kdc",
+    "com.sigma.raw",
+    "com.sigma.x3f",
+    "com.epson.raw",
+    "com.epson.erf",
+    "com.mamiya.raw",
+    "com.mamiya.mef",
+    "com.ricoh.raw",
+    "com.ricoh.dng",
+    "com.konica.raw",
+    "com.konica.mrw",
+    "com.minolta.raw",
+    "com.minolta.mrw",
+    "com.casiodata.raw",
+    "com.agfa.raw",
+    "com.samsung.raw",
+    "com.samsung.srw",
+    "com.nokia.raw",
+    "com.nokia.nrw",
+  ]
+
+  private static let videoUTIs: Set<String> = [
+    // Standard video formats
+    "public.mpeg-4",
+    "public.avi",
+    "com.apple.quicktime-movie",
+    "public.mp4",
+    "public.mpeg",
+    "public.3gpp",
+    "public.3gpp2",
+    "public.dv",
+    "public.flc",
+    "public.m2ts",
+    "public.mts",
+    "public.m4v",
+    "public.mkv",
+    "org.webmproject.webm",
+    "public.movie",
+    "com.microsoft.wmv",
+    "com.microsoft.asf",
+    "com.real.realmedia",
+    "com.divx.divx",
+    "com.xvid.xvid",
+    "public.ogv",
+    "public.vob",
+
+    // Additional formats from devices
+    "com.apple.itunes.m4v",
+    "com.google.webm",
+    "com.microsoft.mpeg",
+    "com.sony.mpeg",
+    "com.panasonic.mpeg",
+    "com.canon.mpeg",
+    "com.nikon.mpeg",
+    "com.olympus.mpeg",
+  ]
+
+  func isImage() -> Bool {
+    return uti.map { Self.imageUTIs.contains($0) } ?? false
+  }
+
+  func isVideo() -> Bool {
+    return uti.map { Self.videoUTIs.contains($0) } ?? false
+  }
+
+  func isMedia() -> Bool {
+    return isImage() || isVideo()
   }
 }
