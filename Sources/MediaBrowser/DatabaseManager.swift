@@ -123,7 +123,7 @@ class DatabaseManager {
       }
       try db.create(table: "directories", ifNotExists: true) { t in
         t.column("id", .integer).primaryKey(autoincrement: true)
-        t.column("path", .text)
+        t.column("path", .text).unique()
         t.column("bookmark", .text)
       }
     }

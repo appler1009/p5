@@ -169,7 +169,7 @@ class DirectoryManager: ObservableObject {
     }
 
     let home = FileManager.default.homeDirectoryForCurrentUser
-    let importDir = home.appendingPathComponent("MediaBrowser/Imports")
+    let importDir = home.appendingPathComponent("Downloads/Imported")
 
     do {
       try FileManager.default.createDirectory(at: importDir, withIntermediateDirectories: true)

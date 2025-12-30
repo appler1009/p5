@@ -9,6 +9,7 @@ struct SectionGridView: View {
   let onItemDoubleTap: (MediaItem) -> Void
   let minCellWidth: CGFloat
   let disableDuplicates: Bool
+  let onDuplicateCountChange: ((Int) -> Void)?
 
   @State private var itemsNeedingThumbnailUpdate: Set<Int> = []
   @State private var thumbnailObserver: NSObjectProtocol?
@@ -25,7 +26,8 @@ struct SectionGridView: View {
     onSelectionChange: @escaping (Set<MediaItem>) -> Void,
     onItemDoubleTap: @escaping (MediaItem) -> Void,
     minCellWidth: CGFloat = 120,
-    disableDuplicates: Bool = false
+    disableDuplicates: Bool = false,
+    onDuplicateCountChange: ((Int) -> Void)? = nil
   ) {
     self.title = title
     self.items = items
@@ -34,6 +36,7 @@ struct SectionGridView: View {
     self.onItemDoubleTap = onItemDoubleTap
     self.minCellWidth = minCellWidth
     self.disableDuplicates = disableDuplicates
+    self.onDuplicateCountChange = onDuplicateCountChange
   }
 
   var body: some View {
@@ -122,6 +125,7 @@ struct SectionGridView: View {
         }
       }
       duplicateIds = newDuplicates
+      onDuplicateCountChange?(duplicateIds.count)
     }
   }
 

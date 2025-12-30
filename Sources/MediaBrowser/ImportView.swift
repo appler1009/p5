@@ -18,6 +18,7 @@ struct ImportView: View {
   @State private var deviceConnectionError: String?
   @State private var thumbnailOperationsCancelled = false
   @State private var importStatus: String?
+  @State private var duplicateCount = 0
   @State private var isDownloading = false
 
   @Environment(\.dismiss) private var dismiss
@@ -37,13 +38,20 @@ struct ImportView: View {
           .font(.title2)
           .fontWeight(.semibold)
         Spacer()
-        Button("Import Selected") {
+        Text(
+          """
+          \(deviceMediaItems.count - duplicateCount) available for import out of \(deviceMediaItems.count) total
+          """
+        )
+        Button(
+          "Import \(selectedDeviceMediaItems.count > 0 ? "\(selectedDeviceMediaItems.count) Selected" : "All")"
+        ) {
           Task {
             await requestDownloads()
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(deviceMediaItems.isEmpty)
+        .disabled(deviceMediaItems.count == duplicateCount)
       }
 
       // Status messages
@@ -147,7 +155,8 @@ struct ImportView: View {
               },
               onItemDoubleTap: { _ in },  // No-op for import view
               minCellWidth: 80,
-              disableDuplicates: false
+              disableDuplicates: true,
+              onDuplicateCountChange: { duplicateCount = $0 }
             )
           }
           .padding()
@@ -299,13 +308,6 @@ struct ImportView: View {
       .background(Color(NSColor.controlBackgroundColor))
     }
     .navigationTitle("Import from iPhone")
-    .toolbar {
-      ToolbarItem(placement: .cancellationAction) {
-        Button("Cancel") {
-          dismiss()
-        }
-      }
-    }
     .onAppear {
       if !hasInitialized {
         hasInitialized = true
@@ -757,15 +759,9 @@ struct ImportView: View {
               return subItem.isMedia()
             }
             allCameraItems.append(contentsOf: mediaInSubfolder)
-            for item in mediaInSubfolder {
-              print(
-                "\(subfolder.name ?? "unknown") / \(item.name ?? "no name") \((item as? ICCameraFile)?.fileSize ?? -1) bytes"
-              )
-            }
           }
         } else if item.isMedia() {
           allCameraItems.append(item)
-          print("root / \(item.name ?? "no name") \((item as? ICCameraFile)?.fileSize ?? -1) bytes")
         }
       }
 

@@ -26,6 +26,9 @@ class MediaScanner: ObservableObject {
   }
 
   func scan(directories: [URL]) async {
+    var dirs = directories
+    dirs.append(DirectoryManager.shared.importDirectory)
+
     await MainActor.run {
       isScanning = true
     }
@@ -34,7 +37,7 @@ class MediaScanner: ObservableObject {
 
     // First pass: calculate total items
     var total = 0
-    for directory in directories {
+    for directory in dirs {
       total += await countItems(in: directory)
     }
     let finalTotal = total
@@ -43,7 +46,7 @@ class MediaScanner: ObservableObject {
     }
 
     // Second pass: scan
-    for directory in directories {
+    for directory in dirs {
       await scanDirectory(directory)
     }
 
