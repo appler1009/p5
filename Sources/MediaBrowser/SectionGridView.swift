@@ -13,6 +13,8 @@ struct SectionGridView: View {
   @State private var thumbnailObserver: NSObjectProtocol?
   @State private var lastSelectedItem: MediaItem?
 
+  var sortedItems: [MediaItem] { items.sorted(by: { $0.thumbnailDate > $1.thumbnailDate }) }
+
   // Default initializer for standard MediaItemView usage with multiple selection
   init(
     title: String? = nil,
@@ -39,7 +41,7 @@ struct SectionGridView: View {
       }
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: minCellWidth))], spacing: 10) {
-        ForEach(items.sorted(by: { $0.thumbnailDate > $1.thumbnailDate })) { item in
+        ForEach(sortedItems) { item in
           MediaItemView(
             item: item,
             onTap: nil,
@@ -112,6 +114,7 @@ struct SectionGridView: View {
       // SHIFT+click: Select range from last selected item to current item
       if let lastSelected = lastSelectedItem ?? selectedItems.first {
         selectRange(from: lastSelected, to: item)
+        lastSelectedItem = item
       } else {
         // No previous selection, just select this item
         selectedItems = [item]
@@ -127,14 +130,14 @@ struct SectionGridView: View {
   }
 
   private func selectRange(from startItem: MediaItem, to endItem: MediaItem) {
-    guard let startIndex = items.firstIndex(where: { $0.id == startItem.id }),
-      let endIndex = items.firstIndex(where: { $0.id == endItem.id })
+    guard let startIndex = sortedItems.firstIndex(where: { $0.id == startItem.id }),
+      let endIndex = sortedItems.firstIndex(where: { $0.id == endItem.id })
     else {
       return
     }
 
     let range = min(startIndex, endIndex)...max(startIndex, endIndex)
-    let itemsInRange = items[range]
+    let itemsInRange = sortedItems[range]
 
     // Replace current selection with items in range
     selectedItems = Set(itemsInRange)
