@@ -23,8 +23,10 @@ struct ImportView: View {
   @Environment(\.dismiss) private var dismiss
 
   // Thumbnail coordination
-  private let thumbnailState = ThumbnailState()
-  private let limiter = ConcurrencyLimiter(limit: 15)
+  private let thumbnailState = CameraItemState()
+  private let thumbnailLimiter = ConcurrencyLimiter(limit: 15)
+  private let downloadState = CameraItemState()
+  private let downloadLimiter = ConcurrencyLimiter(limit: 2)
 
   var deviceContent: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -36,10 +38,8 @@ struct ImportView: View {
           .fontWeight(.semibold)
         Spacer()
         Button("Import Selected") {
-          for selectedItem in selectedDeviceMediaItems {
-            if let connectedItem = selectedItem as? ConnectedDeviceMediaItem {
-              importSelectedItem(connectedItem)
-            }
+          Task {
+            await requestDownloads()
           }
         }
         .buttonStyle(.borderedProminent)
@@ -315,7 +315,9 @@ struct ImportView: View {
     .onDisappear {
       Task {
         await self.thumbnailState.cancelAll()
-        await self.limiter.cancelAll()
+        await self.thumbnailLimiter.cancelAll()
+        await self.downloadState.cancelAll()
+        await self.downloadLimiter.cancelAll()
       }
       stopScanning()
     }
@@ -524,7 +526,9 @@ struct ImportView: View {
               """
             Task {
               await self.thumbnailState.cancelAll()
-              await self.limiter.cancelAll()
+              await self.thumbnailLimiter.cancelAll()
+              await self.downloadState.cancelAll()
+              await self.downloadLimiter.cancelAll()
             }
           }
         }
@@ -774,10 +778,10 @@ struct ImportView: View {
         let requested = await thumbnailState.markRequestedIfNeeded(id: id)
         guard requested else { continue }
 
-        group.addTask { [thumbnailState, limiter] in
-          await limiter.acquire()
+        group.addTask { [thumbnailState, thumbnailLimiter] in
+          await thumbnailLimiter.acquire()
           let task = Task { [thumbnailState] in
-            defer { Task { await limiter.release() } }
+            defer { Task { await thumbnailLimiter.release() } }
             if Task.isCancelled { return }
             await self.checkForThumbnail(for: mediaItem)
             await thumbnailState.clearRunningTask(for: id)
@@ -837,53 +841,53 @@ struct ImportView: View {
   }
 
   private func requestDownloads() async {
+    var cameraItems: [ICCameraItem] = []
+    selectedDeviceMediaItems.forEach { mediaItem in
+      guard let connectedDeviceMediaItem = mediaItem as? ConnectedDeviceMediaItem else { return }
+      cameraItems.append(connectedDeviceMediaItem.originalItem)
+      if let edited = connectedDeviceMediaItem.editedItem {
+        cameraItems.append(edited)
+      }
+      if let live = connectedDeviceMediaItem.liveItem {
+        cameraItems.append(live)
+      }
+    }
+
     await withTaskGroup(of: Void.self) { group in
-      for selectedItem in selectedDeviceMediaItems {
-        if let connectedItem = selectedItem as? ConnectedDeviceMediaItem {
-          requestDownload(for: item.originalItem)
-          if let editedItem = item.editedItem {
-            requestDownload(for: editedItem)
+      for cameraItem in cameraItems {
+        // ICCameraFile is the subclass that supports downloading
+        guard let cameraFile = cameraItem as? ICCameraFile else {
+          print("DEBUG: Cannot download \(cameraItem.name ?? "unnamed") - not a file")
+          return
+        }
+
+        let id = String(describing: cameraFile.name)  // FIXME
+        let requested = await downloadState.markRequestedIfNeeded(id: id)
+        guard requested else { return }
+
+        group.addTask { [downloadState, downloadLimiter] in
+          await downloadLimiter.acquire()
+          let task = Task { [downloadState] in
+            defer { Task { await downloadLimiter.release() } }
+            if Task.isCancelled { return }
+            await self.checkForDownload(for: cameraFile)
+            await downloadState.clearRunningTask(for: id)
           }
-          if let liveItem = item.liveItem {
-            requestDownload(for: liveItem)
-          }
+          await downloadState.setRunningTask(task, for: id)
+          await task.value
         }
       }
     }
   }
 
-  private func requestDownload(for cameraItem: ICCameraItem) async {
-    // ICCameraFile is the subclass that supports downloading
-    guard let cameraFile = cameraItem as? ICCameraFile else {
-      print("DEBUG: Cannot download \(cameraItem.name ?? "unnamed") - not a file")
-      return
-    }
-
-    let id = String(describing: cameraFile.name)  // FIXME
-    let requested = await downloadState.markRequestedIfNeeded(id: id)
-    guard requested else { continue }
-
-    group.addTask { [downloadState, limiter] in
-      await limiter.acquire()
-      let task = Task { [downloadState] in
-        defer { Task { await limiter.release() } }
-        if Task.isCancelled { return }
-        await self.checkForDownload(for: cameraFile)
-        await downloadState.clearRunningTask(for: id)
-      }
-      await downloadState.setRunningTask(task, for: id)
-      await task.value
-    }
-  }
-
   private func checkForDownload(for cameraFile: ICCameraFile) async {
-    let id = String(describing: cameraFile.name)  // FIXME
+    let cameraFileId = String(describing: cameraFile.name)  // FIXME
     do {
       if Task.isCancelled { return }
-      let download = try await withCheckedThrowingContinuation {
+      let _ = try await withCheckedThrowingContinuation {
         (continuation: CheckedContinuation<NSImage?, Error>) in
         Task {
-          await downloadState.setPending(for: id, continuation: continuation)
+          await downloadState.setPending(for: cameraFile, continuation: continuation)
         }
 
         // Request download of the camera file with completion handler
@@ -892,59 +896,24 @@ struct ImportView: View {
           .downloadsDirectoryURL: importDir
         ]
         cameraFile.requestDownload(options: options) { downloadID, error in
-          print(
-            "DEBUG: Download ID for \(cameraItem.name ?? "unnamed"): \(downloadID ?? "unknown")")
+          print("DEBUG: Download ID for \(cameraFileId): \(downloadID ?? "unknown")")
 
           DispatchQueue.main.async {
             self.isDownloading = false
           }
 
           if let error = error {
-            let nsError = error as NSError
             print(
-              "DEBUG: Download request failed for \(cameraItem.name ?? "unnamed"): \(error.localizedDescription)"
-            )
-
-            // Handle specific error codes
-            if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934
-              && retryCount < maxRetries
-            {
-              // Device not ready - retry with exponential backoff
-              let delay = baseDelay * pow(2.0, Double(retryCount))
-              self.showStatus(
-                "Device busy, retrying in \(Int(delay)) seconds... (\(retryCount + 1)/\(maxRetries))"
-              )
-
-              DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                self.importCameraItem(cameraItem, retryCount: retryCount + 1)
-              }
-            } else {
-              let errorMessage =
-                if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934 {
-                  "Download failed: Device is busy or not ready. Please ensure the device is not taking photos, recording video, or syncing. Try again in a moment."
-                } else {
-                  "Download failed: \(error.localizedDescription)"
-                }
-              self.showError(errorMessage)
-            }
+              "DEBUG: Download request failed for \(cameraFileId): \(error.localizedDescription)")
           } else {
             print(
-              "DEBUG: Download request successful for \(cameraItem.name ?? "unnamed"), ID: \(downloadID ?? "none")"
-            )
+              "DEBUG: Download request successful for \(cameraFileId), ID: \(downloadID ?? "none")")
             self.showStatus("Download started successfully")
-          }
-        }
-
-        if Task.isCancelled { return }
-        if let download = download {
-          await MainActor.run {
-            // storeThumbnail(mediaItem: mediaItem, thumbnail: thumbnail)
-            // FIXME
           }
         }
       }
     } catch {
-      print("requestDownload failed for \(id) \(cameraItem.name || "unknown"): \(error)")
+      print("requestDownload failed for \(cameraFileId): \(error)")
     }
   }
 
@@ -1051,7 +1020,7 @@ struct ImportView: View {
 }
 
 // MARK: - Thumbnail Coordination Actors
-actor ThumbnailState {
+actor CameraItemState {
   private var requested: Set<String> = []
   private var pending: [ObjectIdentifier: CheckedContinuation<NSImage?, Error>] = [:]
   private var runningTasks: [String: Task<Void, Never>] = [:]
@@ -1205,7 +1174,7 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
     let nsImage = NSImage(cgImage: receivedThumbnail, size: NSSize(width: 200, height: 200))
 
     Task { [weak self] in
-      guard let state = self?.thumbnailStateRef as? ThumbnailState else { return }
+      guard let state = self?.thumbnailStateRef as? CameraItemState else { return }
       if let continuation = await state.takePending(for: item) {
         continuation.resume(returning: nsImage)
       }
