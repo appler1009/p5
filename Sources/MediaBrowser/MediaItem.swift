@@ -94,6 +94,7 @@ class ConnectedDeviceMediaItem: MediaItem {
   let originalItem: ICCameraItem
   let editedItem: ICCameraItem?
   let liveItem: ICCameraItem?
+  // let aaeItem: ICCameraItem?  // Apple Adjustment Edits
 
   override var displayName: String {
     if let name = originalItem.name {

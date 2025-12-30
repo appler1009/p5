@@ -327,23 +327,21 @@ struct ImportView: View {
 
   // Group related camera items (Live Photos, edited photos, etc.)
   private func groupRelatedCameraItems(_ items: [ICCameraItem]) -> [ConnectedDeviceMediaItem] {
-    var itemLookup: [String: ICCameraItem] = [:]
-
-    for item in items {
-      if let itemName = item.name {
-        itemLookup[itemName] = item
-      }
+    let itemLookup: [String: ICCameraItem] = items.reduce(into: [String: ICCameraItem]()) {
+      dict, item in
+      dict[MediaSource(cameraItem: item).lookupKey()] = item  // overwrites duplicates, but there should be no duplicates with lookupKey()
     }
 
-    let itemNames = items.map { $0.name! }
-    let mediaGroups = groupRelatedMedia(itemNames)
+    let sources = items.map(MediaSource.init(cameraItem:))
+
+    let mediaGroups = groupRelatedMedia(sources)
     return mediaGroups.compactMap { group in
-      if let original = itemLookup[group.main] {
+      if let original = itemLookup[group.main.lookupKey()] {
         return ConnectedDeviceMediaItem(
           id: -1,  // Will be replaced with a unique sequence number
           original: original,
-          edited: group.edited != nil ? itemLookup[group.edited!] : nil,
-          live: group.live != nil ? itemLookup[group.live!] : nil
+          edited: group.edited != nil ? itemLookup[group.edited!.lookupKey()] : nil,
+          live: group.live != nil ? itemLookup[group.live!.lookupKey()] : nil
         )
       } else {
         return nil
@@ -351,76 +349,155 @@ struct ImportView: View {
     }
   }
 
-  struct MediaEntry {
-    let main: String
-    let edited: String?
-    let live: String?
+  struct MediaSource: Hashable, Comparable {
+    let year: Int
+    let month: Int
+    let day: Int
+    let baseName: String
+    let fullName: String
+    let uti: String
+
+    init(date: Date, name: String, uti: String) {
+      let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+      self.year = components.year!
+      self.month = components.month!
+      self.day = components.day!
+      self.fullName = name
+      self.baseName = name.extractBaseName()
+      self.uti = uti
+    }
+    init(cameraItem: ICCameraItem) {
+      self.init(
+        date: cameraItem.creationDate!,
+        name: cameraItem.name!,
+        uti: cameraItem.uti!)
+    }
+
+    func hash(into hasher: inout Hasher) {
+      hasher.combine(year)
+      hasher.combine(month)
+      hasher.combine(day)
+      hasher.combine(baseName)
+    }
+
+    func isImage() -> Bool {
+      return fullName.isImage()
+    }
+    func isVideo() -> Bool {
+      return fullName.isVideo()
+    }
+    func isMedia() -> Bool {
+      return fullName.isMedia()
+    }
+
+    func lookupKey() -> String {
+      return "\(year)_\(month)_\(day)_\(baseName)_\(uti)"
+    }
+
+    static func == (lhs: MediaSource, rhs: MediaSource) -> Bool {
+      lhs.year == rhs.year && lhs.month == rhs.month && lhs.day == rhs.day
+        && lhs.baseName == rhs.baseName
+    }
+
+    static func < (lhs: MediaSource, rhs: MediaSource) -> Bool {
+      // Date first
+      if lhs.year != rhs.year { return lhs.year < rhs.year }
+      if lhs.month != rhs.month { return lhs.month < rhs.month }
+      if lhs.day != rhs.day { return lhs.day < rhs.day }
+
+      // Basename: length first, then alphabetical
+      if lhs.fullName.count != rhs.fullName.count {
+        return lhs.fullName.count < rhs.fullName.count  // Longer > shorter
+      }
+      return lhs.fullName < rhs.fullName  // Same length, alphabetical
+    }
+  }
+  struct MediaGroupEntry: Comparable {
+    let main: MediaSource
+    let edited: MediaSource?
+    let live: MediaSource?
+
+    // Custom sorting: main → edited → live priority
+    static func < (lhs: MediaGroupEntry, rhs: MediaGroupEntry) -> Bool {
+      // 1. Compare main (highest priority)
+      if lhs.main != rhs.main {
+        return lhs.main < rhs.main
+      }
+
+      // 2. Compare edited (exists > nil)
+      switch (lhs.edited, rhs.edited) {
+      case (nil, nil):
+        break  // Both nil, continue
+      case (nil, _):
+        return true  // lhs nil, rhs exists → lhs smaller
+      case (_, nil):
+        return false  // lhs exists, rhs nil → lhs bigger
+      case (let lhsEdited?, let rhsEdited?):
+        if lhsEdited != rhsEdited {
+          return lhsEdited < rhsEdited
+        }
+      }
+
+      // 3. Compare live (exists > nil)
+      switch (lhs.live, rhs.live) {
+      case (nil, nil):
+        return false  // Equal
+      case (nil, _):
+        return true  // lhs nil, rhs exists → lhs smaller
+      case (_, nil):
+        return false  // lhs exists, rhs nil → lhs bigger
+      case (let lhsLive?, let rhsLive?):
+        return lhsLive < rhsLive
+      }
+    }
   }
 
-  func groupRelatedMedia(_ items: [String]) -> [MediaEntry] {
-    var groups: [String: MediaEntry] = [:]
-
-    let photoExtensions = [
-      "HEIC", "HEIF", "JPG", "JPEG", "PNG", "TIF", "TIFF",
-      "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2", "raf", "orf", "pef", "rw2", "dng",
-    ]
-    let videoExtensions = [
-      "mov", "mp4", "m4v", "3gp", "3g2", "mkv", "webm", "avi",
-      "mts", "m2ts", "mxf", "xavc", "r3d", "braw",
-      "prores",
-    ]
+  func groupRelatedMedia(_ items: [MediaSource]) -> [MediaGroupEntry] {
+    var groups: [MediaSource: MediaGroupEntry] = [:]
 
     // 1st pass - take list of photos while grouping edited photos
-    let photoNames = items.filter { name in
-      let ext = (name as NSString).pathExtension
-      return photoExtensions.contains { $0.caseInsensitiveCompare(ext) == .orderedSame }
-    }
-    for photoName in photoNames {
-      let baseName = photoName.extractBaseName()
-      if let group = groups[baseName] {
-        if group.main.count > photoName.count {
+    let photoSources = items.filter { $0.isImage() }
+    for photoSource in photoSources {
+      if let group = groups[photoSource] {
+        if group.main > photoSource {
           // longer name must be the edited name
-          groups[baseName] = .init(main: photoName, edited: group.main, live: nil)
+          groups[photoSource] = .init(main: photoSource, edited: group.main, live: nil)
         } else {
-          groups[baseName] = .init(main: group.main, edited: photoName, live: nil)
+          groups[photoSource] = .init(main: group.main, edited: photoSource, live: nil)
         }
       } else {
-        groups[baseName] = .init(main: photoName, edited: nil, live: nil)
+        groups[photoSource] = .init(main: photoSource, edited: nil, live: nil)
       }
     }
 
     // 2nd pass - find videos of live photos from 1st pass
-    let videoNames = items.filter { name in
-      let ext = (name as NSString).pathExtension
-      return videoExtensions.contains { $0.caseInsensitiveCompare(ext) == .orderedSame }
-    }
-    for videoName in videoNames {
-      let baseName = videoName.extractBaseName()
-      if let group = groups[baseName] {
-        groups[baseName] = .init(main: group.main, edited: group.edited, live: videoName)
+    let videoSources = items.filter { $0.isVideo() }
+    for videoSource in videoSources {
+      if let group = groups[videoSource] {
+        groups[videoSource] = .init(main: group.main, edited: group.edited, live: videoSource)
       }
     }
 
     // 3rd pass - add rest of videos as separate videos
-    for videoName in videoNames {
-      let baseName = videoName.extractBaseName()
-      if let group = groups[baseName] {
-        if group.live == videoName {
+    for videoSource in videoSources {
+      if let group = groups[videoSource] {
+        if group.live == videoSource {
           // it's other video's live video; skip
           continue
         }
-        if group.main.count > videoName.count {
+        if group.main > videoSource {
           // longer name must be the edited version
-          groups[baseName] = .init(main: videoName, edited: group.main, live: nil)
+          groups[videoSource] = .init(main: videoSource, edited: group.main, live: nil)
         } else {
-          groups[baseName] = .init(main: group.main, edited: videoName, live: nil)
+          groups[videoSource] = .init(main: group.main, edited: videoSource, live: nil)
         }
       } else {
-        groups[baseName] = .init(main: videoName, edited: nil, live: nil)
+        groups[videoSource] = .init(main: videoSource, edited: nil, live: nil)
       }
     }
 
-    return Array(groups.values)
+    // not necessarily needed to be sorted, but just making it deterministic and predictable
+    return Array(groups.values).sorted { $0 < $1 }
   }
 
   private func scanForDevices() {
@@ -676,14 +753,19 @@ struct ImportView: View {
 
           if let subfolderContents = subfolder.contents {
             let mediaInSubfolder = subfolderContents.filter { subItem in
+              // if subItem.isMedia() != true { print("unknown UTI \(subItem.uti ?? "_unknown_") for \(subItem.name ?? "unnamed")") }
               return subItem.isMedia()
             }
             allCameraItems.append(contentsOf: mediaInSubfolder)
-
+            for item in mediaInSubfolder {
+              print(
+                "\(subfolder.name ?? "unknown") / \(item.name ?? "no name") \((item as? ICCameraFile)?.fileSize ?? -1) bytes"
+              )
+            }
           }
         } else if item.isMedia() {
           allCameraItems.append(item)
-          print("DEBUG: Found media item: \(item.name ?? "unnamed")")
+          print("root / \(item.name ?? "no name") \((item as? ICCameraFile)?.fileSize ?? -1) bytes")
         }
       }
 
@@ -801,6 +883,8 @@ struct ImportView: View {
   }
 
   private func requestDownloads() async {
+    self.showStatus("Download started")
+
     var cameraItems: [ICCameraItem] = []
     selectedDeviceMediaItems.forEach { mediaItem in
       guard let connectedDeviceMediaItem = mediaItem as? ConnectedDeviceMediaItem else { return }
@@ -822,10 +906,6 @@ struct ImportView: View {
       } else {
         print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") no liveItem available")
       }
-    }
-    print("Items to download: \(cameraItems.count)")
-    for item in cameraItems {
-      print("Camera item: \(item.name ?? "unknown")")
     }
 
     await withTaskGroup(of: Void.self) { group in
@@ -855,6 +935,8 @@ struct ImportView: View {
         }
       }
     }
+
+    self.showStatus("Download completed")
   }
 
   private func checkForDownload(
@@ -875,8 +957,6 @@ struct ImportView: View {
           .downloadsDirectoryURL: importDir
         ]
         cameraFile.requestDownload(options: options) { downloadID, error in
-          print("DEBUG: Download ID for \(cameraFileId): \(downloadID ?? "unknown")")
-
           DispatchQueue.main.async {
             self.isDownloading = false
           }
@@ -884,10 +964,6 @@ struct ImportView: View {
           if let error = error {
             print(
               "DEBUG: Download request failed for \(cameraFileId): \(error.localizedDescription)")
-          } else {
-            print(
-              "DEBUG: Download request successful for \(cameraFileId), ID: \(downloadID ?? "none")")
-            self.showStatus("Download started successfully")
           }
 
           if let fileName = cameraFile.name {
@@ -896,9 +972,7 @@ struct ImportView: View {
             do {
               let attributes = try FileManager.default.attributesOfItem(atPath: downloadedPath.path)
               if let downloadedSize = attributes[.size] as? NSNumber {
-                if downloadedSize.uint64Value == cameraFile.fileSize {
-                  print("Downloaded file size matches: \(downloadedSize)")
-                } else {
+                if downloadedSize.uint64Value != cameraFile.fileSize {
                   print(
                     "Downloaded file size does not match: downloaded \(downloadedSize), expected \(cameraFile.fileSize)"
                   )
@@ -1289,8 +1363,8 @@ extension String {
   }
 }
 
-extension URL {
-  private static let imageExtensions: Set<String> = [
+private struct MediaExtensions {
+  static let image: Set<String> = [
     // Standard image formats
     "jpg", "jpeg", "png", "tiff", "tif", "gif", "bmp", "heic", "heif", "webp", "svg", "icns", "psd",
     "ico",
@@ -1301,18 +1375,36 @@ extension URL {
     "rw2", "srw", "dng",
   ]
 
-  private static let videoExtensions: Set<String> = [
+  static let video: Set<String> = [
     // Standard video formats
     "mp4", "avi", "mov", "m4v", "mpg", "mpeg", "3gp", "3g2", "dv", "flc", "m2ts", "mts", "m4v",
     "mkv", "webm", "wmv", "asf", "rm", "divx", "xvid", "ogv", "vob",
   ]
+}
 
+extension URL {
   func isImage() -> Bool {
-    return Self.imageExtensions.contains(pathExtension.lowercased())
+    return MediaExtensions.image.contains(pathExtension.lowercased())
   }
 
   func isVideo() -> Bool {
-    return Self.videoExtensions.contains(pathExtension.lowercased())
+    return MediaExtensions.video.contains(pathExtension.lowercased())
+  }
+
+  func isMedia() -> Bool {
+    return isImage() || isVideo()
+  }
+}
+
+extension String {
+  func isImage() -> Bool {
+    guard let ext = self.components(separatedBy: ".").last?.lowercased() else { return false }
+    return MediaExtensions.image.contains(ext)
+  }
+
+  func isVideo() -> Bool {
+    guard let ext = self.components(separatedBy: ".").last?.lowercased() else { return false }
+    return MediaExtensions.video.contains(ext)
   }
 
   func isMedia() -> Bool {
@@ -1340,6 +1432,7 @@ extension ICCameraItem {
 extension ICCameraItem {
   private static let imageUTIs: Set<String> = [
     // Standard image formats
+    "public.image",
     "public.jpeg",
     "public.png",
     "public.tiff",
@@ -1399,6 +1492,8 @@ extension ICCameraItem {
 
   private static let videoUTIs: Set<String> = [
     // Standard video formats
+    "public.video",
+    "public.movie",
     "public.mpeg-4",
     "public.avi",
     "com.apple.quicktime-movie",
@@ -1413,7 +1508,6 @@ extension ICCameraItem {
     "public.m4v",
     "public.mkv",
     "org.webmproject.webm",
-    "public.movie",
     "com.microsoft.wmv",
     "com.microsoft.asf",
     "com.real.realmedia",
