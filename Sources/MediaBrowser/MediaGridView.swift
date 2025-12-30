@@ -10,6 +10,8 @@ struct MediaGridView: View {
   @State private var scrollAnchor: UnitPoint = .center
   @FocusState private var isGridFocused: Bool
 
+  private let lightboxOpeningDelay = 0.1
+
   private var sortedItems: [MediaItem] {
     let filteredItems =
       searchQuery.isEmpty
@@ -58,7 +60,9 @@ struct MediaGridView: View {
                 selectedItems = newSelectedItems
               },
               onItemDoubleTap: { item in
-                lightboxItemId = item.id
+                withAnimation(.easeInOut(duration: lightboxOpeningDelay)) {
+                  lightboxItemId = item.id
+                }
               },
               minCellWidth: 80
             )
@@ -116,7 +120,9 @@ struct MediaGridView: View {
             }
           case .space, .return:
             if let item = selectedItems.first {
-              lightboxItemId = item.id
+              withAnimation(.easeInOut(duration: lightboxOpeningDelay)) {
+                lightboxItemId = item.id
+              }
             }
             return .handled
           default:

@@ -88,7 +88,7 @@ struct ContentView: View {
           onPrev: { prevItem() }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .transition(.opacity)
+        .transition(.scale(scale: 0.9).combined(with: .opacity))
       }
     }
 
@@ -154,7 +154,9 @@ struct ContentView: View {
     else { return }
     let nextIndex = (index + 1) % sortedItems.count
     selectedItems = [sortedItems[nextIndex]]
-    lightboxItemId = sortedItems[nextIndex].id
+    withAnimation(.easeInOut(duration: 0.1)) {
+      lightboxItemId = sortedItems[nextIndex].id
+    }
   }
 
   private func prevItem() {
@@ -163,7 +165,9 @@ struct ContentView: View {
     else { return }
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
     selectedItems = [sortedItems[prevIndex]]
-    lightboxItemId = sortedItems[prevIndex].id
+    withAnimation(.easeInOut(duration: 0.1)) {
+      lightboxItemId = sortedItems[prevIndex].id
+    }
   }
 
   /// Update a media item
