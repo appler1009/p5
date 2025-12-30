@@ -1,10 +1,11 @@
 import ImageCaptureCore
+import SwiftUI
 
-class MediaItem: Identifiable, Equatable, Hashable {
+class MediaItem: Identifiable, Equatable, Hashable, ObservableObject {
   let id: Int
   let type: MediaType
   var metadata: MediaMetadata?  // to be filled later
-  var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
+  @Published var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
   var displayName: String {
     fatalError("Subclasses must override displayName")
   }

@@ -836,23 +836,115 @@ struct ImportView: View {
     ThumbnailCache.shared.storePreGeneratedThumbnail(squareThumbnail, mediaItem: mediaItem)
   }
 
-  private func importSelectedItem(_ item: ConnectedDeviceMediaItem) {
-    print(
-      "DEBUG: Importing selected item: \(item.displayName)"
-    )
-
-    // Import all camera items in this media item
-    importCameraItem(item.originalItem)
-    if let editedItem = item.editedItem {
-      importCameraItem(editedItem)
+  private func requestDownloads() async {
+    await withTaskGroup(of: Void.self) { group in
+      for selectedItem in selectedDeviceMediaItems {
+        if let connectedItem = selectedItem as? ConnectedDeviceMediaItem {
+          requestDownload(for: item.originalItem)
+          if let editedItem = item.editedItem {
+            requestDownload(for: editedItem)
+          }
+          if let liveItem = item.liveItem {
+            requestDownload(for: liveItem)
+          }
+        }
+      }
     }
-    if let liveItem = item.liveItem {
-      importCameraItem(liveItem)
+  }
+
+  private func requestDownload(for cameraItem: ICCameraItem) async {
+    // ICCameraFile is the subclass that supports downloading
+    guard let cameraFile = cameraItem as? ICCameraFile else {
+      print("DEBUG: Cannot download \(cameraItem.name ?? "unnamed") - not a file")
+      return
     }
 
-    DispatchQueue.main.async {
-      // Clear selection after import
-      self.selectedDeviceMediaItems.removeAll()
+    let id = String(describing: cameraFile.name)  // FIXME
+    let requested = await downloadState.markRequestedIfNeeded(id: id)
+    guard requested else { continue }
+
+    group.addTask { [downloadState, limiter] in
+      await limiter.acquire()
+      let task = Task { [downloadState] in
+        defer { Task { await limiter.release() } }
+        if Task.isCancelled { return }
+        await self.checkForDownload(for: cameraFile)
+        await downloadState.clearRunningTask(for: id)
+      }
+      await downloadState.setRunningTask(task, for: id)
+      await task.value
+    }
+  }
+
+  private func checkForDownload(for cameraFile: ICCameraFile) async {
+    let id = String(describing: cameraFile.name)  // FIXME
+    do {
+      if Task.isCancelled { return }
+      let download = try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<NSImage?, Error>) in
+        Task {
+          await downloadState.setPending(for: id, continuation: continuation)
+        }
+
+        // Request download of the camera file with completion handler
+        let importDir = DirectoryManager.shared.importDirectory
+        let options: [ICDownloadOption: Any] = [
+          .downloadsDirectoryURL: importDir
+        ]
+        cameraFile.requestDownload(options: options) { downloadID, error in
+          print(
+            "DEBUG: Download ID for \(cameraItem.name ?? "unnamed"): \(downloadID ?? "unknown")")
+
+          DispatchQueue.main.async {
+            self.isDownloading = false
+          }
+
+          if let error = error {
+            let nsError = error as NSError
+            print(
+              "DEBUG: Download request failed for \(cameraItem.name ?? "unnamed"): \(error.localizedDescription)"
+            )
+
+            // Handle specific error codes
+            if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934
+              && retryCount < maxRetries
+            {
+              // Device not ready - retry with exponential backoff
+              let delay = baseDelay * pow(2.0, Double(retryCount))
+              self.showStatus(
+                "Device busy, retrying in \(Int(delay)) seconds... (\(retryCount + 1)/\(maxRetries))"
+              )
+
+              DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                self.importCameraItem(cameraItem, retryCount: retryCount + 1)
+              }
+            } else {
+              let errorMessage =
+                if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934 {
+                  "Download failed: Device is busy or not ready. Please ensure the device is not taking photos, recording video, or syncing. Try again in a moment."
+                } else {
+                  "Download failed: \(error.localizedDescription)"
+                }
+              self.showError(errorMessage)
+            }
+          } else {
+            print(
+              "DEBUG: Download request successful for \(cameraItem.name ?? "unnamed"), ID: \(downloadID ?? "none")"
+            )
+            self.showStatus("Download started successfully")
+          }
+        }
+
+        if Task.isCancelled { return }
+        if let download = download {
+          await MainActor.run {
+            // storeThumbnail(mediaItem: mediaItem, thumbnail: thumbnail)
+            // FIXME
+          }
+        }
+      }
+    } catch {
+      print("requestDownload failed for \(id) \(cameraItem.name || "unknown"): \(error)")
     }
   }
 
@@ -869,85 +961,6 @@ struct ImportView: View {
   private func showError(_ message: String) {
     deviceConnectionError = message
     // Keep error visible until user acknowledges or retries
-  }
-
-  private func importCameraItem(_ cameraItem: ICCameraItem, retryCount: Int = 0) {
-    let maxRetries = 3
-    let baseDelay: TimeInterval = 2.0
-
-    // Prevent concurrent downloads
-    guard !isDownloading else {
-      showError("Another download is in progress. Please wait.")
-      return
-    }
-
-    // Check device connection
-    guard let device = selectedDevice, device.hasOpenSession else {
-      showError("Device disconnected. Please reconnect and try again.")
-      return
-    }
-
-    print(
-      "DEBUG: Starting download for: \(cameraItem.name ?? "unnamed") (attempt \(retryCount + 1)/\(maxRetries + 1))"
-    )
-
-    // ICCameraFile is the subclass that supports downloading
-    guard let cameraFile = cameraItem as? ICCameraFile else {
-      print("DEBUG: Cannot download \(cameraItem.name ?? "unnamed") - not a file")
-      return
-    }
-
-    isDownloading = true
-
-    // Request download of the camera file with completion handler
-    let importDir = DirectoryManager.shared.importDirectory
-    let options: [ICDownloadOption: Any] = [
-      .downloadsDirectoryURL: importDir
-    ]
-    cameraFile.requestDownload(options: options) { downloadID, error in
-      print("DEBUG: Download ID for \(cameraItem.name ?? "unnamed"): \(downloadID ?? "unknown")")
-
-      DispatchQueue.main.async {
-        self.isDownloading = false
-      }
-
-      if let error = error {
-        let nsError = error as NSError
-        print(
-          "DEBUG: Download request failed for \(cameraItem.name ?? "unnamed"): \(error.localizedDescription)"
-        )
-
-        // Handle specific error codes
-        if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934
-          && retryCount < maxRetries
-        {
-          // Device not ready - retry with exponential backoff
-          let delay = baseDelay * pow(2.0, Double(retryCount))
-          self.showStatus(
-            "Device busy, retrying in \(Int(delay)) seconds... (\(retryCount + 1)/\(maxRetries))")
-
-          DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            self.importCameraItem(cameraItem, retryCount: retryCount + 1)
-          }
-        } else {
-          let errorMessage =
-            if nsError.domain == "com.apple.ImageCaptureCore" && nsError.code == -9934 {
-              "Download failed: Device is busy or not ready. Please ensure the device is not taking photos, recording video, or syncing. Try again in a moment."
-            } else {
-              "Download failed: \(error.localizedDescription)"
-            }
-          self.showError(errorMessage)
-        }
-      } else {
-        print(
-          "DEBUG: Download request successful for \(cameraItem.name ?? "unnamed"), ID: \(downloadID ?? "none")"
-        )
-        self.showStatus("Download started successfully")
-      }
-    }
-
-    // The actual download completion will be handled by the device delegate
-    // cameraDevice(_:didDownloadFile:file:destination:error:)
   }
 
   private func stopScanning() {
