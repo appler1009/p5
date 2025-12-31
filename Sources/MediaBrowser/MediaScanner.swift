@@ -105,7 +105,7 @@ class MediaScanner: ObservableObject {
     while let fileURL = enumerator.nextObject() as? URL {
       if fileURL.isMedia() {
         let base = fileURL.extractBaseName()
-        baseURLLookup[base, default: []].append(url)
+        baseURLLookup[base, default: []].append(fileURL)
       }
     }
 

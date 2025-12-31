@@ -206,7 +206,6 @@ class ImportFromDevice: ObservableObject {
 
           if let subfolderContents = subfolder.contents {
             let mediaInSubfolder = subfolderContents.filter { subItem in
-              // if subItem.isMedia() != true { print("unknown UTI \(subItem.uti ?? "_unknown_") for \(subItem.name ?? "unnamed")") }
               return subItem.isMedia()
             }
             allCameraItems.append(contentsOf: mediaInSubfolder)
