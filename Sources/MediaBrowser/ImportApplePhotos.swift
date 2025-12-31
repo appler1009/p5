@@ -3,11 +3,20 @@ import Foundation
 import GRDB
 import ImageIO
 
-struct ExtractedMetadata {
-  let dateCreated: Date?
-  let latitude: Double?
-  let longitude: Double?
-  let orientation: Int?
+struct ApplePhotosMediaItem {
+  let fileName: String
+  let directory: String
+  let originalFileName: String
+  let fileSize: Int
+  let metadata: MediaMetadata
+
+  func init(fileName: String, directory: String, originalFileName: String, fileSize: Int, metadata: MediaMetadata) {
+    self.fileName = fileName
+    self.directory = directory
+    self.originalFileName = originalFileName
+    self.fileSize = fileSize
+    self.metadata = metadata
+  }
 }
 
 class ImportApplePhotos {
@@ -32,7 +41,7 @@ class ImportApplePhotos {
     }
   }
 
-  private func fetchPhotoMetadata() throws -> [MediaMetadata] {
+  private func fetchPhotoMetadata() throws -> [ApplePhotosMediaItem] {
     try dbQueue.read { db in
       let sql = """
         SELECT
@@ -53,7 +62,7 @@ class ImportApplePhotos {
       let rows = try Row.fetchAll(db, sql: sql)
 
       return rows.map { row in
-        MediaMetadata(
+        let metadata = MediaMetadata(
           creationDate: row["dateCreated"].map { Date(timeIntervalSinceReferenceDate: $0) },
           modificationDate: nil,
           dimensions: row["width"].flatMap { width in
@@ -74,17 +83,25 @@ class ImportApplePhotos {
           aperture: nil,
           shutterSpeed: nil
         )
+        return ApplePhotosMediaItem(
+          fileName: row["filename"],
+          directory: row["directory"],
+          originalFileName: row["originalFilename"],
+          fileSize: row["fileSize"],
+          metadata: metadata,
+        )
       }
     }
   }
 
-  private func importPhoto(_ metadata: MediaMetadata, to importedDirectory: URL) throws {
+  private func importPhoto(_ item: ApplePhotosMediaItem, to importedDirectory: URL) throws {
     // Construct source URL
-    var sourceURL = self.photosURL.appendingPathComponent("originals")
+    guard let metadata = item.metadata else { return }
+    let sourceURL = self.photosURL.appendingPathComponent("originals")
     if let directory = metadata.directory {
       sourceURL = sourceURL.appendingPathComponent(directory)
     }
-    sourceURL = sourceURL.appendingPathComponent(metadata.filename)
+    sourceURL = sourceURL.appendingPathComponent(item.fileName)
 
     guard FileManager.default.fileExists(atPath: sourceURL.path) else {
       print("File not found: \(sourceURL.path)")
@@ -95,11 +112,10 @@ class ImportApplePhotos {
     let extractedMetadata = extractMetadata(from: sourceURL)
 
     // Use EXIF if available, else database
-    let finalDate = extractedMetadata.dateCreated ?? metadata.creationDate
-    let finalOrientation = extractedMetadata.orientation ?? metadata.orientation
+    let finalDate = item.metadata.creationDate ?? extractedMetadata.exifDate
 
-    // Determine destination filename
-    let destinationFilename = metadata.originalFilename ?? metadata.filename
+    // Determine destination filename - use a simple approach since MediaMetadata doesn't have these fields
+    let destinationFilename = metadata.originalFilename
 
     // Create yyyy/mm/dd subdirectory if date is available
     let finalDirectory: URL
@@ -120,17 +136,16 @@ class ImportApplePhotos {
     // Copy file
     try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
-    // Here you could store the metadata in your app's database
+      // Here you could store the metadata in your app's database
     print(
-      "Imported \(destinationFilename) with date: \(finalDate?.description ?? "unknown"), orientation: \(finalOrientation?.description ?? "unknown")"
+      "Imported \(destinationFilename) with date: \(finalDate?.description ?? "unknown")"
     )
   }
 
-  private func extractMetadata(from url: URL) -> ExtractedMetadata {
+  private func extractMetadata(from url: URL) -> MediaMetadata {
     var dateCreated: Date?
     var latitude: Double?
     var longitude: Double?
-    var orientation: Int?
 
     if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
       if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
@@ -153,12 +168,25 @@ class ImportApplePhotos {
           latitude = latRef == "N" ? lat : -lat
           longitude = lonRef == "E" ? lon : -lon
         }
-
-        // Orientation
-        orientation = properties[kCGImagePropertyOrientation] as? Int
       }
     }
 
-    return ExtractedMetadata(dateCreated: dateCreated, latitude: latitude, longitude: longitude, orientation: orientation)
+    return MediaMetadata(
+      creationDate: nil,
+      modificationDate: nil,
+      dimensions: nil,
+      exifDate: dateCreated,
+      gps: latitude.flatMap { latitude in
+        longitude.map { longitude in
+          GPSLocation(latitude: latitude, longitude: longitude)
+        }
+      },
+      make: nil,
+      model: nil,
+      lens: nil,
+      iso: nil,
+      aperture: nil,
+      shutterSpeed: nil
+    )
   }
 }
