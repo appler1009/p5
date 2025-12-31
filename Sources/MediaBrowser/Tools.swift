@@ -32,6 +32,14 @@ extension String {
   }
 }
 
+extension URL {
+  // Extract base name from the last path component
+  func extractBaseName() -> String {
+    var baseName = self.lastPathComponent
+    return baseName.extractBaseName()
+  }
+}
+
 private struct MediaExtensions {
   static let image: Set<String> = [
     // Standard image formats
