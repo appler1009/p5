@@ -10,7 +10,10 @@ struct ApplePhotosMediaItem {
   let fileSize: Int
   let metadata: MediaMetadata
 
-  func init(fileName: String, directory: String, originalFileName: String, fileSize: Int, metadata: MediaMetadata) {
+  init(
+    fileName: String, directory: String, originalFileName: String, fileSize: Int,
+    metadata: MediaMetadata
+  ) {
     self.fileName = fileName
     self.directory = directory
     self.originalFileName = originalFileName
@@ -42,40 +45,53 @@ class ImportApplePhotos {
   }
 
   private func fetchPhotoMetadata() throws -> [ApplePhotosMediaItem] {
-    try dbQueue.read { db in
-      let sql = """
-        SELECT
-            ZASSET.ZFILENAME as filename,
-            ZASSET.ZDIRECTORY as directory,
-            ZADDITIONALASSETATTRIBUTES.ZORIGINALFILENAME as originalFilename,
-            ZASSET.ZDATECREATED as dateCreated,
-            ZASSET.ZLATITUDE as latitude,
-            ZASSET.ZLONGITUDE as longitude,
-            ZASSET.ZWIDTH as width,
-            ZASSET.ZHEIGHT as height,
-            ZADDITIONALASSETATTRIBUTES.ZORIGINALFILESIZE as fileSize,
-            ZASSET.ZORIENTATION as orientation
-        FROM ZASSET
-        INNER JOIN ZADDITIONALASSETATTRIBUTES ON ZASSET.Z_PK = ZADDITIONALASSETATTRIBUTES.ZASSET
-        """
+    let sql = """
+      SELECT
+          ZASSET.ZFILENAME as filename,
+          ZASSET.ZDIRECTORY as directory,
+          ZADDITIONALASSETATTRIBUTES.ZORIGINALFILENAME as originalFilename,
+          ZASSET.ZDATECREATED as dateCreated,
+          ZASSET.ZLATITUDE as latitude,
+          ZASSET.ZLONGITUDE as longitude,
+          ZASSET.ZWIDTH as width,
+          ZASSET.ZHEIGHT as height,
+          ZADDITIONALASSETATTRIBUTES.ZORIGINALFILESIZE as fileSize,
+          ZASSET.ZORIENTATION as orientation
+      FROM ZASSET
+      INNER JOIN ZADDITIONALASSETATTRIBUTES ON ZASSET.Z_PK = ZADDITIONALASSETATTRIBUTES.ZASSET
+      """
 
+    return try dbQueue.read { db in
       let rows = try Row.fetchAll(db, sql: sql)
 
-      return rows.map { row in
+      var items: [ApplePhotosMediaItem] = []
+      for row in rows {
+        let creationDate = (row[Column("dateCreated")] as Double?).map {
+          Date(timeIntervalSinceReferenceDate: $0)
+        }
+
+        let dimensions: CGSize?
+        if let width = row[Column("width")] as Int?, let height = row[Column("height")] as Int? {
+          dimensions = CGSize(width: CGFloat(width), height: CGFloat(height))
+        } else {
+          dimensions = nil
+        }
+
+        let gps: GPSLocation?
+        if let latitude = row[Column("latitude")] as Double?,
+          let longitude = row[Column("longitude")] as Double?
+        {
+          gps = GPSLocation(latitude: latitude, longitude: longitude)
+        } else {
+          gps = nil
+        }
+
         let metadata = MediaMetadata(
-          creationDate: row["dateCreated"].map { Date(timeIntervalSinceReferenceDate: $0) },
+          creationDate: creationDate,
           modificationDate: nil,
-          dimensions: row["width"].flatMap { width in
-            row["height"].map { height in
-              CGSize(width: CGFloat(width), height: CGFloat(height))
-            }
-          },
+          dimensions: dimensions,
           exifDate: nil,
-          gps: row["latitude"].flatMap { latitude in
-            row["longitude"].map { longitude in
-              GPSLocation(latitude: latitude, longitude: longitude)
-            }
-          },
+          gps: gps,
           make: nil,
           model: nil,
           lens: nil,
@@ -83,23 +99,25 @@ class ImportApplePhotos {
           aperture: nil,
           shutterSpeed: nil
         )
-        return ApplePhotosMediaItem(
-          fileName: row["filename"],
-          directory: row["directory"],
-          originalFileName: row["originalFilename"],
-          fileSize: row["fileSize"],
-          metadata: metadata,
+
+        let item = ApplePhotosMediaItem(
+          fileName: row[Column("filename")] as String,
+          directory: row[Column("directory")] as String,
+          originalFileName: row[Column("originalFilename")] as String,
+          fileSize: row[Column("fileSize")] as Int,
+          metadata: metadata
         )
+        items.append(item)
       }
+      return items
     }
   }
 
   private func importPhoto(_ item: ApplePhotosMediaItem, to importedDirectory: URL) throws {
     // Construct source URL
-    guard let metadata = item.metadata else { return }
-    let sourceURL = self.photosURL.appendingPathComponent("originals")
-    if let directory = metadata.directory {
-      sourceURL = sourceURL.appendingPathComponent(directory)
+    var sourceURL = self.photosURL.appendingPathComponent("originals")
+    if !item.directory.isEmpty {
+      sourceURL = sourceURL.appendingPathComponent(item.directory)
     }
     sourceURL = sourceURL.appendingPathComponent(item.fileName)
 
@@ -114,8 +132,8 @@ class ImportApplePhotos {
     // Use EXIF if available, else database
     let finalDate = item.metadata.creationDate ?? extractedMetadata.exifDate
 
-    // Determine destination filename - use a simple approach since MediaMetadata doesn't have these fields
-    let destinationFilename = metadata.originalFilename
+    // Determine destination filename
+    let destinationFilename = item.originalFileName.isEmpty ? item.fileName : item.originalFileName
 
     // Create yyyy/mm/dd subdirectory if date is available
     let finalDirectory: URL
@@ -136,7 +154,7 @@ class ImportApplePhotos {
     // Copy file
     try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
-      // Here you could store the metadata in your app's database
+    // Here you could store the metadata in your app's database
     print(
       "Imported \(destinationFilename) with date: \(finalDate?.description ?? "unknown")"
     )
