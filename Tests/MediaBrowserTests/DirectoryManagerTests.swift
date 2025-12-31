@@ -1,0 +1,24 @@
+import XCTest
+
+@testable import MediaBrowser
+
+final class DirectoryManagerTests: XCTestCase {
+  func testDirectoryManager() throws {
+    let manager = DirectoryManager.shared
+    // Test remove
+    let testURL1 = URL(fileURLWithPath: "/tmp/testdir1")
+    let testURL2 = URL(fileURLWithPath: "/tmp/testdir2")
+    manager.directories = [testURL1, testURL2]
+
+    XCTAssertEqual(manager.directories.count, 2)
+
+    // Test remove
+    manager.removeDirectory(at: 0)
+    XCTAssertEqual(manager.directories.count, 1)
+    XCTAssertEqual(manager.directories.first, testURL2)
+
+    // Test cleanup thumbnails
+    let cleaned = manager.cleanupThumbnails()
+    XCTAssertGreaterThanOrEqual(cleaned, 0)  // At least 0
+  }
+}
