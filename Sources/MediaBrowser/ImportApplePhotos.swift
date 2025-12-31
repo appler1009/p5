@@ -3,19 +3,6 @@ import Foundation
 import GRDB
 import ImageIO
 
-struct PhotoMetadata {
-  let filename: String
-  let directory: String?
-  let originalFilename: String?
-  let dateCreated: Double?
-  let latitude: Double?
-  let longitude: Double?
-  let width: Int?
-  let height: Int?
-  let fileSize: Int64?
-  let orientation: Int?
-}
-
 struct ExtractedMetadata {
   let dateCreated: Date?
   let latitude: Double?
@@ -40,12 +27,12 @@ class ImportApplePhotos {
 
     let photos = try fetchPhotoMetadata()
 
-    for photo in photos {
-      try importPhoto(photo, to: importedDirectory)
+    for metadata in photos {
+      try importPhoto(metadata, to: importedDirectory)
     }
   }
 
-  private func fetchPhotoMetadata() throws -> [PhotoMetadata] {
+  private func fetchPhotoMetadata() throws -> [MediaMetadata] {
     try dbQueue.read { db in
       let sql = """
         SELECT
@@ -66,43 +53,53 @@ class ImportApplePhotos {
       let rows = try Row.fetchAll(db, sql: sql)
 
       return rows.map { row in
-        PhotoMetadata(
-          filename: row["filename"],
-          directory: row["directory"],
-          originalFilename: row["originalFilename"],
-          dateCreated: row["dateCreated"],
-          latitude: row["latitude"],
-          longitude: row["longitude"],
-          width: row["width"],
-          height: row["height"],
-          fileSize: row["fileSize"],
-          orientation: row["orientation"]
+        MediaMetadata(
+          creationDate: row["dateCreated"].map { Date(timeIntervalSinceReferenceDate: $0) },
+          modificationDate: nil,
+          dimensions: row["width"].flatMap { width in
+            row["height"].map { height in
+              CGSize(width: CGFloat(width), height: CGFloat(height))
+            }
+          },
+          exifDate: nil,
+          gps: row["latitude"].flatMap { latitude in
+            row["longitude"].map { longitude in
+              GPSLocation(latitude: latitude, longitude: longitude)
+            }
+          },
+          make: nil,
+          model: nil,
+          lens: nil,
+          iso: nil,
+          aperture: nil,
+          shutterSpeed: nil
         )
       }
     }
   }
 
-  private func importPhoto(_ photo: PhotoMetadata, to importedDirectory: URL) throws {
+  private func importPhoto(_ metadata: MediaMetadata, to importedDirectory: URL) throws {
     // Construct source URL
     var sourceURL = self.photosURL.appendingPathComponent("originals")
-    if let directory = photo.directory {
+    if let directory = metadata.directory {
       sourceURL = sourceURL.appendingPathComponent(directory)
     }
-    sourceURL = sourceURL.appendingPathComponent(photo.filename)
+    sourceURL = sourceURL.appendingPathComponent(metadata.filename)
 
-    guard FileManager.default.fileExists(atPath: sourceURL.path) else { return }
+    guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+      print("File not found: \(sourceURL.path)")
+      return
+    }
 
     // Extract metadata from file
     let extractedMetadata = extractMetadata(from: sourceURL)
 
     // Use EXIF if available, else database
-    let finalDate =
-      extractedMetadata.dateCreated
-      ?? photo.dateCreated.map { Date(timeIntervalSinceReferenceDate: $0) }
-    let finalOrientation = extractedMetadata.orientation ?? photo.orientation
+    let finalDate = extractedMetadata.dateCreated ?? metadata.creationDate
+    let finalOrientation = extractedMetadata.orientation ?? metadata.orientation
 
     // Determine destination filename
-    let destinationFilename = photo.originalFilename ?? photo.filename
+    let destinationFilename = metadata.originalFilename ?? metadata.filename
 
     // Create yyyy/mm/dd subdirectory if date is available
     let finalDirectory: URL
@@ -162,7 +159,6 @@ class ImportApplePhotos {
       }
     }
 
-    return ExtractedMetadata(
-      dateCreated: dateCreated, latitude: latitude, longitude: longitude, orientation: orientation)
+    return ExtractedMetadata(dateCreated: dateCreated, latitude: latitude, longitude: longitude, orientation: orientation)
   }
 }
