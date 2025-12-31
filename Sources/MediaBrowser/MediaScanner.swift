@@ -114,7 +114,7 @@ class MediaScanner: ObservableObject {
       let imageURL = urls.first { $0.isImage() }
       let preferredURL = imageURL ?? urls.first
       if let url = preferredURL,
-        isEdited(base: base) || getEditedBase(base: base).flatMap({ baseToURLs[$0] }) == nil
+        isEdited(base: base) || getEditedBase(base: base).flatMap({ baseURLLookup[$0] }) == nil
       {
         var item = LocalFileSystemMediaItem(id: -1, original: url)
         await extractMetadata(for: &item)
