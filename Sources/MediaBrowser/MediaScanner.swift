@@ -101,20 +101,15 @@ class MediaScanner: ObservableObject {
       )
     else { return }
 
-    var allURLs: [URL] = []
+    var baseURLLookup = [String: [URL]]()
     while let fileURL = enumerator.nextObject() as? URL {
       if fileURL.isMedia() {
-        allURLs.append(fileURL)
+        let base = fileURL.extractBaseName()
+        baseURLLookup[base, default: []].append(url)
       }
     }
 
-    var baseToURLs = [String: [URL]]()
-    for url in allURLs {
-      let base = url.deletingPathExtension().lastPathComponent
-      baseToURLs[base, default: []].append(url)
-    }
-
-    for (base, urls) in baseToURLs {
+    for (base, urls) in baseURLLookup {
       // Prefer image over video for the same base
       let imageURL = urls.first { $0.isImage() }
       let preferredURL = imageURL ?? urls.first

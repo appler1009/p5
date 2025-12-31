@@ -9,6 +9,7 @@ struct ImportView: View {
   @State private var duplicateCount = 0
   @State private var importStatus: String?
   @State private var deviceConnectionError: String?
+  @State private var selectedApplePhotosLibrary: URL?
 
   @Environment(\.dismiss) private var dismiss
 
@@ -164,7 +165,7 @@ struct ImportView: View {
             HStack {
               Image(systemName: "iphone.and.arrow.forward")
                 .frame(width: 20)
-              Text("iPhone (USB)")
+              Text("USB Devices")
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
@@ -172,12 +173,25 @@ struct ImportView: View {
           .controlSize(.large)
 
           Button(action: {
-            openFilePicker()
+            openLocalDirectoryPicker()
           }) {
             HStack {
               Image(systemName: "folder")
                 .frame(width: 20)
-              Text("Browse Files")
+              Text("Local Files")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.large)
+
+          Button(action: {
+            openApplePhotosPicker()
+          }) {
+            HStack {
+              Image(systemName: "folder")
+                .frame(width: 20)
+              Text("Apple Photos")
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
@@ -260,7 +274,7 @@ struct ImportView: View {
               .controlSize(.large)
 
               Button("Browse Files") {
-                openFilePicker()
+                openLocalDirectoryPicker()
               }
               .buttonStyle(.bordered)
               .controlSize(.large)
@@ -291,7 +305,7 @@ struct ImportView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color(NSColor.controlBackgroundColor))
     }
-    .navigationTitle("Import from iPhone")
+    .navigationTitle("Import Photos")
     .onAppear {
       if !hasInitialized {
         hasInitialized = true
@@ -324,7 +338,7 @@ struct ImportView: View {
     // Keep error visible until user acknowledges or retries
   }
 
-  private func openFilePicker() {
+  private func openLocalDirectoryPicker() {
     let panel = NSOpenPanel()
     panel.allowsMultipleSelection = true
     panel.allowedContentTypes = [.image, .movie]
@@ -336,6 +350,25 @@ struct ImportView: View {
     if panel.runModal() == .OK {
       let urls = panel.urls
       importManualFiles(urls)
+    }
+  }
+
+  private func openApplePhotosPicker() {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = false
+    panel.allowedContentTypes = [.folder]
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.message = "Select Apple Photos to import"
+    panel.prompt = "Import"
+
+    if panel.runModal() == .OK {
+      do {
+        let applePhotos = try ImportApplePhotos(libraryURL: panel.urls.first!)
+        try applePhotos.importPhotos(to: DirectoryManager.shared.importDirectory)
+      } catch {
+        print("Error importing Apple Photos: \(error)")
+      }
     }
   }
 

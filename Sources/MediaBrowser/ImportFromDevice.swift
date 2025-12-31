@@ -1,4 +1,4 @@
-import ImageCaptureCore
+@preconcurrency import ImageCaptureCore
 import SwiftUI
 
 class ImportFromDevice: ObservableObject {
@@ -176,17 +176,19 @@ class ImportFromDevice: ObservableObject {
         print("DEBUG: No media items found at root level")
       }
 
-      DispatchQueue.main.async { [self] in
-        isLoadingDeviceContents = false
+      DispatchQueue.main.async { [weak self] in
+        self?.isLoadingDeviceContents = false
       }
     } else {
       print("DEBUG: device.contents is nil, retrying...")
       // Retry after a short delay in case contents aren't ready yet
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-        if self.isLoadingDeviceContents {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self, device] in
+        guard let strongSelf = self else { return }
+        if strongSelf.isLoadingDeviceContents {
           print("DEBUG: Retrying content check...")
-          Task {
-            await self.checkDeviceContents(device)
+          Task { [weak strongSelf] in
+            guard let strongSelf = strongSelf else { return }
+            await strongSelf.checkDeviceContents(device)
           }
         }
       }
@@ -225,12 +227,12 @@ class ImportFromDevice: ObservableObject {
         print("all camera items is empty")
       }
 
-      await MainActor.run {
-        self.isLoadingDeviceContents = false
+      await MainActor.run { [weak self] in
+        self?.isLoadingDeviceContents = false
       }
     } else {
-      await MainActor.run {
-        self.isLoadingDeviceContents = false
+      await MainActor.run { [weak self] in
+        self?.isLoadingDeviceContents = false
       }
     }
   }
@@ -249,9 +251,10 @@ class ImportFromDevice: ObservableObject {
 
         group.addTask { [thumbnailState, thumbnailLimiter] in
           await thumbnailLimiter.acquire()
-          let task = Task { [thumbnailState] in
+          let task = Task { [thumbnailState, weak self] in
             defer { Task { await thumbnailLimiter.release() } }
             if Task.isCancelled { return }
+            guard let self = self else { return }
             await self.checkForThumbnail(for: mediaItem)
             await thumbnailState.clearRunningTask(for: id)
           }
@@ -346,8 +349,9 @@ class ImportFromDevice: ObservableObject {
 
         group.addTask { [downloadState, downloadLimiter] in
           await downloadLimiter.acquire()
-          let task = Task { [downloadState] in
+          let task = Task { [downloadState, weak self] in
             if Task.isCancelled { return }
+            guard let self = self else { return }
             await self.checkForDownload(
               for: cameraFile,
               onComplete: {
@@ -379,9 +383,9 @@ class ImportFromDevice: ObservableObject {
         let options: [ICDownloadOption: Any] = [
           .downloadsDirectoryURL: importDir
         ]
-        cameraFile.requestDownload(options: options) { downloadID, error in
-          DispatchQueue.main.async {
-            self.isDownloading = false
+        cameraFile.requestDownload(options: options) { [weak self] downloadID, error in
+          DispatchQueue.main.async { [weak self] in
+            self?.isDownloading = false
           }
 
           if let error = error {
