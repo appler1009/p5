@@ -1,12 +1,10 @@
+import ImageCaptureCore
 import XCTest
 
 @testable import MediaBrowser
 
-final class ImportFromDeviceTests: XCTestCase {
+final class MediaGroupingTests: XCTestCase {
   func testGroupRelatedMedia() throws {
-    // Create a mock ImportFromDevice to access the private method
-    let importFromDevice = ImportFromDevice()
-
     let today = Date()
     let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
 
@@ -183,5 +181,93 @@ final class ImportFromDeviceTests: XCTestCase {
     XCTAssertEqual(result11[1].main, source_5555_image_today)
     XCTAssertNil(result11[1].edited)
     XCTAssertNil(result11[1].live)
+  }
+
+  func testGroupRelatedCameraItems() throws {
+    // Mock ICCameraItem for testing
+    class MockICCameraItem: ICCameraItem {
+      let itemName: String
+      let itemUti: String
+      let itemCreationDate: Date
+
+      init(name: String, uti: String, creationDate: Date) {
+        self.itemName = name
+        self.itemUti = uti
+        self.itemCreationDate = creationDate
+      }
+
+      override var name: String? { return itemName }
+      override var uti: String? { return itemUti }
+      override var creationDate: Date? { return itemCreationDate }
+    }
+
+    let today = Date()
+
+    let mockItem1 = MockICCameraItem(name: "IMG_1234.JPG", uti: "public.image", creationDate: today)
+    let mockItem2 = MockICCameraItem(
+      name: "IMG_1234 (Edited).JPG", uti: "public.image", creationDate: today)
+    let mockItem3 = MockICCameraItem(name: "IMG_1234.MOV", uti: "public.video", creationDate: today)
+
+    let mockCameraItems = [mockItem1, mockItem2, mockItem3].map { $0 as ICCameraItem }
+
+    let result = groupRelatedCameraItems(mockCameraItems)
+
+    XCTAssertEqual(result.count, 1)
+    XCTAssertEqual(result[0].originalItem.name!, "IMG_1234.JPG")
+    XCTAssertNotNil(result[0].editedItem)
+    XCTAssertEqual(result[0].editedItem!.name!, "IMG_1234 (Edited).JPG")
+    XCTAssertNotNil(result[0].liveItem)
+    XCTAssertEqual(result[0].liveItem!.name!, "IMG_1234.MOV")
+  }
+
+  func testGroupRelatedURLs() throws {
+    // Create temporary directory for test files
+    let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+    defer {
+      try? FileManager.default.removeItem(at: tempDir)
+    }
+
+    let today = Date()
+    let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+
+    // Create test image files
+    let imageURL1 = tempDir.appendingPathComponent("IMG_1234.JPG")
+    let imageURL2 = tempDir.appendingPathComponent("IMG_1234 (Edited).JPG")
+    let videoURL1 = tempDir.appendingPathComponent("IMG_1234.MOV")
+    let imageURL3 = tempDir.appendingPathComponent("IMG_5555.JPG")
+
+    // Write empty files (just for testing grouping logic)
+    try? Data().write(to: imageURL1)
+    try? Data().write(to: imageURL2)
+    try? Data().write(to: videoURL1)
+    try? Data().write(to: imageURL3)
+
+    // Set creation dates
+    try (imageURL1 as NSURL).setResourceValue(today, forKey: .creationDateKey)
+    try (imageURL2 as NSURL).setResourceValue(today, forKey: .creationDateKey)
+    try (videoURL1 as NSURL).setResourceValue(today, forKey: .creationDateKey)
+    try (imageURL3 as NSURL).setResourceValue(yesterday, forKey: .creationDateKey)
+
+    let testURLs = [imageURL1, imageURL2, videoURL1, imageURL3]
+
+    let result = groupRelatedURLs(testURLs)
+
+    XCTAssertEqual(result.count, 2)
+
+    // Check first group (today's files)
+    let todayGroup = result.first { $0.originalUrl.lastPathComponent == "IMG_1234.JPG" }
+    XCTAssertNotNil(todayGroup)
+    XCTAssertEqual(todayGroup?.originalUrl, imageURL1)
+    XCTAssertEqual(todayGroup?.editedUrl?.lastPathComponent, "IMG_1234 (Edited).JPG")
+    XCTAssertEqual(todayGroup?.liveUrl?.lastPathComponent, "IMG_1234.MOV")
+
+    // Check second group (yesterday's file)
+    let yesterdayGroup = result.first { $0.originalUrl.lastPathComponent == "IMG_5555.JPG" }
+    XCTAssertNotNil(yesterdayGroup)
+    XCTAssertEqual(yesterdayGroup?.originalUrl, imageURL3)
+    XCTAssertNil(yesterdayGroup?.editedUrl)
+    XCTAssertNil(yesterdayGroup?.liveUrl)
   }
 }

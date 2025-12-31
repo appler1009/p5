@@ -4,8 +4,7 @@ import Foundation
 import ImageIO
 
 extension MediaScanner {
-  func extractMetadata(for item: inout LocalFileSystemMediaItem) async {
-    let url = item.originalUrl
+  func extractMetadata(for url: URL) async -> MediaMetadata {
     var metadata = MediaMetadata(
       creationDate: nil,
       modificationDate: nil,
@@ -21,8 +20,7 @@ extension MediaScanner {
       metadata.modificationDate = attributes[.modificationDate] as? Date
     }
 
-    switch item.type {
-    case .photo, .livePhoto:
+    if url.isImage() {
       if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
         if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
           // Dimensions
@@ -70,7 +68,8 @@ extension MediaScanner {
           }
         }
       }
-    case .video:
+    }
+    if url.isVideo() {
       let asset = AVAsset(url: url)
       do {
         let duration = try await asset.load(.duration)
@@ -82,9 +81,9 @@ extension MediaScanner {
       } catch {
         print("Error loading video metadata: \(error)")
       }
-    // For EXIF in videos, might need more work, but skip for now
+      // For EXIF in videos, might need more work, but skip for now
     }
 
-    item.metadata = metadata
+    return metadata
   }
 }

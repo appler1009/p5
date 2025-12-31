@@ -101,32 +101,28 @@ class MediaScanner: ObservableObject {
       )
     else { return }
 
-    var baseURLLookup = [String: [URL]]()
+    var allFileURLs: [URL] = []
     while let fileURL = enumerator.nextObject() as? URL {
       if fileURL.isMedia() {
-        let base = fileURL.extractBaseName()
-        baseURLLookup[base, default: []].append(fileURL)
+        allFileURLs.append(fileURL)
       }
     }
 
-    for (base, urls) in baseURLLookup {
-      // Prefer image over video for the same base
-      let imageURL = urls.first { $0.isImage() }
-      let preferredURL = imageURL ?? urls.first
-      if let url = preferredURL,
-        isEdited(base: base) || getEditedBase(base: base).flatMap({ baseURLLookup[$0] }) == nil
-      {
-        var item = LocalFileSystemMediaItem(id: -1, original: url)
-        await extractMetadata(for: &item)
-        // Pre-generate and cache thumbnail
-        let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: url, mediaItem: item)
-        await MainActor.run { [item] in
-          items.append(item)
-        }
-        if let progress = scanProgress, progress.current + 1 <= progress.total {
-          await MainActor.run {
-            scanProgress = (progress.current + 1, progress.total)
-          }
+    let mediaItems = groupRelatedURLs(allFileURLs)
+    for mediaItem in mediaItems {
+      // extract metadata
+      let metadata = await extractMetadata(for: mediaItem.originalUrl)
+      mediaItem.metadata = metadata
+
+      // Pre-generate and cache thumbnail
+      let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(
+        for: mediaItem.displayURL, mediaItem: mediaItem)
+      await MainActor.run { [mediaItem] in
+        items.append(mediaItem)  // run in main thread to update the UI in real time
+      }
+      if let progress = scanProgress, progress.current + 1 <= progress.total {
+        await MainActor.run {
+          scanProgress = (progress.current + 1, progress.total)
         }
       }
     }

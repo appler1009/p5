@@ -86,7 +86,7 @@ struct MediaSource: Hashable, Comparable {
   }
 
   func lookupKey() -> String {
-    return "\(year)_\(month)_\(day)_\(baseName)_\(uti)"
+    return "\(year)_\(month)_\(day)_\(fullName)_\(uti)"
   }
 
   static func == (lhs: MediaSource, rhs: MediaSource) -> Bool {
