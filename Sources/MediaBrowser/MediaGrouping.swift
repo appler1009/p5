@@ -1,9 +1,11 @@
 import Foundation
 import ImageCaptureCore
+import ImageIO
+import UniformTypeIdentifiers
 
-// MARK: - Camera Media Grouping
+// MARK: - Media Grouping
 
-/// Represents a media source from a camera device with metadata for grouping
+/// Represents a media source with metadata for grouping
 struct MediaSource: Hashable, Comparable {
   let year: Int
   let month: Int
@@ -28,6 +30,40 @@ struct MediaSource: Hashable, Comparable {
       name: cameraItem.name!,
       uti: cameraItem.uti!
     )
+  }
+
+  init(url: URL) {
+    let fileName = url.lastPathComponent
+    let pathExtension = url.pathExtension
+    let uti = UTType(filenameExtension: pathExtension)?.identifier ?? ""
+
+    // Try to extract date from EXIF data first, then fall back to file metadata
+    var fileDate: Date?
+    if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    {
+
+      // EXIF date
+      if let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
+        let dateString = exif[kCGImagePropertyExifDateTimeOriginal] as? String
+      {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        fileDate = formatter.date(from: dateString)
+      }
+    }
+
+    // Fall back to file system dates
+    let finalDate =
+      fileDate
+      ?? {
+        let resourceValues = try? url.resourceValues(forKeys: [
+          .creationDateKey, .contentModificationDateKey,
+        ])
+        return resourceValues?.creationDate ?? resourceValues?.contentModificationDate ?? Date()
+      }()
+
+    self.init(date: finalDate, name: fileName, uti: uti)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -129,6 +165,30 @@ func groupRelatedCameraItems(_ items: [ICCameraItem]) -> [ConnectedDeviceMediaIt
     if let original = itemLookup[group.main.lookupKey()] {
       return ConnectedDeviceMediaItem(
         id: -1,  // Will be replaced with a unique sequence number
+        original: original,
+        edited: group.edited != nil ? itemLookup[group.edited!.lookupKey()] : nil,
+        live: group.live != nil ? itemLookup[group.live!.lookupKey()] : nil
+      )
+    } else {
+      return nil
+    }
+  }
+}
+
+/// Groups related URLs by creating MediaSource objects and grouping them
+func groupRelatedURLs(_ urls: [URL]) -> [LocalFileSystemMediaItem] {
+  let itemLookup: [String: URL] = urls.reduce(into: [String: URL]()) {
+    dict, item in
+    dict[MediaSource(url: item).lookupKey()] = item
+  }
+
+  let sources = urls.map(MediaSource.init(url:))
+
+  let mediaGroups = groupRelatedMedia(sources)
+  return mediaGroups.compactMap { group in
+    if let original = itemLookup[group.main.lookupKey()] {
+      return LocalFileSystemMediaItem(
+        id: -1,
         original: original,
         edited: group.edited != nil ? itemLookup[group.edited!.lookupKey()] : nil,
         live: group.live != nil ? itemLookup[group.live!.lookupKey()] : nil
