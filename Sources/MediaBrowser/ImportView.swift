@@ -308,7 +308,7 @@ struct ImportView: View {
       .background(Color(NSColor.controlBackgroundColor))
       
       // Import directory section at the bottom
-      ImportDirectorySection()
+      ImportDirectorySection(includeHorizontalPadding: true)
         .background(Color(NSColor.controlBackgroundColor))
     }
     .navigationTitle("Import Photos")
