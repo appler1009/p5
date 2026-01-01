@@ -3,7 +3,7 @@ import Foundation
 import GRDB
 import ImageIO
 
-struct ApplePhotosMediaItem {
+struct ApplePhotosItem {
   let fileName: String
   let directory: String
   let originalFileName: String
@@ -82,6 +82,8 @@ class ImportApplePhotos {
   private let dbQueue: DatabaseQueue
   private let photosURL: URL
 
+  private var mediaItems: [ApplePhotosMediaItem] = []
+
   init(libraryURL: URL) throws {
     self.photosURL = libraryURL
 
@@ -89,18 +91,48 @@ class ImportApplePhotos {
     self.dbQueue = try DatabaseQueue(path: dbURL.path)
   }
 
-  func importPhotos(to importedDirectory: URL) throws {
+  func previewPhotos() async throws {
+    let photos = try await getMediaItems()
+    for metadata in photos {
+
+    }
+  }
+
+  func importPhotos(to importedDirectory: URL) async throws {
     try FileManager.default.createDirectory(
       at: importedDirectory, withIntermediateDirectories: true)
 
-    let photos = try fetchPhotoMetadata()
+    let photos = try await getMediaItems()
 
     for metadata in photos {
       try importPhoto(metadata, to: importedDirectory)
     }
   }
 
-  private func fetchPhotoMetadata() throws -> [ApplePhotosMediaItem] {
+  func getMediaItems() async throws -> [ApplePhotosMediaItem] {
+    if mediaItems.isEmpty {
+      let rawItems = try fetchRawItems()
+
+      let groupedItems = groupRelatedApplePhotoItems(rawItems)
+      for mediaItem in groupedItems {
+        // Pre-generate and cache thumbnail
+        let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(
+          for: mediaItem.displayURL, mediaItem: mediaItem)
+        await MainActor.run { [mediaItem] in
+          mediaItems.append(mediaItem)  // run in main thread to update the UI in real time
+        }
+        if let progress = scanProgress, progress.current + 1 <= progress.total {
+          await MainActor.run {
+            scanProgress = (progress.current + 1, progress.total)
+          }
+        }
+      }
+
+    }
+    return mediaItems
+  }
+
+  private func fetchRawItems() throws -> [ApplePhotosItem] {
     let sql = """
       SELECT
           ZASSET.ZFILENAME as filename,
@@ -151,7 +183,7 @@ class ImportApplePhotos {
     return try dbQueue.read { db in
       let rows = try Row.fetchAll(db, sql: sql)
 
-      var items: [ApplePhotosMediaItem] = []
+      var items: [ApplePhotosItem] = []
       for row in rows {
         // Dates
         let creationDate = (row[Column("dateCreated")] as Double?).map {
@@ -221,7 +253,7 @@ class ImportApplePhotos {
           shutterSpeed: shutterSpeed
         )
 
-        let item = ApplePhotosMediaItem(
+        let item = ApplePhotosItem(
           fileName: row[Column("filename")] as String,
           directory: row[Column("directory")] as String,
           originalFileName: (row[Column("originalFilename")] as String?) ?? "",
@@ -245,12 +277,15 @@ class ImportApplePhotos {
           bitrate: row[Column("bitrate")] as Double?,
           codec: row[Column("codec")] as String?,
           extendedTimezoneName: row[Column("extendedTimezoneName")] as String?,
-          extendedTimezoneOffset: row[Column("extendedTimezoneOffset")] as Int?
+          extendedTimezoneOffset: row[Column("extendedTimezoneOffset")] as Int?,
         )
         items.append(item)
       }
       return items
     }
+  }
+
+  private func thumbnailPhoto(_ item: ApplePhotosMediaItem) {
   }
 
   private func importPhoto(_ item: ApplePhotosMediaItem, to importedDirectory: URL) throws {
@@ -270,7 +305,7 @@ class ImportApplePhotos {
     let extractedMetadata = extractMetadata(from: sourceURL)
 
     // Use EXIF if available, else database
-    let finalDate = item.metadata.creationDate ?? extractedMetadata.exifDate
+    let finalDate = item.metadata?.creationDate ?? extractedMetadata.exifDate
 
     // Determine destination filename
     let destinationFilename = item.originalFileName.isEmpty ? item.fileName : item.originalFileName
@@ -295,9 +330,7 @@ class ImportApplePhotos {
     try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
 
     // Here you could store the metadata in your app's database
-    print(
-      "Imported \(destinationFilename) with date: \(finalDate?.description ?? "unknown")"
-    )
+    print("\(destinationFilename) with on \(finalDate?.description ?? "unknown")")
   }
 
   private func extractMetadata(from url: URL) -> MediaMetadata {

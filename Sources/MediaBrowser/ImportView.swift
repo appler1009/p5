@@ -9,9 +9,97 @@ struct ImportView: View {
   @State private var duplicateCount = 0
   @State private var importStatus: String?
   @State private var deviceConnectionError: String?
+  @State private var isImportFromDeviceSelected: Bool = false
+
   @State private var selectedApplePhotosLibrary: URL?
+  @State private var applePhotosItems: [ApplePhotosMediaItem] = []
+  @State private var isApplePhotosSelected: Bool = false
 
   @Environment(\.dismiss) private var dismiss
+
+  var applePhotosContent: some View {
+    VStack(spacing: 16) {
+      HStack {
+        Image(systemName: "photo.on.rectangle.angled")
+          .foregroundColor(.green)
+        Text("Photos from Apple Photos library")
+          .font(.title2)
+          .fontWeight(.semibold)
+
+        Button(action: {
+          openApplePhotosPicker()
+        }) {
+          Text("Preview")
+            .font(.caption)
+            .fontWeight(.medium)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+
+        Spacer()
+        Button(
+          "Import \(importFromDevice.selectedDeviceMediaItems.count > 0 ? "\(importFromDevice.selectedDeviceMediaItems.count) Selected" : "All")"
+        ) {
+          Task {
+            self.showStatus("Download started")
+            await importFromDevice.requestDownloads()
+          }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(importFromDevice.deviceMediaItems.count == duplicateCount)
+      }
+
+      if applePhotosItems.isEmpty {
+        // Show no photos found
+        VStack(spacing: 20) {
+          Image(systemName: "photo.on.rectangle.angled")
+            .font(.system(size: 80))
+            .foregroundColor(.secondary)
+
+          VStack(spacing: 12) {
+            Text("No Photos Found")
+              .font(.title2)
+              .fontWeight(.semibold)
+
+            Text("This Apple Photos library doesn't contain any photos")
+              .font(.subheadline)
+              .foregroundColor(.secondary)
+              .multilineTextAlignment(.center)
+          }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        // Apple Photos grid
+        ScrollView {
+          LazyVGrid(
+            columns: [
+              GridItem(.adaptive(minimum: 120), spacing: 10)
+            ], spacing: 10
+          ) {
+            ForEach(
+              applePhotosItems.sorted { ($0.addedDate ?? Date()) > ($1.addedDate ?? Date()) },
+              id: \.fileName
+            ) { item in
+              VStack(spacing: 4) {
+                Image(systemName: "photo")
+                  .font(.title2)
+                  .foregroundColor(.secondary)
+                Text(item.fileName)
+                  .font(.caption)
+                  .lineLimit(2)
+              }
+              .padding(8)
+              .background(Color(NSColor.controlBackgroundColor))
+              .cornerRadius(8)
+              .frame(maxWidth: 150)
+            }
+          }
+          .padding()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+    }
+  }
 
   var deviceContent: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -160,6 +248,9 @@ struct ImportView: View {
 
         VStack(spacing: 12) {
           Button(action: {
+            Task {
+              isImportFromDeviceSelected = true
+            }
             importFromDevice.scanForDevices()
           }) {
             HStack {
@@ -186,7 +277,9 @@ struct ImportView: View {
           .controlSize(.large)
 
           Button(action: {
-            openApplePhotosPicker()
+            Task {
+              isApplePhotosSelected = true
+            }
           }) {
             HStack {
               Image(systemName: "folder")
@@ -236,70 +329,12 @@ struct ImportView: View {
     } detail: {
       // Main content area
       VStack(spacing: 24) {
-        if importFromDevice.selectedDevice != nil {
-          // Show device contents
+        if isApplePhotosSelected {
+          applePhotosContent
+            .padding()
+        } else if isImportFromDeviceSelected {
           deviceContent
             .padding()
-        } else if importFromDevice.isScanning {
-          VStack(spacing: 16) {
-            ProgressView()
-              .scaleEffect(1.5)
-            Text("Scanning for connected devices...")
-              .font(.headline)
-              .foregroundColor(.primary)
-          }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if importFromDevice.detectedDevices.isEmpty {
-          VStack(spacing: 20) {
-            Image(systemName: "iphone.slash")
-              .font(.system(size: 80))
-              .foregroundColor(.secondary)
-
-            VStack(spacing: 12) {
-              Text("No iPhone Detected")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-              Text("Connect your iPhone via USB and select a device from the sidebar")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            }
-
-            HStack(spacing: 16) {
-              Button("Scan Devices") {
-                importFromDevice.scanForDevices()
-              }
-              .buttonStyle(.borderedProminent)
-              .controlSize(.large)
-
-              Button("Browse Files") {
-                openLocalDirectoryPicker()
-              }
-              .buttonStyle(.bordered)
-              .controlSize(.large)
-            }
-          }
-          .padding(40)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-          VStack(spacing: 20) {
-            Image(systemName: "iphone")
-              .font(.system(size: 80))
-              .foregroundColor(.secondary)
-
-            VStack(spacing: 12) {
-              Text("Select a Device")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-              Text("Choose an iPhone from the sidebar to view its photos")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            }
-          }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)

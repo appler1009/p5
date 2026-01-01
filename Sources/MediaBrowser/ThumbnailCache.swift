@@ -58,6 +58,14 @@ class ThumbnailCache {
   }
 
   func generateAndCacheThumbnail(for url: URL, mediaItem: MediaItem) async -> NSImage? {
+    return await generateAndCacheThumbnail(
+      for: url,
+      date: mediaItem.thumbnailDate,
+      basename: mediaItem.basename
+    )
+  }
+
+  func generateAndCacheThumbnail(for url: URL, date: Date, basename: String) async -> NSImage? {
     let image = await generateThumbnail(for: url)
     let date = mediaItem.thumbnailDate
     let basename = mediaItem.displayName

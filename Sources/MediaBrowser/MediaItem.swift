@@ -165,6 +165,35 @@ class ConnectedDeviceMediaItem: MediaItem {
   }
 }
 
+class ApplePhotosMediaItem: LocalFileSystemMediaItem {
+  let fileName: String
+  let directory: String
+  let originalFileName: String
+
+  let extendedMetadata: [String: Any?]
+
+  init(
+    fileName: String,
+    directory: String,
+    originalFileName: String,
+    photosURL: URL,
+    metadata: MediaMetadata,
+    extendedMetadata: [String: Any?] = [:],
+  ) {
+    self.fileName = fileName
+    self.directory = directory
+    self.originalFileName = originalFileName
+    self.extendedMetadata = extendedMetadata
+
+    let sourceURL = photosURL.appendingPathComponent("originals")
+      .appendingPathComponent(directory)
+      .appendingPathComponent(fileName)
+    super.init(id: -1, original: sourceURL)
+
+    self.metadata = metadata
+  }
+}
+
 enum S3SyncStatus: String, Codable {
   case notSynced = "not_synced"
   case synced = "synced"

@@ -66,6 +66,14 @@ struct MediaSource: Hashable, Comparable {
     self.init(date: finalDate, name: fileName, uti: uti)
   }
 
+  init(applePhotosItem: ApplePhotosItem) {
+    self.init(
+      date: applePhotosItem.metadata.creationDate!,
+      name: applePhotosItem.originalFileName,
+      uti: applePhotosItem.uniformTypeIdentifier!
+    )
+  }
+
   func hash(into hasher: inout Hasher) {
     hasher.combine(year)
     hasher.combine(month)
@@ -192,6 +200,34 @@ func groupRelatedURLs(_ urls: [URL]) -> [LocalFileSystemMediaItem] {
         original: original,
         edited: group.edited != nil ? itemLookup[group.edited!.lookupKey()] : nil,
         live: group.live != nil ? itemLookup[group.live!.lookupKey()] : nil
+      )
+    } else {
+      return nil
+    }
+  }
+}
+
+func groupRelatedApplePhotoItems(_ applePhotosItems: [ApplePhotosItem], in photosURL: URL)
+  -> [ApplePhotosMediaItem]
+{
+  let itemLookup: [String: ApplePhotosItem] = applePhotosItems.reduce(
+    into: [String: ApplePhotosItem]()
+  ) {
+    dict, item in
+    dict[MediaSource(applePhotosItem: item).lookupKey()] = item
+  }
+
+  let sources = applePhotosItems.map(MediaSource.init(applePhotosItem:))
+
+  let mediaGroups = groupRelatedMedia(sources)
+  return mediaGroups.compactMap { group in
+    if let original = itemLookup[group.main.lookupKey()] {
+      return ApplePhotosMediaItem(
+        fileName: original.fileName,
+        directory: original.directory,
+        originalFileName: original.originalFileName,
+        photosURL: photosURL,
+        metadata: original.metadata
       )
     } else {
       return nil
