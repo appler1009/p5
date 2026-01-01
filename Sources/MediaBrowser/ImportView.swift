@@ -386,9 +386,14 @@ struct ImportView: View {
 
     if panel.runModal() == .OK {
       do {
+        // Clear existing items before starting new preview
+        applePhotosItems = []
         let applePhotos = try ImportApplePhotos(libraryURL: panel.urls.first!)
         Task {
-          try await applePhotos.previewPhotos()
+          try await applePhotos.previewPhotos { mediaItem in
+            // Update applePhotosItems in real-time when new media is found
+            applePhotosItems.append(mediaItem)
+          }
         }
       } catch {
         print("Error importing Apple Photos: \(error)")

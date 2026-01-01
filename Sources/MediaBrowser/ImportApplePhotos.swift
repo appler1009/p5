@@ -91,8 +91,9 @@ class ImportApplePhotos {
     self.dbQueue = try DatabaseQueue(path: dbURL.path)
   }
 
-  func previewPhotos() async throws {
-    self.mediaItems = try await getMediaItems()
+  func previewPhotos(onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in }) async throws
+  {
+    self.mediaItems = try await getMediaItems(onMediaFound: onMediaFound)
   }
 
   func importPhotos(to importedDirectory: URL) async throws {
@@ -106,7 +107,9 @@ class ImportApplePhotos {
     }
   }
 
-  private func getMediaItems() async throws -> [ApplePhotosMediaItem] {
+  private func getMediaItems(onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in })
+    async throws -> [ApplePhotosMediaItem]
+  {
     if mediaItems.isEmpty {
       let rawItems = try fetchRawItems()
       print("found \(rawItems.count) items from DB")
@@ -122,6 +125,7 @@ class ImportApplePhotos {
         ) != nil {
           await MainActor.run { [mediaItem] in
             mediaItems.append(mediaItem)  // run in main thread to update the UI in real time
+            onMediaFound(mediaItem)  // notify callback about new item
           }
         }
       }
