@@ -10,15 +10,71 @@ struct ApplePhotosMediaItem {
   let fileSize: Int
   let metadata: MediaMetadata
 
+  // Extended metadata
+  let uniformTypeIdentifier: String?
+  let timezoneName: String?
+  let timezoneOffset: Int?
+  let addedDate: Date?
+  let longDescription: String?
+  let focalLength: Double?
+  let focalLength35mm: Int?
+  let flashFired: Int?
+  let exposureBias: Double?
+  let meteringMode: Int?
+  let whiteBalance: Int?
+  let digitalZoomRatio: Double?
+  let fps: Double?
+  let bitrate: Double?
+  let codec: String?
+  let extendedTimezoneName: String?
+  let extendedTimezoneOffset: Int?
+
   init(
-    fileName: String, directory: String, originalFileName: String, fileSize: Int,
-    metadata: MediaMetadata
+    fileName: String,
+    directory: String,
+    originalFileName: String,
+    fileSize: Int,
+    metadata: MediaMetadata,
+    uniformTypeIdentifier: String? = nil,
+    timezoneName: String? = nil,
+    timezoneOffset: Int? = nil,
+    addedDate: Date? = nil,
+    longDescription: String? = nil,
+    focalLength: Double? = nil,
+    focalLength35mm: Int? = nil,
+    flashFired: Int? = nil,
+    exposureBias: Double? = nil,
+    meteringMode: Int? = nil,
+    whiteBalance: Int? = nil,
+    digitalZoomRatio: Double? = nil,
+    fps: Double? = nil,
+    bitrate: Double? = nil,
+    codec: String? = nil,
+    extendedTimezoneName: String? = nil,
+    extendedTimezoneOffset: Int? = nil
   ) {
     self.fileName = fileName
     self.directory = directory
     self.originalFileName = originalFileName
     self.fileSize = fileSize
     self.metadata = metadata
+    self.uniformTypeIdentifier = uniformTypeIdentifier
+    self.timezoneName = timezoneName
+    self.timezoneOffset = timezoneOffset
+    self.addedDate = addedDate
+    self.longDescription = longDescription
+    self.focalLength = focalLength
+    self.focalLength35mm = focalLength35mm
+    self.flashFired = flashFired
+    self.exposureBias = exposureBias
+    self.meteringMode = meteringMode
+    self.whiteBalance = whiteBalance
+    self.digitalZoomRatio = digitalZoomRatio
+    self.fps = fps
+    self.bitrate = bitrate
+    self.codec = codec
+    self.extendedTimezoneName = extendedTimezoneName
+    self.extendedTimezoneOffset = extendedTimezoneOffset
   }
 }
 
@@ -49,16 +105,47 @@ class ImportApplePhotos {
       SELECT
           ZASSET.ZFILENAME as filename,
           ZASSET.ZDIRECTORY as directory,
+          ZASSET.ZUNIFORMTYPEIDENTIFIER as uniformTypeIdentifier,
           ZADDITIONALASSETATTRIBUTES.ZORIGINALFILENAME as originalFilename,
+          ZADDITIONALASSETATTRIBUTES.ZORIGINALFILESIZE as fileSize,
+          ZADDITIONALASSETATTRIBUTES.ZORIGINALWIDTH as originalWidth,
+          ZADDITIONALASSETATTRIBUTES.ZORIGINALHEIGHT as originalHeight,
+          ZADDITIONALASSETATTRIBUTES.ZORIGINALORIENTATION as originalOrientation,
+          ZADDITIONALASSETATTRIBUTES.ZTIMEZONENAME as timezoneName,
+          ZADDITIONALASSETATTRIBUTES.ZTIMEZONEOFFSET as timezoneOffset,
           ZASSET.ZDATECREATED as dateCreated,
+          ZASSET.ZADDEDDATE as addedDate,
+          ZASSET.ZMODIFICATIONDATE as modificationDate,
           ZASSET.ZLATITUDE as latitude,
           ZASSET.ZLONGITUDE as longitude,
           ZASSET.ZWIDTH as width,
           ZASSET.ZHEIGHT as height,
-          ZADDITIONALASSETATTRIBUTES.ZORIGINALFILESIZE as fileSize,
-          ZASSET.ZORIENTATION as orientation
+          ZASSET.ZORIENTATION as orientation,
+          ZEXTENDEDATTRIBUTES.ZCAMERAMAKE as cameraMake,
+          ZEXTENDEDATTRIBUTES.ZCAMERAMODEL as cameraModel,
+          ZEXTENDEDATTRIBUTES.ZLENSMODEL as lensModel,
+          ZEXTENDEDATTRIBUTES.ZISO as iso,
+          ZEXTENDEDATTRIBUTES.ZAPERTURE as aperture,
+          ZEXTENDEDATTRIBUTES.ZSHUTTERSPEED as shutterSpeed,
+          ZEXTENDEDATTRIBUTES.ZFOCALLENGTH as focalLength,
+          ZEXTENDEDATTRIBUTES.ZFOCALLENGTHIN35MM as focalLength35mm,
+          ZEXTENDEDATTRIBUTES.ZFLASHFIRED as flashFired,
+          ZEXTENDEDATTRIBUTES.ZEXPOSUREBIAS as exposureBias,
+          ZEXTENDEDATTRIBUTES.ZMETERINGMODE as meteringMode,
+          ZEXTENDEDATTRIBUTES.ZWHITEBALANCE as whiteBalance,
+          ZEXTENDEDATTRIBUTES.ZDIGITALZOOMRATIO as digitalZoomRatio,
+          ZEXTENDEDATTRIBUTES.ZFPS as fps,
+          ZEXTENDEDATTRIBUTES.ZDURATION as duration,
+          ZEXTENDEDATTRIBUTES.ZBITRATE as bitrate,
+          ZEXTENDEDATTRIBUTES.ZCODEC as codec,
+          ZEXTENDEDATTRIBUTES.ZDATECREATED as extendedDateCreated,
+          ZEXTENDEDATTRIBUTES.ZTIMEZONENAME as extendedTimezoneName,
+          ZEXTENDEDATTRIBUTES.ZTIMEZONEOFFSET as extendedTimezoneOffset,
+          ZASSETDESCRIPTION.ZLONGDESCRIPTION as longDescription
       FROM ZASSET
       INNER JOIN ZADDITIONALASSETATTRIBUTES ON ZASSET.Z_PK = ZADDITIONALASSETATTRIBUTES.ZASSET
+      LEFT JOIN ZEXTENDEDATTRIBUTES ON ZASSET.Z_PK = ZEXTENDEDATTRIBUTES.ZASSET
+      LEFT JOIN ZASSETDESCRIPTION ON ZASSET.Z_PK = ZASSETDESCRIPTION.ZASSETATTRIBUTES
       """
 
     return try dbQueue.read { db in
@@ -66,46 +153,99 @@ class ImportApplePhotos {
 
       var items: [ApplePhotosMediaItem] = []
       for row in rows {
+        // Dates
         let creationDate = (row[Column("dateCreated")] as Double?).map {
           Date(timeIntervalSinceReferenceDate: $0)
         }
+        let modificationDate = (row[Column("modificationDate")] as Double?).map {
+          Date(timeIntervalSinceReferenceDate: $0)
+        }
+        let extendedDateCreated = (row[Column("extendedDateCreated")] as Double?).map {
+          Date(timeIntervalSinceReferenceDate: $0)
+        }
 
+        // Dimensions - prefer original dimensions over asset dimensions
         let dimensions: CGSize?
-        if let width = row[Column("width")] as Int?, let height = row[Column("height")] as Int? {
-          dimensions = CGSize(width: CGFloat(width), height: CGFloat(height))
+        let originalWidth = row[Column("originalWidth")] as Int?
+        let originalHeight = row[Column("originalHeight")] as Int?
+        let width = row[Column("width")] as Int?
+        let height = row[Column("height")] as Int?
+
+        if let origWidth = originalWidth, let origHeight = originalHeight {
+          dimensions = CGSize(width: CGFloat(origWidth), height: CGFloat(origHeight))
+        } else if let w = width, let h = height {
+          dimensions = CGSize(width: CGFloat(w), height: CGFloat(h))
         } else {
           dimensions = nil
         }
 
+        // GPS - prefer extended attributes GPS over asset GPS
         let gps: GPSLocation?
-        if let latitude = row[Column("latitude")] as Double?,
-          let longitude = row[Column("longitude")] as Double?
-        {
-          gps = GPSLocation(latitude: latitude, longitude: longitude)
+        let extendedLatitude = row[Column("latitude")] as Double?
+        let extendedLongitude = row[Column("longitude")] as Double?
+        let assetLatitude = row[Column("latitude")] as Double?
+        let assetLongitude = row[Column("longitude")] as Double?
+
+        if let lat = extendedLatitude, let lon = extendedLongitude {
+          gps = GPSLocation(latitude: lat, longitude: lon)
+        } else if let lat = assetLatitude, let lon = assetLongitude {
+          gps = GPSLocation(latitude: lat, longitude: lon)
         } else {
           gps = nil
         }
 
+        // Camera metadata
+        let make = row[Column("cameraMake")] as String?
+        let model = row[Column("cameraModel")] as String?
+        let lens = row[Column("lensModel")] as String?
+        let iso = row[Column("iso")] as Int?
+        let aperture = row[Column("aperture")] as Double?
+        let shutterSpeedValue = row[Column("shutterSpeed")] as Double?
+        let shutterSpeed = shutterSpeedValue.map { String(format: "1/%.0f", 1.0 / $0) }
+
+        // Duration for videos
+        let duration = row[Column("duration")] as Double?
+
         let metadata = MediaMetadata(
-          creationDate: creationDate,
-          modificationDate: nil,
+          creationDate: creationDate ?? extendedDateCreated,
+          modificationDate: modificationDate,
           dimensions: dimensions,
-          exifDate: nil,
+          exifDate: extendedDateCreated,
           gps: gps,
-          make: nil,
-          model: nil,
-          lens: nil,
-          iso: nil,
-          aperture: nil,
-          shutterSpeed: nil
+          duration: duration,
+          make: make,
+          model: model,
+          lens: lens,
+          iso: iso,
+          aperture: aperture,
+          shutterSpeed: shutterSpeed
         )
 
         let item = ApplePhotosMediaItem(
           fileName: row[Column("filename")] as String,
           directory: row[Column("directory")] as String,
-          originalFileName: row[Column("originalFilename")] as String,
-          fileSize: row[Column("fileSize")] as Int,
-          metadata: metadata
+          originalFileName: (row[Column("originalFilename")] as String?) ?? "",
+          fileSize: (row[Column("fileSize")] as Int?) ?? 0,
+          metadata: metadata,
+          uniformTypeIdentifier: row[Column("uniformTypeIdentifier")] as String?,
+          timezoneName: row[Column("timezoneName")] as String?,
+          timezoneOffset: row[Column("timezoneOffset")] as Int?,
+          addedDate: (row[Column("addedDate")] as Double?).map {
+            Date(timeIntervalSinceReferenceDate: $0)
+          },
+          longDescription: row[Column("longDescription")] as String?,
+          focalLength: row[Column("focalLength")] as Double?,
+          focalLength35mm: row[Column("focalLength35mm")] as Int?,
+          flashFired: row[Column("flashFired")] as Int?,
+          exposureBias: row[Column("exposureBias")] as Double?,
+          meteringMode: row[Column("meteringMode")] as Int?,
+          whiteBalance: row[Column("whiteBalance")] as Int?,
+          digitalZoomRatio: row[Column("digitalZoomRatio")] as Double?,
+          fps: row[Column("fps")] as Double?,
+          bitrate: row[Column("bitrate")] as Double?,
+          codec: row[Column("codec")] as String?,
+          extendedTimezoneName: row[Column("extendedTimezoneName")] as String?,
+          extendedTimezoneOffset: row[Column("extendedTimezoneOffset")] as Int?
         )
         items.append(item)
       }

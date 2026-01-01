@@ -150,6 +150,8 @@ struct ImportView: View {
     }
   }
 
+
+
   var body: some View {
     NavigationSplitView(columnVisibility: .constant(.all)) {
       // Sidebar
@@ -304,6 +306,9 @@ struct ImportView: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color(NSColor.controlBackgroundColor))
+      
+      // Import directory section at the bottom
+      ImportDirectorySection()
     }
     .navigationTitle("Import Photos")
     .onAppear {

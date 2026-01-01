@@ -35,8 +35,7 @@ extension String {
 extension URL {
   // Extract base name from the last path component
   func extractBaseName() -> String {
-    var baseName = self.lastPathComponent
-    return baseName.extractBaseName()
+    return self.lastPathComponent.extractBaseName()
   }
 }
 
