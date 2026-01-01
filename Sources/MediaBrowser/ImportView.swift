@@ -69,32 +69,14 @@ struct ImportView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
-        // Apple Photos grid
         ScrollView {
-          LazyVGrid(
-            columns: [
-              GridItem(.adaptive(minimum: 120), spacing: 10)
-            ], spacing: 10
-          ) {
-            ForEach(
-              applePhotosItems.sorted { ($0.addedDate ?? Date()) > ($1.addedDate ?? Date()) },
-              id: \.fileName
-            ) { item in
-              VStack(spacing: 4) {
-                Image(systemName: "photo")
-                  .font(.title2)
-                  .foregroundColor(.secondary)
-                Text(item.fileName)
-                  .font(.caption)
-                  .lineLimit(2)
-              }
-              .padding(8)
-              .background(Color(NSColor.controlBackgroundColor))
-              .cornerRadius(8)
-              .frame(maxWidth: 150)
-            }
-          }
-          .padding()
+          SectionGridView(
+            items: applePhotosItems,
+            selectedItems: .constant(Set<MediaItem>()),
+            onSelectionChange: { _ in },
+            onItemDoubleTap: { _ in },
+            minCellWidth: 120
+          )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -405,7 +387,9 @@ struct ImportView: View {
     if panel.runModal() == .OK {
       do {
         let applePhotos = try ImportApplePhotos(libraryURL: panel.urls.first!)
-        try applePhotos.importPhotos(to: DirectoryManager.shared.importDirectory)
+        Task {
+          try await applePhotos.previewPhotos()
+        }
       } catch {
         print("Error importing Apple Photos: \(error)")
       }

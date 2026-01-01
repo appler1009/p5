@@ -92,10 +92,7 @@ class ImportApplePhotos {
   }
 
   func previewPhotos() async throws {
-    let photos = try await getMediaItems()
-    for metadata in photos {
-
-    }
+    self.mediaItems = try await getMediaItems()
   }
 
   func importPhotos(to importedDirectory: URL) async throws {
@@ -109,26 +106,27 @@ class ImportApplePhotos {
     }
   }
 
-  func getMediaItems() async throws -> [ApplePhotosMediaItem] {
+  private func getMediaItems() async throws -> [ApplePhotosMediaItem] {
     if mediaItems.isEmpty {
       let rawItems = try fetchRawItems()
+      print("found \(rawItems.count) items from DB")
 
-      let groupedItems = groupRelatedApplePhotoItems(rawItems)
+      let groupedItems = groupRelatedApplePhotoItems(rawItems, in: self.photosURL)
+      print("found \(groupedItems.count) grouped items")
+
       for mediaItem in groupedItems {
         // Pre-generate and cache thumbnail
-        let _ = await ThumbnailCache.shared.generateAndCacheThumbnail(
-          for: mediaItem.displayURL, mediaItem: mediaItem)
-        await MainActor.run { [mediaItem] in
-          mediaItems.append(mediaItem)  // run in main thread to update the UI in real time
-        }
-        if let progress = scanProgress, progress.current + 1 <= progress.total {
-          await MainActor.run {
-            scanProgress = (progress.current + 1, progress.total)
+        if await ThumbnailCache.shared.generateAndCacheThumbnail(
+          for: mediaItem.displayURL,
+          mediaItem: mediaItem
+        ) != nil {
+          await MainActor.run { [mediaItem] in
+            mediaItems.append(mediaItem)  // run in main thread to update the UI in real time
           }
         }
       }
-
     }
+    print("found \(mediaItems.count) thumbnails")
     return mediaItems
   }
 

@@ -61,33 +61,34 @@ class ThumbnailCache {
     return await generateAndCacheThumbnail(
       for: url,
       date: mediaItem.thumbnailDate,
-      basename: mediaItem.basename
+      basename: mediaItem.displayName,
+      mediaItemId: mediaItem.id
     )
   }
 
-  func generateAndCacheThumbnail(for url: URL, date: Date, basename: String) async -> NSImage? {
-    let image = await generateThumbnail(for: url)
-    let date = mediaItem.thumbnailDate
-    let basename = mediaItem.displayName
-    if let image = image {
-      // Cache the generated thumbnail
-      let filename = filenameForThumbnail(date: date, basename: basename)
-      let key = filename as NSString
+  func generateAndCacheThumbnail(for url: URL, date: Date, basename: String, mediaItemId: Int = -1)
+    async -> NSImage?
+  {
+    guard let image = await generateThumbnail(for: url) else { return nil }
 
-      cache.setObject(image, forKey: key)
-      saveToDisk(image: image, key: filename)
+    // Cache the generated thumbnail
+    let filename = filenameForThumbnail(date: date, basename: basename)
+    let key = filename as NSString
 
-      // Notify observers that thumbnail became available
-      NotificationCenter.default.post(
-        name: .thumbnailDidBecomeAvailable,
-        object: nil,
-        userInfo: [
-          "date": date,
-          "basename": basename,
-          "mediaItemId": mediaItem.id,
-        ]
-      )
-    }
+    cache.setObject(image, forKey: key)
+    saveToDisk(image: image, key: filename)
+
+    // Notify observers that thumbnail became available
+    NotificationCenter.default.post(
+      name: .thumbnailDidBecomeAvailable,
+      object: nil,
+      userInfo: [
+        "date": date,
+        "basename": basename,
+        "mediaItemId": mediaItemId,
+      ]
+    )
+
     return image
   }
 
