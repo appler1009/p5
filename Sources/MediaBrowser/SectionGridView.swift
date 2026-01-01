@@ -26,7 +26,7 @@ struct SectionGridView: View {
     selectedItems: Binding<Set<MediaItem>>,
     onSelectionChange: @escaping (Set<MediaItem>) -> Void,
     onItemDoubleTap: @escaping (MediaItem) -> Void,
-    minCellWidth: CGFloat = 120,
+    minCellWidth: CGFloat = 80,
     disableDuplicates: Bool = false,
     onDuplicateCountChange: ((Int) -> Void)? = nil
   ) {
