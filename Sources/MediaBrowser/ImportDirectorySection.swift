@@ -3,12 +3,7 @@ import SwiftUI
 
 struct ImportDirectorySection: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
-  let includeHorizontalPadding: Bool
-  
-  init(includeHorizontalPadding: Bool = true) {
-    self.includeHorizontalPadding = includeHorizontalPadding
-  }
-  
+
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
       // Import Directory with Icon
@@ -62,6 +57,6 @@ struct ImportDirectorySection: View {
         }
       }
     }
-    .padding(includeHorizontalPadding ? .horizontal : .vertical)
+    .padding(.vertical)
   }
 }
