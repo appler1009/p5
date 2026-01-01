@@ -58,11 +58,5 @@ struct ImportDirectorySection: View {
       }
     }
     .padding()
-    .overlay(
-      Rectangle()
-        .frame(height: 1)
-        .foregroundColor(Color.gray.opacity(0.3)),
-      alignment: .top
-    )
   }
 }
