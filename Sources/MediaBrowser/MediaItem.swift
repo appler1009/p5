@@ -191,6 +191,11 @@ class ApplePhotosMediaItem: LocalFileSystemMediaItem {
     super.init(id: -1, original: sourceURL)
 
     self.metadata = metadata
+    self.s3SyncStatus = .notApplicable  // Apple Photos items are not synced to S3
+  }
+
+  override var displayName: String {
+    return originalFileName
   }
 }
 

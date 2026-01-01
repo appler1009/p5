@@ -37,16 +37,18 @@ struct ImportView: View {
         .controlSize(.small)
 
         Spacer()
-        Button(
-          "Import \(importFromDevice.selectedDeviceMediaItems.count > 0 ? "\(importFromDevice.selectedDeviceMediaItems.count) Selected" : "All")"
-        ) {
+
+        Text("Total \(applePhotosItems.count)")
+          .font(.subheadline)
+          .foregroundColor(.secondary)
+
+        Button("Import All") {
           Task {
-            self.showStatus("Download started")
-            await importFromDevice.requestDownloads()
+            self.showStatus("Import started")
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(importFromDevice.deviceMediaItems.count == duplicateCount)
+        .disabled(applePhotosItems.isEmpty)
       }
 
       if applePhotosItems.isEmpty {
@@ -75,8 +77,9 @@ struct ImportView: View {
             selectedItems: .constant(Set<MediaItem>()),
             onSelectionChange: { _ in },
             onItemDoubleTap: { _ in },
-            minCellWidth: 120
+            minCellWidth: 80
           )
+          .padding()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
