@@ -57,6 +57,6 @@ struct ImportDirectorySection: View {
         }
       }
     }
-    .padding()
+    .padding(.horizontal)
   }
 }
