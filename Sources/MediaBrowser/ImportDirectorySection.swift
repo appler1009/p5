@@ -58,7 +58,6 @@ struct ImportDirectorySection: View {
       }
     }
     .padding()
-    .background(Color(NSColor.controlBackgroundColor))
     .overlay(
       Rectangle()
         .frame(height: 1)

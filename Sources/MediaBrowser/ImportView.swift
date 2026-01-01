@@ -309,6 +309,7 @@ struct ImportView: View {
       
       // Import directory section at the bottom
       ImportDirectorySection()
+        .background(Color(NSColor.controlBackgroundColor))
     }
     .navigationTitle("Import Photos")
     .onAppear {
