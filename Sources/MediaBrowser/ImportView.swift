@@ -15,6 +15,9 @@ struct ImportView: View {
   @State private var applePhotosItems: [ApplePhotosMediaItem] = []
   @State private var isApplePhotosSelected: Bool = false
 
+  @State private var localFilesItems: [LocalFileSystemMediaItem] = []
+  @State private var isLocalFilesSelected: Bool = false
+
   @Environment(\.dismiss) private var dismiss
 
   var applePhotosContent: some View {
@@ -26,21 +29,13 @@ struct ImportView: View {
           .font(.title2)
           .fontWeight(.semibold)
 
-        Button(action: {
-          openApplePhotosPicker()
-        }) {
-          Text("Preview")
-            .font(.caption)
-            .fontWeight(.medium)
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-
         Spacer()
 
-        Text("Total \(applePhotosItems.count)")
-          .font(.subheadline)
-          .foregroundColor(.secondary)
+        if applePhotosItems.count > 0 {
+          Text("Total \(applePhotosItems.count)")
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+        }
 
         Button("Import All") {
           Task {
@@ -58,16 +53,12 @@ struct ImportView: View {
             .font(.system(size: 80))
             .foregroundColor(.secondary)
 
-          VStack(spacing: 12) {
-            Text("No Photos Found")
-              .font(.title2)
-              .fontWeight(.semibold)
-
-            Text("This Apple Photos library doesn't contain any photos")
-              .font(.subheadline)
-              .foregroundColor(.secondary)
-              .multilineTextAlignment(.center)
+          Button("Open") {
+            Task {
+              openApplePhotosPicker()
+            }
           }
+          .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
@@ -91,18 +82,16 @@ struct ImportView: View {
       HStack {
         Image(systemName: "iphone")
           .foregroundColor(.green)
-        Text("Photos from \(importFromDevice.selectedDevice?.name ?? "iPhone")")
+        Text("Photos from \(importFromDevice.selectedDevice?.name ?? "Connected Device")")
           .font(.title2)
           .fontWeight(.semibold)
         Spacer()
-        Text(
-          """
-          \(importFromDevice.deviceMediaItems.count - duplicateCount) available for import out of \(importFromDevice.deviceMediaItems.count) total
-          """
-        )
-        Button(
-          "Import \(importFromDevice.selectedDeviceMediaItems.count > 0 ? "\(importFromDevice.selectedDeviceMediaItems.count) Selected" : "All")"
-        ) {
+        if importFromDevice.deviceMediaItems.count > 0 {
+          let availableCount = importFromDevice.deviceMediaItems.count - duplicateCount
+          let totalCount = importFromDevice.deviceMediaItems.count
+          Text("\(availableCount) available for import out of \(totalCount) total")
+        }
+        Button("Import All") {
           Task {
             self.showStatus("Download started")
             await importFromDevice.requestDownloads()
@@ -189,17 +178,6 @@ struct ImportView: View {
           Image(systemName: "photo.on.rectangle.angled")
             .font(.system(size: 80))
             .foregroundColor(.secondary)
-
-          VStack(spacing: 12) {
-            Text("No Photos Found")
-              .font(.title2)
-              .fontWeight(.semibold)
-
-            Text("This device doesn't have any photos or videos")
-              .font(.subheadline)
-              .foregroundColor(.secondary)
-              .multilineTextAlignment(.center)
-          }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
@@ -223,6 +201,63 @@ struct ImportView: View {
     }
   }
 
+  var localFilesContent: some View {
+    VStack(spacing: 16) {
+      HStack {
+        Image(systemName: "photo.on.rectangle.angled")
+          .foregroundColor(.green)
+        Text("Photos from Local Files")
+          .font(.title2)
+          .fontWeight(.semibold)
+
+        Spacer()
+
+        if localFilesItems.count > 0 {
+          Text("Total \(localFilesItems.count)")
+            .font(.subheadline)
+            .foregroundColor(.secondary)
+        }
+
+        Button("Import All") {
+          Task {
+            self.showStatus("Import started")
+          }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(localFilesItems.isEmpty)
+      }
+
+      if localFilesItems.isEmpty {
+        // Show no photos found
+        VStack(spacing: 20) {
+          Image(systemName: "photo.on.rectangle.angled")
+            .font(.system(size: 80))
+            .foregroundColor(.secondary)
+
+          Button("Open") {
+            Task {
+              openLocalDirectoryPicker()
+            }
+          }
+          .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        ScrollView {
+          SectionGridView(
+            items: localFilesItems,
+            selectedItems: .constant(Set<MediaItem>()),
+            onSelectionChange: { _ in },
+            onItemDoubleTap: { _ in },
+            minCellWidth: 80
+          )
+          .padding()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+    }
+  }
+
   var body: some View {
     NavigationSplitView(columnVisibility: .constant(.all)) {
       // Sidebar
@@ -234,6 +269,8 @@ struct ImportView: View {
         VStack(spacing: 12) {
           Button(action: {
             Task {
+              isLocalFilesSelected = false
+              isApplePhotosSelected = false
               isImportFromDeviceSelected = true
             }
             importFromDevice.scanForDevices()
@@ -249,7 +286,11 @@ struct ImportView: View {
           .controlSize(.large)
 
           Button(action: {
-            openLocalDirectoryPicker()
+            Task {
+              isApplePhotosSelected = false
+              isImportFromDeviceSelected = false
+              isLocalFilesSelected = true
+            }
           }) {
             HStack {
               Image(systemName: "folder")
@@ -263,6 +304,8 @@ struct ImportView: View {
 
           Button(action: {
             Task {
+              isImportFromDeviceSelected = false
+              isLocalFilesSelected = false
               isApplePhotosSelected = true
             }
           }) {
@@ -320,6 +363,9 @@ struct ImportView: View {
         } else if isImportFromDeviceSelected {
           deviceContent
             .padding()
+        } else if isLocalFilesSelected {
+          localFilesContent
+            .padding()
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -366,15 +412,26 @@ struct ImportView: View {
   private func openLocalDirectoryPicker() {
     let panel = NSOpenPanel()
     panel.allowsMultipleSelection = true
-    panel.allowedContentTypes = [.image, .movie]
-    panel.canChooseDirectories = false
+    panel.allowedContentTypes = [.image, .movie, .folder]
+    panel.canChooseDirectories = true
     panel.canChooseFiles = true
     panel.message = "Select photos and videos to import"
     panel.prompt = "Import"
 
     if panel.runModal() == .OK {
-      let urls = panel.urls
-      importManualFiles(urls)
+      do {
+        // Clear existing items before starting new preview
+        localFilesItems = []
+        let localFiles = try ImportLocalFiles(directory: panel.urls.first!)
+        Task {
+          try await localFiles.previewPhotos { mediaItem in
+            // Update applePhotosItems in real-time when new media is found
+            localFilesItems.append(mediaItem)
+          }
+        }
+      } catch {
+        print("Error importing Local Files: \(error)")
+      }
     }
   }
 
