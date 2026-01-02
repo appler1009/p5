@@ -13,6 +13,7 @@ struct ImportView: View {
   @State private var selectedApplePhotosLibrary: URL?
   @State private var applePhotosItems: [ApplePhotosMediaItem] = []
   @State private var isApplePhotosSelected: Bool = false
+  @State private var isReadingApplePhotos: Bool = false
 
   @State private var localFilesItems: [LocalFileSystemMediaItem] = []
   @State private var isLocalFilesSelected: Bool = false
@@ -52,12 +53,18 @@ struct ImportView: View {
             .font(.system(size: 80))
             .foregroundColor(.secondary)
 
-          Button("Open Apple Photos") {
-            Task {
-              openApplePhotosPicker()
+          if isReadingApplePhotos {
+            ProgressView()
+            Text("Reading Apple Photos database...")
+          } else {
+            Button("Open Apple Photos") {
+              Task {
+                isReadingApplePhotos = true
+                openApplePhotosPicker()
+              }
             }
+            .buttonStyle(.borderedProminent)
           }
-          .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
@@ -441,6 +448,8 @@ struct ImportView: View {
         print("Error importing Apple Photos: \(error)")
       }
     }
+
+    isReadingApplePhotos = false
   }
 
   private func importManualFiles(_ urls: [URL]) {
