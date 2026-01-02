@@ -5,7 +5,6 @@ import SwiftUI
 
 struct ImportView: View {
   @ObservedObject var importFromDevice = ImportFromDevice()
-  @State private var hasInitialized = false
   @State private var duplicateCount = 0
   @State private var importStatus: String?
   @State private var deviceConnectionError: String?
@@ -53,7 +52,7 @@ struct ImportView: View {
             .font(.system(size: 80))
             .foregroundColor(.secondary)
 
-          Button("Open") {
+          Button("Open Apple Photos") {
             Task {
               openApplePhotosPicker()
             }
@@ -115,20 +114,6 @@ struct ImportView: View {
         .cornerRadius(8)
       }
 
-      if let error = deviceConnectionError {
-        HStack {
-          Image(systemName: "exclamationmark.triangle")
-            .foregroundColor(.red)
-          Text(error)
-            .foregroundColor(.red)
-            .lineLimit(nil)
-          Spacer()
-        }
-        .padding()
-        .background(Color.red.opacity(0.1))
-        .cornerRadius(8)
-      }
-
       if importFromDevice.isLoadingDeviceContents {
         VStack(spacing: 16) {
           ProgressView()
@@ -178,6 +163,11 @@ struct ImportView: View {
           Image(systemName: "photo.on.rectangle.angled")
             .font(.system(size: 80))
             .foregroundColor(.secondary)
+
+          Button("Scan for Devices") {
+            importFromDevice.scanForDevices()
+          }
+          .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
@@ -234,7 +224,7 @@ struct ImportView: View {
             .font(.system(size: 80))
             .foregroundColor(.secondary)
 
-          Button("Open") {
+          Button("Open Directory") {
             Task {
               openLocalDirectoryPicker()
             }
@@ -273,7 +263,6 @@ struct ImportView: View {
               isApplePhotosSelected = false
               isImportFromDeviceSelected = true
             }
-            importFromDevice.scanForDevices()
           }) {
             HStack {
               Image(systemName: "iphone.and.arrow.forward")
@@ -377,13 +366,6 @@ struct ImportView: View {
         .background(Color(NSColor.controlBackgroundColor))
     }
     .navigationTitle("Import Photos")
-    .onAppear {
-      if !hasInitialized {
-        hasInitialized = true
-        // ThumbnailCache handles directory creation
-        importFromDevice.scanForDevices()
-      }
-    }
     .onDisappear {
       Task {
         await importFromDevice.cancelAllThumbnails()
