@@ -91,9 +91,11 @@ class ImportApplePhotos {
     self.dbQueue = try DatabaseQueue(path: dbURL.path)
   }
 
-  func previewPhotos(onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in }) async throws
-  {
-    self.mediaItems = try await getMediaItems(onMediaFound: onMediaFound)
+  func previewPhotos(
+    onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
+    onComplete: @escaping () -> Void = {}
+  ) async throws {
+    self.mediaItems = try await getMediaItems(onMediaFound: onMediaFound, onComplete: onComplete)
   }
 
   func importPhotos(to importedDirectory: URL) async throws {
@@ -107,7 +109,10 @@ class ImportApplePhotos {
     }
   }
 
-  private func getMediaItems(onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in })
+  private func getMediaItems(
+    onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
+    onComplete: @escaping () -> Void = {}
+  )
     async throws -> [ApplePhotosMediaItem]
   {
     if mediaItems.isEmpty {
@@ -131,6 +136,7 @@ class ImportApplePhotos {
       }
     }
     print("found \(mediaItems.count) thumbnails")
+    onComplete()
     return mediaItems
   }
 

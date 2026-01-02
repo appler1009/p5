@@ -439,17 +439,20 @@ struct ImportView: View {
         applePhotosItems = []
         let applePhotos = try ImportApplePhotos(libraryURL: panel.urls.first!)
         Task {
-          try await applePhotos.previewPhotos { mediaItem in
-            // Update applePhotosItems in real-time when new media is found
-            applePhotosItems.append(mediaItem)
-          }
+          try await applePhotos.previewPhotos(
+            onMediaFound: { mediaItem in
+              // Update applePhotosItems in real-time when new media is found
+              applePhotosItems.append(mediaItem)
+            },
+            onComplete: {
+              isReadingApplePhotos = false
+            }
+          )
         }
       } catch {
         print("Error importing Apple Photos: \(error)")
       }
     }
-
-    isReadingApplePhotos = false
   }
 
   private func importManualFiles(_ urls: [URL]) {
