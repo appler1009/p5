@@ -10,8 +10,8 @@ struct ImportView: View {
   @State private var deviceConnectionError: String?
   @State private var isImportFromDeviceSelected: Bool = false
 
+  @State private var importApplePhotos = ImportApplePhotos()
   @State private var selectedApplePhotosLibrary: URL?
-  @State private var applePhotosItems: [ApplePhotosMediaItem] = []
   @State private var isApplePhotosSelected: Bool = false
   @State private var isReadingApplePhotos: Bool = false
 
@@ -31,8 +31,8 @@ struct ImportView: View {
 
         Spacer()
 
-        if applePhotosItems.count > 0 {
-          Text("Total \(applePhotosItems.count)")
+        if importApplePhotos.mediaItems.count > 0 {
+          Text("Total \(importApplePhotos.mediaItems.count)")
             .font(.subheadline)
             .foregroundColor(.secondary)
         }
@@ -43,10 +43,10 @@ struct ImportView: View {
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(applePhotosItems.isEmpty)
+        .disabled(importApplePhotos.mediaItems.isEmpty)
       }
 
-      if applePhotosItems.isEmpty {
+      if importApplePhotos.mediaItems.isEmpty {
         // Show no photos found
         VStack(spacing: 20) {
           Image(systemName: "photo.on.rectangle.angled")
@@ -70,9 +70,11 @@ struct ImportView: View {
       } else {
         ScrollView {
           SectionGridView(
-            items: applePhotosItems,
-            selectedItems: .constant(Set<MediaItem>()),
-            onSelectionChange: { _ in },
+            items: importApplePhotos.mediaItems,
+            selectedItems: $importApplePhotos.selectedMediaItems,
+            onSelectionChange: { selectedItems in
+              importApplePhotos.selectedMediaItems = selectedItems
+            },
             onItemDoubleTap: { _ in },
             minCellWidth: 80
           )
@@ -434,23 +436,19 @@ struct ImportView: View {
     panel.prompt = "Import"
 
     if panel.runModal() == .OK {
-      do {
-        // Clear existing items before starting new preview
-        applePhotosItems = []
-        let applePhotos = try ImportApplePhotos(libraryURL: panel.urls.first!)
-        Task {
-          try await applePhotos.previewPhotos(
-            onMediaFound: { mediaItem in
-              // Update applePhotosItems in real-time when new media is found
-              applePhotosItems.append(mediaItem)
-            },
-            onComplete: {
-              isReadingApplePhotos = false
-            }
-          )
-        }
-      } catch {
-        print("Error importing Apple Photos: \(error)")
+      // Clear existing items before starting new preview
+      importApplePhotos.mediaItems = []
+      Task {
+        try await importApplePhotos.previewPhotos(
+          from: panel.urls.first!,
+          onMediaFound: { mediaItem in
+            // Update applePhotosItems in real-time when new media is found
+            //            importApplePhotos.mediaItems.append(mediaItem)
+          },
+          onComplete: {
+            isReadingApplePhotos = false
+          }
+        )
       }
     }
   }

@@ -78,48 +78,47 @@ struct ApplePhotosItem {
   }
 }
 
-class ImportApplePhotos {
-  private let dbQueue: DatabaseQueue
-  private let photosURL: URL
-
-  private var mediaItems: [ApplePhotosMediaItem] = []
-
-  init(libraryURL: URL) throws {
-    self.photosURL = libraryURL
-
-    let dbURL = libraryURL.appendingPathComponent("database/Photos.sqlite")
-    self.dbQueue = try DatabaseQueue(path: dbURL.path)
-  }
+class ImportApplePhotos: ObservableObject {
+  @Published var mediaItems: [ApplePhotosMediaItem] = []
+  @Published var selectedMediaItems: Set<MediaItem> = []
 
   func previewPhotos(
+    from photosURL: URL,
     onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
     onComplete: @escaping () -> Void = {}
   ) async throws {
-    self.mediaItems = try await getMediaItems(onMediaFound: onMediaFound, onComplete: onComplete)
+    self.mediaItems = try await getMediaItems(
+      from: photosURL, onMediaFound: onMediaFound, onComplete: onComplete)
   }
 
-  func importPhotos(to importedDirectory: URL) async throws {
+  func importPhotos(
+    from photosURL: URL, to importedDirectory: URL,
+    onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
+    onComplete: @escaping () -> Void = {}
+  ) async throws {
     try FileManager.default.createDirectory(
       at: importedDirectory, withIntermediateDirectories: true)
 
-    let photos = try await getMediaItems()
+    let photos = try await getMediaItems(
+      from: photosURL, onMediaFound: onMediaFound, onComplete: onComplete)
 
     for metadata in photos {
-      try importPhoto(metadata, to: importedDirectory)
+      try importPhoto(metadata, from: photosURL, to: importedDirectory)
     }
   }
 
   private func getMediaItems(
+    from photosURL: URL,
     onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
     onComplete: @escaping () -> Void = {}
   )
     async throws -> [ApplePhotosMediaItem]
   {
     if mediaItems.isEmpty {
-      let rawItems = try fetchRawItems()
+      let rawItems = try fetchRawItems(from: photosURL)
       print("found \(rawItems.count) items from DB")
 
-      let groupedItems = groupRelatedApplePhotoItems(rawItems, in: self.photosURL)
+      let groupedItems = groupRelatedApplePhotoItems(rawItems, in: photosURL)
       print("found \(groupedItems.count) grouped items")
 
       for mediaItem in groupedItems {
@@ -140,7 +139,7 @@ class ImportApplePhotos {
     return mediaItems
   }
 
-  private func fetchRawItems() throws -> [ApplePhotosItem] {
+  private func fetchRawItems(from photosURL: URL) throws -> [ApplePhotosItem] {
     let sql = """
       SELECT
           ZASSET.ZFILENAME as filename,
@@ -188,6 +187,8 @@ class ImportApplePhotos {
       LEFT JOIN ZASSETDESCRIPTION ON ZASSET.Z_PK = ZASSETDESCRIPTION.ZASSETATTRIBUTES
       """
 
+    let dbURL = photosURL.appendingPathComponent("database/Photos.sqlite")
+    let dbQueue = try DatabaseQueue(path: dbURL.path)
     return try dbQueue.read { db in
       let rows = try Row.fetchAll(db, sql: sql)
 
@@ -296,9 +297,11 @@ class ImportApplePhotos {
   private func thumbnailPhoto(_ item: ApplePhotosMediaItem) {
   }
 
-  private func importPhoto(_ item: ApplePhotosMediaItem, to importedDirectory: URL) throws {
+  private func importPhoto(
+    _ item: ApplePhotosMediaItem, from photosURL: URL, to importedDirectory: URL
+  ) throws {
     // Construct source URL
-    var sourceURL = self.photosURL.appendingPathComponent("originals")
+    var sourceURL = photosURL.appendingPathComponent("originals")
     if !item.directory.isEmpty {
       sourceURL = sourceURL.appendingPathComponent(item.directory)
     }
