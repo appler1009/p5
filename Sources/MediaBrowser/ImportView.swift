@@ -9,11 +9,13 @@ struct ImportView: View {
   @State private var importStatus: String?
   @State private var deviceConnectionError: String?
   @State private var isImportFromDeviceSelected: Bool = false
+  @State private var deviceMediaItems: [ConnectedDeviceMediaItem] = []
 
   @State private var importApplePhotos = ImportApplePhotos()
   @State private var selectedApplePhotosLibrary: URL?
   @State private var isApplePhotosSelected: Bool = false
   @State private var isReadingApplePhotos: Bool = false
+  @State private var appleMediaItems: [ApplePhotosMediaItem] = []
 
   @State private var localFilesItems: [LocalFileSystemMediaItem] = []
   @State private var isLocalFilesSelected: Bool = false
@@ -31,8 +33,8 @@ struct ImportView: View {
 
         Spacer()
 
-        if importApplePhotos.mediaItems.count > 0 {
-          Text("Total \(importApplePhotos.mediaItems.count)")
+        if appleMediaItems.count > 0 {
+          Text("Total \(appleMediaItems.count)")
             .font(.subheadline)
             .foregroundColor(.secondary)
         }
@@ -43,10 +45,10 @@ struct ImportView: View {
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(importApplePhotos.mediaItems.isEmpty)
+        .disabled(appleMediaItems.isEmpty)
       }
 
-      if importApplePhotos.mediaItems.isEmpty {
+      if appleMediaItems.isEmpty {
         // Show no photos found
         VStack(spacing: 20) {
           Image(systemName: "photo.on.rectangle.angled")
@@ -70,7 +72,7 @@ struct ImportView: View {
       } else {
         ScrollView {
           SectionGridView(
-            items: importApplePhotos.mediaItems,
+            items: appleMediaItems,
             selectedItems: $importApplePhotos.selectedMediaItems,
             onSelectionChange: { selectedItems in
               importApplePhotos.selectedMediaItems = selectedItems
@@ -94,9 +96,9 @@ struct ImportView: View {
           .font(.title2)
           .fontWeight(.semibold)
         Spacer()
-        if importFromDevice.mediaItems.count > 0 {
-          let availableCount = importFromDevice.mediaItems.count - duplicateCount
-          let totalCount = importFromDevice.mediaItems.count
+        if deviceMediaItems.count > 0 {
+          let availableCount = deviceMediaItems.count - duplicateCount
+          let totalCount = deviceMediaItems.count
           Text("\(availableCount) available for import out of \(totalCount) total")
         }
         Button("Import All") {
@@ -106,7 +108,7 @@ struct ImportView: View {
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(importFromDevice.mediaItems.count == duplicateCount)
+        .disabled(deviceMediaItems.count <= duplicateCount)
       }
 
       // Status messages
@@ -123,7 +125,24 @@ struct ImportView: View {
         .cornerRadius(8)
       }
 
-      if importFromDevice.isLoadingDeviceContents {
+      if deviceMediaItems.isEmpty == false {
+        ScrollView {
+          VStack(spacing: 4) {
+            SectionGridView(
+              items: deviceMediaItems,
+              selectedItems: $importFromDevice.selectedMediaItems,
+              onSelectionChange: { selectedItems in
+                importFromDevice.selectedMediaItems = selectedItems
+              },
+              onItemDoubleTap: { _ in },  // No-op for import view
+              minCellWidth: 80,
+              disableDuplicates: true,
+              onDuplicateCountChange: { duplicateCount = $0 }
+            )
+          }
+          .padding()
+        }
+      } else if importFromDevice.isLoadingDeviceContents {
         VStack(spacing: 16) {
           ProgressView()
             .scaleEffect(1.5)
@@ -167,7 +186,7 @@ struct ImportView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
-      } else if importFromDevice.mediaItems.isEmpty {
+      } else {  // no error, not loading, device must be empty
         VStack(spacing: 20) {
           Image(systemName: "photo.on.rectangle.angled")
             .font(.system(size: 80))
@@ -179,23 +198,6 @@ struct ImportView: View {
           .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
-        ScrollView {
-          VStack(spacing: 4) {
-            SectionGridView(
-              items: importFromDevice.mediaItems,
-              selectedItems: $importFromDevice.selectedMediaItems,
-              onSelectionChange: { selectedItems in
-                importFromDevice.selectedMediaItems = selectedItems
-              },
-              onItemDoubleTap: { _ in },  // No-op for import view
-              minCellWidth: 80,
-              disableDuplicates: true,
-              onDuplicateCountChange: { duplicateCount = $0 }
-            )
-          }
-          .padding()
-        }
       }
     }
   }
@@ -437,13 +439,13 @@ struct ImportView: View {
 
     if panel.runModal() == .OK {
       // Clear existing items before starting new preview
-      importApplePhotos.mediaItems = []
+      appleMediaItems = []
       Task {
         let _ = try await importApplePhotos.previewPhotos(
           from: panel.urls.first!,
           onMediaFound: { mediaItem in
             // Update applePhotosItems in real-time when new media is found
-            //            importApplePhotos.mediaItems.append(mediaItem)
+            appleMediaItems.insertSorted(mediaItem, by: \.thumbnailDate, order: .descending)
           },
           onComplete: {
             isReadingApplePhotos = false

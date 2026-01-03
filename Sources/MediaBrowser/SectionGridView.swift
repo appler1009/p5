@@ -17,8 +17,6 @@ struct SectionGridView: View {
   @State private var duplicateIds: Set<Int> = []
   @State private var hoveredItemId: Int? = nil
 
-  var sortedItems: [MediaItem] { items.sorted(by: { $0.thumbnailDate > $1.thumbnailDate }) }
-
   // Default initializer for standard MediaItemView usage with multiple selection
   init(
     title: String? = nil,
@@ -49,7 +47,7 @@ struct SectionGridView: View {
       }
 
       LazyVGrid(columns: [GridItem(.adaptive(minimum: minCellWidth))], spacing: 10) {
-        ForEach(sortedItems) { item in
+        ForEach(items) { item in
           MediaItemView(
             item: item,
             onTap: nil,
@@ -167,14 +165,14 @@ struct SectionGridView: View {
   }
 
   private func selectRange(from startItem: MediaItem, to endItem: MediaItem) {
-    guard let startIndex = sortedItems.firstIndex(where: { $0.id == startItem.id }),
-      let endIndex = sortedItems.firstIndex(where: { $0.id == endItem.id })
+    guard let startIndex = items.firstIndex(where: { $0.id == startItem.id }),
+      let endIndex = items.firstIndex(where: { $0.id == endItem.id })
     else {
       return
     }
 
     let range = min(startIndex, endIndex)...max(startIndex, endIndex)
-    let itemsInRange = sortedItems[range].filter { !duplicateIds.contains($0.id) }
+    let itemsInRange = items[range].filter { !duplicateIds.contains($0.id) }
 
     // Replace current selection with items in range
     selectedItems = Set(itemsInRange)

@@ -79,7 +79,7 @@ struct ApplePhotosItem {
 }
 
 class ImportApplePhotos: ObservableObject {
-  @Published var mediaItems: [ApplePhotosMediaItem] = []
+  @Published var sortedMediaItems: [ApplePhotosMediaItem] = []
   @Published var selectedMediaItems: Set<MediaItem> = []
 
   func previewPhotos(
@@ -87,9 +87,9 @@ class ImportApplePhotos: ObservableObject {
     onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
     onComplete: @escaping () -> Void = {}
   ) async throws -> Int {
-    self.mediaItems = try await getMediaItems(
+    self.sortedMediaItems = try await getMediaItems(
       from: photosURL, onMediaFound: onMediaFound, onComplete: onComplete)
-    return mediaItems.count
+    return sortedMediaItems.count
   }
 
   func importPhotos(
@@ -115,7 +115,7 @@ class ImportApplePhotos: ObservableObject {
   )
     async throws -> [ApplePhotosMediaItem]
   {
-    if mediaItems.isEmpty {
+    if sortedMediaItems.isEmpty {
       let rawItems = try fetchRawItems(from: photosURL)
       print("found \(rawItems.count) items from DB")
 
@@ -129,17 +129,16 @@ class ImportApplePhotos: ObservableObject {
           mediaItem: mediaItem
         ) != nil {
           await MainActor.run { [mediaItem] in
-            mediaItems.append(mediaItem)
+            sortedMediaItems.insertSorted(mediaItem, by: \.thumbnailDate, order: .descending)
             // notify callback about new item in main thread to update UI asap
             onMediaFound(mediaItem)
-            self.objectWillChange.send()
           }
         }
       }
     }
-    print("found \(mediaItems.count) thumbnails")
+    print("found \(sortedMediaItems.count) thumbnails")
     onComplete()
-    return mediaItems
+    return sortedMediaItems
   }
 
   private func fetchRawItems(from photosURL: URL) throws -> [ApplePhotosItem] {

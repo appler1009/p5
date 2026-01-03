@@ -215,3 +215,42 @@ extension ICCameraItem {
     return isImage() || isVideo()
   }
 }
+
+enum ArraySortOrder {
+  case ascending
+  case descending
+}
+
+extension Array {
+  mutating func insertSorted<T: Comparable>(
+    _ newElement: Element,
+    by keyPath: KeyPath<Element, T>,
+    order: ArraySortOrder = .ascending
+  ) {
+    var left = 0
+    var right = self.count
+
+    while left < right {
+      let mid = (left + right) / 2
+      let midValue = self[mid][keyPath: keyPath]
+      let newValue = newElement[keyPath: keyPath]
+
+      // Direction-aware comparison
+      let comparison: Bool
+      switch order {
+      case .ascending:
+        comparison = midValue >= newValue
+      case .descending:
+        comparison = midValue <= newValue
+      }
+
+      if comparison {
+        right = mid
+      } else {
+        left = mid + 1
+      }
+    }
+
+    self.insert(newElement, at: left)
+  }
+}
