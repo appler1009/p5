@@ -94,9 +94,9 @@ struct ImportView: View {
           .font(.title2)
           .fontWeight(.semibold)
         Spacer()
-        if importFromDevice.deviceMediaItems.count > 0 {
-          let availableCount = importFromDevice.deviceMediaItems.count - duplicateCount
-          let totalCount = importFromDevice.deviceMediaItems.count
+        if importFromDevice.mediaItems.count > 0 {
+          let availableCount = importFromDevice.mediaItems.count - duplicateCount
+          let totalCount = importFromDevice.mediaItems.count
           Text("\(availableCount) available for import out of \(totalCount) total")
         }
         Button("Import All") {
@@ -106,7 +106,7 @@ struct ImportView: View {
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(importFromDevice.deviceMediaItems.count == duplicateCount)
+        .disabled(importFromDevice.mediaItems.count == duplicateCount)
       }
 
       // Status messages
@@ -167,7 +167,7 @@ struct ImportView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
-      } else if importFromDevice.deviceMediaItems.isEmpty {
+      } else if importFromDevice.mediaItems.isEmpty {
         VStack(spacing: 20) {
           Image(systemName: "photo.on.rectangle.angled")
             .font(.system(size: 80))
@@ -183,10 +183,10 @@ struct ImportView: View {
         ScrollView {
           VStack(spacing: 4) {
             SectionGridView(
-              items: importFromDevice.deviceMediaItems,
-              selectedItems: $importFromDevice.selectedDeviceMediaItems,
+              items: importFromDevice.mediaItems,
+              selectedItems: $importFromDevice.selectedMediaItems,
               onSelectionChange: { selectedItems in
-                importFromDevice.selectedDeviceMediaItems = selectedItems
+                importFromDevice.selectedMediaItems = selectedItems
               },
               onItemDoubleTap: { _ in },  // No-op for import view
               minCellWidth: 80,
@@ -439,7 +439,7 @@ struct ImportView: View {
       // Clear existing items before starting new preview
       importApplePhotos.mediaItems = []
       Task {
-        try await importApplePhotos.previewPhotos(
+        let _ = try await importApplePhotos.previewPhotos(
           from: panel.urls.first!,
           onMediaFound: { mediaItem in
             // Update applePhotosItems in real-time when new media is found

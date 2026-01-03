@@ -3,13 +3,13 @@ import SwiftUI
 
 class ImportFromDevice: ObservableObject {
   @Published var detectedDevices: [ICCameraDevice] = []
-  @Published var deviceMediaItems: [ConnectedDeviceMediaItem] = []
+  @Published var mediaItems: [ConnectedDeviceMediaItem] = []
   @Published var isLoadingDeviceContents = false
   @Published var isDownloading = false
   @Published var isScanning = false
 
   @Published var selectedDevice: ICCameraDevice?
-  @Published var selectedDeviceMediaItems: Set<MediaItem> = []
+  @Published var selectedMediaItems: Set<MediaItem> = []
 
   var deviceBrowser: ICDeviceBrowser?
   var deviceDelegate: DeviceDelegate?
@@ -64,7 +64,7 @@ class ImportFromDevice: ObservableObject {
           // If the removed device was selected, clear selection
           if self.selectedDevice?.name == device.name {
             self.selectedDevice = nil
-            self.deviceMediaItems = []
+            self.mediaItems = []
           }
         }
       },
@@ -78,7 +78,7 @@ class ImportFromDevice: ObservableObject {
               "Selected device was removed, clearing selection and cancelling thumbnail operations"
             )
             self.selectedDevice = nil
-            self.deviceMediaItems = []
+            self.mediaItems = []
             self.thumbnailOperationsCancelled = true
             Task {
               await self.thumbnailState.cancelAll()
@@ -123,7 +123,7 @@ class ImportFromDevice: ObservableObject {
 
   internal func selectDevice(_ device: ICCameraDevice) {
     selectedDevice = device
-    deviceMediaItems = []
+    mediaItems = []
     isLoadingDeviceContents = true
     thumbnailOperationsCancelled = false
 
@@ -170,9 +170,9 @@ class ImportFromDevice: ObservableObject {
       }
 
       // Group related camera items and create DeviceMediaItem objects
-      self.deviceMediaItems = groupRelatedCameraItems(cameraItems)
+      self.mediaItems = groupRelatedCameraItems(cameraItems)
 
-      if self.deviceMediaItems.isEmpty {
+      if self.mediaItems.isEmpty {
         print("DEBUG: No media items found at root level")
       }
 
@@ -217,7 +217,7 @@ class ImportFromDevice: ObservableObject {
 
       // Create DeviceMediaItem objects
 
-      self.deviceMediaItems = groupRelatedCameraItems(allCameraItems)
+      self.mediaItems = groupRelatedCameraItems(allCameraItems)
       self.isLoadingDeviceContents = false
 
       await self.requestThumbnails()
@@ -238,7 +238,7 @@ class ImportFromDevice: ObservableObject {
 
   private func requestThumbnails() async {
     await withTaskGroup(of: Void.self) { group in
-      for mediaItem in deviceMediaItems {
+      for mediaItem in mediaItems {
         // Check if thumbnail already exists in local cache
         if ThumbnailCache.shared.thumbnailExists(mediaItem: mediaItem) {
           continue
@@ -313,7 +313,7 @@ class ImportFromDevice: ObservableObject {
 
   internal func requestDownloads() async {
     var cameraItems: [ICCameraItem] = []
-    selectedDeviceMediaItems.forEach { mediaItem in
+    selectedMediaItems.forEach { mediaItem in
       guard let connectedDeviceMediaItem = mediaItem as? ConnectedDeviceMediaItem else { return }
       cameraItems.append(connectedDeviceMediaItem.originalItem)
       print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") originalItem added")

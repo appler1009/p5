@@ -130,18 +130,7 @@ class ThumbnailCache {
 
   private func generateThumbnail(for url: URL) async -> NSImage? {
     var cgImage: CGImage?
-    if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-      let img = CGImageSourceCreateThumbnailAtIndex(
-        source, 0,
-        [
-          kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
-          kCGImageSourceCreateThumbnailWithTransform: true,
-          kCGImageSourceThumbnailMaxPixelSize: max(
-            ThumbnailCache.thumbnailSize.width, ThumbnailCache.thumbnailSize.height),
-        ] as CFDictionary)
-    {
-      cgImage = img
-    } else {
+    if url.isVideo() {
       // For videos, use AVAssetImageGenerator
       let asset = AVAsset(url: url)
       let generator = AVAssetImageGenerator(asset: asset)
@@ -154,25 +143,19 @@ class ThumbnailCache {
       } catch {
         // ignore
       }
-      if let videoCgImage = cgImage {
-        // Crop to square
-        let width = videoCgImage.width
-        let height = videoCgImage.height
-        let minDim = min(width, height)
-        if width != height {
-          let x = (width - minDim) / 2
-          let y = (height - minDim) / 2
-          let rect = CGRect(x: x, y: y, width: minDim, height: minDim)
-          if let cropped = videoCgImage.cropping(to: rect) {
-            cgImage = cropped
-          }
-        }
+    } else {
+      if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+        let img = CGImageSourceCreateThumbnailAtIndex(
+          source, 0,
+          [
+            kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(
+              ThumbnailCache.thumbnailSize.width, ThumbnailCache.thumbnailSize.height),
+          ] as CFDictionary)
+      {
+        cgImage = img
       }
-      if let cgImage = cgImage {
-        let image = NSImage(cgImage: cgImage, size: ThumbnailCache.thumbnailSize)
-        return image
-      }
-      return nil
     }
 
     if var cgImage = cgImage {
@@ -188,8 +171,7 @@ class ThumbnailCache {
           cgImage = cropped
         }
       }
-      let image = NSImage(cgImage: cgImage, size: ThumbnailCache.thumbnailSize)
-      return image
+      return NSImage(cgImage: cgImage, size: ThumbnailCache.thumbnailSize)
     }
     return nil
   }

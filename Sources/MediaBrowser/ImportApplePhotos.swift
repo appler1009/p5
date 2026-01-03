@@ -86,9 +86,10 @@ class ImportApplePhotos: ObservableObject {
     from photosURL: URL,
     onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
     onComplete: @escaping () -> Void = {}
-  ) async throws {
+  ) async throws -> Int {
     self.mediaItems = try await getMediaItems(
       from: photosURL, onMediaFound: onMediaFound, onComplete: onComplete)
+    return mediaItems.count
   }
 
   func importPhotos(
@@ -128,8 +129,10 @@ class ImportApplePhotos: ObservableObject {
           mediaItem: mediaItem
         ) != nil {
           await MainActor.run { [mediaItem] in
-            mediaItems.append(mediaItem)  // run in main thread to update the UI in real time
-            onMediaFound(mediaItem)  // notify callback about new item
+            mediaItems.append(mediaItem)
+            // notify callback about new item in main thread to update UI asap
+            onMediaFound(mediaItem)
+            self.objectWillChange.send()
           }
         }
       }
@@ -194,6 +197,17 @@ class ImportApplePhotos: ObservableObject {
 
       var items: [ApplePhotosItem] = []
       for row in rows {
+        let dbFileName = row[Column("filename")] as String
+        let dbDirectory = row[Column("directory")] as String
+        let originalFilePath =
+          photosURL
+          .appendingPathComponent("originals")
+          .appendingPathComponent(dbDirectory)
+          .appendingPathComponent(dbFileName).path
+        guard FileManager.default.fileExists(atPath: originalFilePath) else {
+          continue  // Skip this database row
+        }
+
         // Dates
         let creationDate = (row[Column("dateCreated")] as Double?).map {
           Date(timeIntervalSinceReferenceDate: $0)
@@ -263,8 +277,8 @@ class ImportApplePhotos: ObservableObject {
         )
 
         let item = ApplePhotosItem(
-          fileName: row[Column("filename")] as String,
-          directory: row[Column("directory")] as String,
+          fileName: dbFileName,
+          directory: dbDirectory,
           originalFileName: (row[Column("originalFilename")] as String?) ?? "",
           fileSize: (row[Column("fileSize")] as Int?) ?? 0,
           metadata: metadata,
