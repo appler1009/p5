@@ -437,8 +437,16 @@ struct FullMediaView: View {
         KeyCaptureView(onKey: { event in
           switch event.keyCode {
           case 53:
-            onClose()
-            return nil  // ESC
+            if currentScale < 0.99 || currentScale > 1.01 {
+              withAnimation(.easeInOut(duration: 0.15)) {
+                currentScale = 1.0
+                imageOffset = .zero
+              }
+              return nil
+            } else {
+              onClose()
+              return nil  // ESC
+            }
           case 123:
             onPrev()
             return nil  // left arrow
