@@ -355,7 +355,7 @@ struct FullMediaView: View {
               .gesture(
                 MagnificationGesture()
                   .onChanged { value in
-                    let logDelta = log(value) * 0.25
+                    let logDelta = log(value) * 0.15
                     let targetScale = max(0.5, min(currentScale * exp(logDelta), 5.0))
                     withAnimation(.spring(response: 0.15, dampingFraction: 0.85)) {
                       currentScale = targetScale
