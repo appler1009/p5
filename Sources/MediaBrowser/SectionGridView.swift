@@ -134,11 +134,8 @@ struct SectionGridView: View {
   }
 
   private func handleItemSelection(_ item: MediaItem) {
-    print("selecting \(item.displayName)")
-
     if duplicateIds.contains(item.id) {
-      print("duplicated \(item.displayName)")
-      return
+      return  // ignore duplicates
     }
 
     let eventModifierFlags = NSApp.currentEvent?.modifierFlags ?? []
