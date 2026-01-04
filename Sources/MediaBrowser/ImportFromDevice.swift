@@ -8,7 +8,7 @@ class ImportFromDevice: ObservableObject {
   @Published var isDownloading = false
   @Published var isScanning = false
 
-  @Published var selectedDevice: ICCameraDevice?
+  @Published var selectedDevice: ICDevice?
   @Published var selectedMediaItems: Set<MediaItem> = []
 
   var deviceBrowser: ICDeviceBrowser?
@@ -21,7 +21,13 @@ class ImportFromDevice: ObservableObject {
   private let downloadState = CameraItemState()
   private let downloadLimiter = ConcurrencyLimiter(limit: 2)
 
-  internal func scanForDevices() {
+  // callbacks
+  private var importCallbacks: ImportCallbacks?
+
+  internal func scanForDevices(with importCallbacks: ImportCallbacks) {
+    // update callbacks
+    self.importCallbacks = importCallbacks
+
     isScanning = true
     detectedDevices.removeAll()
 
@@ -50,7 +56,6 @@ class ImportFromDevice: ObservableObject {
               && !self.detectedDevices.contains(where: { $0.name == cameraDevice.name })
             {
               self.detectedDevices.append(cameraDevice)
-
             } else {
               print("DEBUG: Device found but not identified as iPhone: \(deviceName)")
             }
@@ -89,6 +94,9 @@ class ImportFromDevice: ObservableObject {
           }
         }
       },
+      onDeviceUnlocked: { device in
+        //        self.selectDevice(device)
+      },
       onDownloadError: { error, file in
         DispatchQueue.main.async {
           let nsError = error as NSError
@@ -102,6 +110,11 @@ class ImportFromDevice: ObservableObject {
       onDownloadSuccess: { file in
         DispatchQueue.main.async {
           print("Successfully imported \(file?.name ?? "file")")
+        }
+      },
+      onCameraItemsAvailable: { items in
+        Task {
+          await self.processItems(items)
         }
       },
       thumbnailStateRef: thumbnailState
@@ -123,7 +136,6 @@ class ImportFromDevice: ObservableObject {
 
   internal func selectDevice(_ device: ICCameraDevice) {
     selectedDevice = device
-    mediaItems = []
     isLoadingDeviceContents = true
     thumbnailOperationsCancelled = false
 
@@ -132,19 +144,20 @@ class ImportFromDevice: ObservableObject {
 
     // Request to open session with the device
     device.requestOpenSession { error in
-      DispatchQueue.main.async {
-        if let error = error {
+      if let error = error {
+        Task {
           self.isLoadingDeviceContents = false
-          print("Failed to open session with device: \(error)")
-          return
-        }
-
-        // Try to access contents directly after opening session
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-          Task {
-            await self.checkDeviceContents(device)
+          if let onError = self.importCallbacks?.onError {
+            onError(error)
           }
         }
+        print("Failed to open session with device: \(error)")
+        return
+      }
+
+      Task {
+        print("checking device contents")
+        await self.checkDeviceContents(device)
       }
     }
   }
@@ -160,6 +173,7 @@ class ImportFromDevice: ObservableObject {
       if let dcimFolder = dcimFolder as? ICCameraFolder {
 
         // Check DCIM folder contents directly
+        print("checking DCIM contents")
         await self.checkDCIMContents(dcimFolder)
         return
       }
@@ -170,26 +184,15 @@ class ImportFromDevice: ObservableObject {
       }
 
       // Group related camera items and create DeviceMediaItem objects
-      self.mediaItems = groupRelatedCameraItems(cameraItems)
+      let items = groupRelatedCameraItems(cameraItems)
+      await self.processItems(items)
 
-      if self.mediaItems.isEmpty {
-        print("DEBUG: No media items found at root level")
-      }
-
-      DispatchQueue.main.async { [weak self] in
-        self?.isLoadingDeviceContents = false
-      }
     } else {
       print("DEBUG: device.contents is nil, retrying...")
       // Retry after a short delay in case contents aren't ready yet
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self, device] in
-        guard let strongSelf = self else { return }
-        if strongSelf.isLoadingDeviceContents {
-          print("DEBUG: Retrying content check...")
-          Task { [weak strongSelf] in
-            guard let strongSelf = strongSelf else { return }
-            await strongSelf.checkDeviceContents(device)
-          }
+      Task {
+        if isLoadingDeviceContents {
+          await checkDeviceContents(device)
         }
       }
     }
@@ -215,20 +218,9 @@ class ImportFromDevice: ObservableObject {
         }
       }
 
-      // Create DeviceMediaItem objects
+      let items = groupRelatedCameraItems(allCameraItems)
+      await self.processItems(items)
 
-      self.mediaItems = groupRelatedCameraItems(allCameraItems)
-      self.isLoadingDeviceContents = false
-
-      await self.requestThumbnails()
-
-      if allCameraItems.isEmpty {
-        print("all camera items is empty")
-      }
-
-      await MainActor.run { [weak self] in
-        self?.isLoadingDeviceContents = false
-      }
     } else {
       await MainActor.run { [weak self] in
         self?.isLoadingDeviceContents = false
@@ -236,11 +228,31 @@ class ImportFromDevice: ObservableObject {
     }
   }
 
-  private func requestThumbnails() async {
+  private func processItems(_ allItems: [ConnectedDeviceMediaItem]) async {
+    print("processItems \(allItems.count)")
+    Task {
+      self.isLoadingDeviceContents = false
+    }
+
+    await self.requestThumbnails(for: allItems)
+
+    if allItems.isEmpty {
+      print("all camera items is empty")
+    }
+
+    await MainActor.run { [weak self] in
+      self?.isLoadingDeviceContents = false
+    }
+  }
+
+  private func requestThumbnails(for mediaItems: [ConnectedDeviceMediaItem]) async {
     await withTaskGroup(of: Void.self) { group in
       for mediaItem in mediaItems {
         // Check if thumbnail already exists in local cache
         if ThumbnailCache.shared.thumbnailExists(mediaItem: mediaItem) {
+          if let onMediaFound = self.importCallbacks?.onMediaFound {
+            onMediaFound(mediaItem)
+          }
           continue
         }
 
@@ -261,6 +273,10 @@ class ImportFromDevice: ObservableObject {
           await task.value
         }
       }
+
+      if let onComplete = self.importCallbacks?.onComplete {
+        onComplete()
+      }
     }
   }
 
@@ -278,6 +294,9 @@ class ImportFromDevice: ObservableObject {
       if let thumbnail = thumbnail {
         await MainActor.run {
           storeThumbnail(mediaItem: mediaItem, thumbnail: thumbnail)
+          if let onMediaFound = self.importCallbacks?.onMediaFound {
+            onMediaFound(mediaItem)
+          }
         }
       }
     } catch {
@@ -429,21 +448,6 @@ class ImportFromDevice: ObservableObject {
       print("DEBUG: Keeping device browser running (active device connection)")
       // Keep browser running for active device connections
     }
-
-    if detectedDevices.isEmpty {
-      print(
-        """
-        No iPhones detected via USB.
-
-        Try:
-        • Unlock your iPhone
-        • Tap "Trust This Computer" on iPhone
-        • Use Apple USB-C cable
-        • Check if iPhone appears in Image Capture app
-        • Grant Full Disk Access in System Settings
-        • Restart your iPhone
-        """)
-    }
   }
 
   func cancelAllThumbnails() async {
@@ -545,57 +549,70 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
   let onDeviceFound: (ICDevice) -> Void
   let onDeviceRemoved: (ICDevice) -> Void
   let onDeviceDisconnected: (ICDevice) -> Void
+  let onDeviceUnlocked: (ICDevice) -> Void
   let onDownloadError: (Error, ICCameraFile?) -> Void
   let onDownloadSuccess: (ICCameraFile?) -> Void
+  let onCameraItemsAvailable: ([ConnectedDeviceMediaItem]) -> Void
+
+  var cameraItems: [ICCameraItem] = []
 
   init(
     onDeviceFound: @escaping (ICDevice) -> Void,
     onDeviceRemoved: @escaping (ICDevice) -> Void,
     onDeviceDisconnected: @escaping (ICDevice) -> Void,
+    onDeviceUnlocked: @escaping (ICDevice) -> Void,
     onDownloadError: @escaping (Error, ICCameraFile?) -> Void,
     onDownloadSuccess: @escaping (ICCameraFile?) -> Void,
+    onCameraItemsAvailable: @escaping ([ConnectedDeviceMediaItem]) -> Void,
     thumbnailStateRef: AnyObject? = nil
   ) {
     self.onDeviceFound = onDeviceFound
     self.onDeviceRemoved = onDeviceRemoved
     self.onDeviceDisconnected = onDeviceDisconnected
+    self.onDeviceUnlocked = onDeviceUnlocked
     self.onDownloadError = onDownloadError
     self.onDownloadSuccess = onDownloadSuccess
+    self.onCameraItemsAvailable = onCameraItemsAvailable
     self.thumbnailStateRef = thumbnailStateRef
   }
 
   func deviceBrowser(_ browser: ICDeviceBrowser, didAdd device: ICDevice, moreComing: Bool) {
+    print("DeviceBrowser: ICDevice became ready: \(device.name!)")
     onDeviceFound(device)
   }
 
   func deviceBrowser(_ browser: ICDeviceBrowser, didRemove device: ICDevice, moreGoing: Bool) {
+    print("DeviceBrowser: ICDevice became ready: \(device.name!)")
     onDeviceRemoved(device)
   }
 
   func deviceBrowser(_ browser: ICDeviceBrowser, deviceDidChangeName device: ICDevice) {
-    print("ICDevice name changed: \(device.name!)")
+    print("DeviceBrowser: ICDevice name changed: \(device.name!)")
   }
 
   func deviceBrowser(_ browser: ICDeviceBrowser, deviceDidChangeSharingState device: ICDevice) {
-    print("ICDevice sharing state changed: \(device.name!)")
+    print("DeviceBrowser: ICDevice sharing state changed: \(device.name!)")
   }
 
   // ICDeviceDelegate methods
   func deviceDidBecomeReady(_ device: ICDevice) {
+    print("DeviceBrowser: ICDevice became ready: \(device.name!)")
   }
 
   func device(_ device: ICDevice, didOpenSessionWithError error: Error?) {
     print(
-      "ICDevice session opened: \(device.name!), error: \(error?.localizedDescription ?? "none")")
+      "DeviceBrowser: ICDevice session opened: \(device.name!), error: \(error?.localizedDescription ?? "none")"
+    )
   }
 
   func device(_ device: ICDevice, didCloseSessionWithError error: Error?) {
     print(
-      "ICDevice session closed: \(device.name!), error: \(error?.localizedDescription ?? "none")")
+      "DeviceBrowser: ICDevice session closed: \(device.name!), error: \(error?.localizedDescription ?? "none")"
+    )
   }
 
   func didRemove(_ device: ICDevice) {
-    print("ICDevice removed: \(device.name!)")
+    print("DeviceBrowser: ICDevice removed: \(device.name!)")
     onDeviceDisconnected(device)
   }
 
@@ -620,6 +637,9 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
     for item: ICCameraItem, error: Error?
   ) {
     // Handle metadata reception
+    print(
+      "CameraDevice: Camera device received metadata for item \(item.name ?? "unknown") with error \(error?.localizedDescription ?? "none")"
+    )
   }
 
   func cameraDevice(
@@ -627,11 +647,15 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
     destination: URL?, error: Error?
   ) {
     if let error = error {
-      print("Download failed for \(file?.name ?? "unknown file"): \(error.localizedDescription)")
+      print(
+        "CameraDevice: Download failed for \(file?.name ?? "unknown file"): \(error.localizedDescription)"
+      )
       // Call the error handler
       onDownloadError(error, file)
     } else if let fileURL = fileURL {
-      print("Download completed: \(file?.name ?? "unknown file") -> \(fileURL.lastPathComponent)")
+      print(
+        "CameraDevice: Download completed: \(file?.name ?? "unknown file") -> \(fileURL.lastPathComponent)"
+      )
 
       // Call the success handler
       onDownloadSuccess(file)
@@ -646,41 +670,54 @@ class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCam
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didCompleteDeleteFilesWithError error: Error?) {
     // Handle delete completion
+    print(
+      "CameraDevice: Camera device deleted files with error \(error?.localizedDescription ?? "unknown error")"
+    )
   }
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didAdd items: [ICCameraItem]) {
     // Handle items being added to the camera device
+    print("CameraDevice: Camera device added \(items.count) items")
+    self.cameraItems = items
   }
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didRemove items: [ICCameraItem]) {
     // Handle items being removed from the camera device
-    print("Camera device removed \(items.count) items")
+    print("CameraDevice: Camera device removed \(items.count) items")
   }
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didRenameItems items: [ICCameraItem]) {
     // Handle items being renamed on the camera device
-    print("Camera device renamed \(items.count) items")
+    print("CameraDevice: Camera device renamed \(items.count) items")
   }
 
   func cameraDeviceDidChangeCapability(_ cameraDevice: ICCameraDevice) {
     // Handle capability changes
+    print("CameraDevice: Camera device changed capability")
   }
 
   func cameraDevice(_ cameraDevice: ICCameraDevice, didReceivePTPEvent eventData: Data) {
     // Handle PTP events from the camera device
-    print("Camera device received PTP event")
+    print("CameraDevice: Camera device received PTP event")
   }
 
   func deviceDidBecomeReady(withCompleteContentCatalog device: ICCameraDevice) {
     // Handle when device is ready with complete content catalog
+    print("CameraDevice: Camera device became ready")
+    print("found \(self.cameraItems.count) camera items")
+    let deviceMediaItems = groupRelatedCameraItems(self.cameraItems)
+    print("found \(deviceMediaItems.count) media items")
+    self.onCameraItemsAvailable(deviceMediaItems)
   }
 
   func cameraDeviceDidRemoveAccessRestriction(_ device: ICDevice) {
     // Handle access restriction removal
+    print("CameraDevice: Camera device access restriction removed")
+    self.onDeviceUnlocked(device)
   }
 
   func cameraDeviceDidEnableAccessRestriction(_ device: ICDevice) {
     // Handle access restriction enable
-    print("Camera device access restriction enabled")
+    print("CameraDevice: Camera device access restriction enabled")
   }
 }

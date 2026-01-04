@@ -82,37 +82,31 @@ class ImportApplePhotos: ObservableObject {
   @Published var sortedMediaItems: [ApplePhotosMediaItem] = []
   @Published var selectedMediaItems: Set<MediaItem> = []
 
-  func previewPhotos(
-    from photosURL: URL,
-    onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
-    onComplete: @escaping () -> Void = {}
-  ) async throws -> Int {
-    self.sortedMediaItems = try await getMediaItems(
-      from: photosURL, onMediaFound: onMediaFound, onComplete: onComplete)
-    return sortedMediaItems.count
+  private var importCallbacks: ImportCallbacks?
+
+  func previewPhotos(from photosURL: URL, with importCallbacks: ImportCallbacks) async throws {
+    self.importCallbacks = importCallbacks
+    self.sortedMediaItems = try await getMediaItems(from: photosURL)
   }
 
   func importPhotos(
-    from photosURL: URL, to importedDirectory: URL,
-    onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
-    onComplete: @escaping () -> Void = {}
+    from photosURL: URL,
+    to importedDirectory: URL,
+    with importCallbacks: ImportCallbacks
   ) async throws {
+    self.importCallbacks = importCallbacks
+
     try FileManager.default.createDirectory(
       at: importedDirectory, withIntermediateDirectories: true)
 
-    let photos = try await getMediaItems(
-      from: photosURL, onMediaFound: onMediaFound, onComplete: onComplete)
+    let photos = try await getMediaItems(from: photosURL)
 
     for metadata in photos {
       try importPhoto(metadata, from: photosURL, to: importedDirectory)
     }
   }
 
-  private func getMediaItems(
-    from photosURL: URL,
-    onMediaFound: @escaping (ApplePhotosMediaItem) -> Void = { _ in },
-    onComplete: @escaping () -> Void = {}
-  )
+  private func getMediaItems(from photosURL: URL)
     async throws -> [ApplePhotosMediaItem]
   {
     if sortedMediaItems.isEmpty {
@@ -131,13 +125,17 @@ class ImportApplePhotos: ObservableObject {
           await MainActor.run { [mediaItem] in
             sortedMediaItems.insertSorted(mediaItem, by: \.thumbnailDate, order: .descending)
             // notify callback about new item in main thread to update UI asap
-            onMediaFound(mediaItem)
+            if let onMediaFound = self.importCallbacks?.onMediaFound {
+              onMediaFound(mediaItem)
+            }
           }
         }
       }
     }
     print("found \(sortedMediaItems.count) thumbnails")
-    onComplete()
+    if let onComplete = self.importCallbacks?.onComplete {
+      onComplete()
+    }
     return sortedMediaItems
   }
 

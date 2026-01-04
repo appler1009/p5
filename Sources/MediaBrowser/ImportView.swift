@@ -1,10 +1,12 @@
 import CryptoKit
+import ImageCaptureCore
 import SwiftUI
 
 // MARK: - Import View
 
 struct ImportView: View {
   @ObservedObject var importFromDevice = ImportFromDevice()
+  @State private var isScanningDevices = false
   @State private var duplicateCount = 0
   @State private var importStatus: String?
   @State private var deviceConnectionError: String?
@@ -169,16 +171,8 @@ struct ImportView: View {
           }
 
           HStack(spacing: 16) {
-            Button("Try Again") {
-              if let device = importFromDevice.selectedDevice {
-                importFromDevice.selectDevice(device)
-              }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-
             Button("Scan for Devices") {
-              importFromDevice.scanForDevices()
+              self.scanForDevices()
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
@@ -192,10 +186,18 @@ struct ImportView: View {
             .font(.system(size: 80))
             .foregroundColor(.secondary)
 
-          Button("Scan for Devices") {
-            importFromDevice.scanForDevices()
+          if importFromDevice.isScanning {
+            ProgressView()
+            Text("Scanning available devices...")
+            Button("Stop Scanning") {
+              importFromDevice.stopScanning()
+            }
+          } else {
+            Button("Scan for Devices") {
+              self.scanForDevices()
+            }
+            .buttonStyle(.borderedProminent)
           }
-          .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -259,6 +261,37 @@ struct ImportView: View {
     }
   }
 
+  var connectedDevicesList: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Available Devices")
+        .font(.subheadline)
+        .fontWeight(.medium)
+
+      ForEach(importFromDevice.detectedDevices, id: \.name) { device in
+        HStack {
+          Image(systemName: "iphone")
+            .foregroundColor(.green)
+          Text(device.name ?? "Unknown iPhone")
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+          Spacer()
+
+          Button("Select") {
+            deviceMediaItems = []
+            browseMedia(from: device)
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+          .disabled(importFromDevice.selectedDevice?.name == device.name)
+        }
+        .padding(.vertical, 4)
+      }
+    }
+    .padding()
+    .background(Color.gray.opacity(0.1))
+    .cornerRadius(8)
+  }
+
   var body: some View {
     NavigationSplitView(columnVisibility: .constant(.all)) {
       // Sidebar
@@ -278,7 +311,7 @@ struct ImportView: View {
             HStack {
               Image(systemName: "iphone.and.arrow.forward")
                 .frame(width: 20)
-              Text("USB Devices")
+              Text("Devices")
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
@@ -321,33 +354,7 @@ struct ImportView: View {
         }
 
         if !importFromDevice.detectedDevices.isEmpty {
-          Divider()
-
-          VStack(alignment: .leading, spacing: 8) {
-            Text("Connected Devices")
-              .font(.subheadline)
-              .fontWeight(.medium)
-
-            ForEach(importFromDevice.detectedDevices, id: \.name) { device in
-              HStack {
-                Image(systemName: "iphone")
-                  .foregroundColor(.green)
-                Text(device.name ?? "Unknown iPhone")
-                  .frame(maxWidth: .infinity, alignment: .leading)
-                Spacer()
-                Button("Select") {
-                  importFromDevice.selectDevice(device)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(importFromDevice.selectedDevice?.name == device.name)
-              }
-              .padding(.vertical, 4)
-            }
-          }
-          .padding()
-          .background(Color.gray.opacity(0.1))
-          .cornerRadius(8)
+          connectedDevicesList
         }
 
         Spacer()
@@ -400,6 +407,9 @@ struct ImportView: View {
   private func showError(_ message: String) {
     deviceConnectionError = message
     // Keep error visible until user acknowledges or retries
+  }
+  private func clearError() {
+    deviceConnectionError = nil
   }
 
   private func openLocalDirectoryPicker() {
@@ -455,6 +465,32 @@ struct ImportView: View {
     }
   }
 
+  private func scanForDevices() {
+    let callbacks = ImportCallbacks(
+      onMediaFound: { mediaItem in
+        // Update deviceMediaItems in real-time when new media is found
+        self.deviceMediaItems.insertSorted(
+          mediaItem as! ConnectedDeviceMediaItem,
+          by: \.thumbnailDate,
+          order: .descending
+        )
+      },
+      onComplete: {
+        // no op
+      },
+      onError: { error in
+        print("device media browsing error \(error.localizedDescription)")
+        self.showError(error.localizedDescription)
+      })
+
+    importFromDevice.scanForDevices(with: callbacks)
+  }
+
+  private func browseMedia(from device: ICCameraDevice) {
+    clearError()
+    importFromDevice.selectDevice(device)
+  }
+
   private func importManualFiles(_ urls: [URL]) {
     let importDirectory = DirectoryManager.shared.importDirectory
     var newImportedItems: [LocalFileSystemMediaItem] = []
@@ -495,5 +531,23 @@ struct ImportView: View {
 
       dismiss()
     }
+  }
+}
+
+// MARK: - Import Callback Handler
+
+class ImportCallbacks {
+  let onMediaFound: (MediaItem) -> Void
+  let onComplete: () -> Void
+  let onError: (Error) -> Void
+
+  init(
+    onMediaFound: @escaping (MediaItem) -> Void,
+    onComplete: @escaping () -> Void,
+    onError: @escaping (Error) -> Void
+  ) {
+    self.onMediaFound = onMediaFound
+    self.onComplete = onComplete
+    self.onError = onError
   }
 }
