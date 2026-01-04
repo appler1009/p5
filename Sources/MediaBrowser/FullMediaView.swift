@@ -293,6 +293,9 @@ struct FullMediaView: View {
   @State private var showVideo = false
   @AppStorage("fullMediaShowSidebar") private var showSidebar = false
 
+  @State private var currentScale: CGFloat = 1.0
+  @State private var imageOffset: CGSize = .zero
+
   var body: some View {
     HStack(spacing: 0) {
       // Sidebar (left side)
@@ -336,11 +339,30 @@ struct FullMediaView: View {
           }
         } else {
           if let image = fullImage {
-            Image(nsImage: image)
-              .resizable()
-              .aspectRatio(contentMode: .fit)
-              .frame(maxWidth: .infinity, maxHeight: .infinity)
-              .id(item.id)
+            GeometryReader { geometry in
+              ScrollView([.horizontal, .vertical]) {
+                Image(nsImage: image)
+                  .resizable()
+                  .aspectRatio(contentMode: .fit)
+                  .id(item.id)
+                  .scaleEffect(currentScale)
+                  //.frame(maxWidth: .infinity, maxHeight: .infinity)
+                  .frame(
+                    width: geometry.size.width * currentScale,
+                    height: geometry.size.height * currentScale
+                  )
+              }
+              .gesture(
+                MagnificationGesture()
+                  .onChanged { value in
+                    let logDelta = log(value) * 0.25
+                    let targetScale = max(0.5, min(currentScale * exp(logDelta), 5.0))
+                    withAnimation(.spring(response: 0.15, dampingFraction: 0.85)) {
+                      currentScale = targetScale
+                    }
+                  }
+              )
+            }
           } else {
             ProgressView()
           }
