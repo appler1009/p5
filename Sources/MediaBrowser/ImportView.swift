@@ -5,22 +5,26 @@ import SwiftUI
 // MARK: - Import View
 
 struct ImportView: View {
-  @ObservedObject var importFromDevice = ImportFromDevice()
+  @State private var importFromDevice = ImportFromDevice()
   @State private var isScanningDevices = false
-  @State private var duplicateCount = 0
   @State private var importStatus: String?
   @State private var deviceConnectionError: String?
   @State private var isImportFromDeviceSelected: Bool = false
   @State private var deviceMediaItems: [ConnectedDeviceMediaItem] = []
+  @State private var selectedDeviceMediaItems: Set<ConnectedDeviceMediaItem> = Set()
 
   @State private var importApplePhotos = ImportApplePhotos()
   @State private var selectedApplePhotosLibrary: URL?
   @State private var isApplePhotosSelected: Bool = false
   @State private var isReadingApplePhotos: Bool = false
   @State private var appleMediaItems: [ApplePhotosMediaItem] = []
+  @State private var selectedAppleMediaItems: Set<ApplePhotosMediaItem> = Set()
 
   @State private var localFilesItems: [LocalFileSystemMediaItem] = []
   @State private var isLocalFilesSelected: Bool = false
+  @State private var selectedLocalFilesItems: Set<LocalFileSystemMediaItem> = Set()
+
+  @State private var duplicateCount = 0
 
   @Environment(\.dismiss) private var dismiss
 
@@ -36,12 +40,10 @@ struct ImportView: View {
         Spacer()
 
         if appleMediaItems.count > 0 {
-          Text("Total \(appleMediaItems.count)")
-            .font(.subheadline)
-            .foregroundColor(.secondary)
+          Text(availabilityLabel(regarding: appleMediaItems))
         }
 
-        Button("Import All") {
+        Button(importButton(forSelection: selectedAppleMediaItems)) {
           Task {
             self.showStatus("Import started")
           }
@@ -75,12 +77,14 @@ struct ImportView: View {
         ScrollView {
           SectionGridView(
             items: appleMediaItems,
-            selectedItems: $importApplePhotos.selectedMediaItems,
+            selectedItems: selectedAppleMediaItems,
             onSelectionChange: { selectedItems in
-              importApplePhotos.selectedMediaItems = selectedItems
+              selectedAppleMediaItems = selectedItems as! Set<ApplePhotosMediaItem>
             },
             onItemDoubleTap: { _ in },
-            minCellWidth: 80
+            minCellWidth: 80,
+            disableDuplicates: true,
+            onDuplicateCountChange: { duplicateCount = $0 }
           )
           .padding()
         }
@@ -99,11 +103,9 @@ struct ImportView: View {
           .fontWeight(.semibold)
         Spacer()
         if deviceMediaItems.count > 0 {
-          let availableCount = deviceMediaItems.count - duplicateCount
-          let totalCount = deviceMediaItems.count
-          Text("\(availableCount) available for import out of \(totalCount) total")
+          Text(availabilityLabel(regarding: deviceMediaItems))
         }
-        Button("Import All") {
+        Button(importButton(forSelection: selectedDeviceMediaItems)) {
           Task {
             self.showStatus("Download started")
             await importFromDevice.requestDownloads()
@@ -132,9 +134,9 @@ struct ImportView: View {
           VStack(spacing: 4) {
             SectionGridView(
               items: deviceMediaItems,
-              selectedItems: $importFromDevice.selectedMediaItems,
+              selectedItems: selectedDeviceMediaItems,
               onSelectionChange: { selectedItems in
-                importFromDevice.selectedMediaItems = selectedItems
+                selectedDeviceMediaItems = selectedItems as! Set<ConnectedDeviceMediaItem>
               },
               onItemDoubleTap: { _ in },  // No-op for import view
               minCellWidth: 80,
@@ -216,12 +218,10 @@ struct ImportView: View {
         Spacer()
 
         if localFilesItems.count > 0 {
-          Text("Total \(localFilesItems.count)")
-            .font(.subheadline)
-            .foregroundColor(.secondary)
+          Text(availabilityLabel(regarding: localFilesItems))
         }
 
-        Button("Import All") {
+        Button(importButton(forSelection: selectedLocalFilesItems)) {
           Task {
             self.showStatus("Import started")
           }
@@ -249,10 +249,14 @@ struct ImportView: View {
         ScrollView {
           SectionGridView(
             items: localFilesItems,
-            selectedItems: .constant(Set<MediaItem>()),
-            onSelectionChange: { _ in },
+            selectedItems: selectedLocalFilesItems,
+            onSelectionChange: { selectedItems in
+              selectedLocalFilesItems = selectedItems as! Set<LocalFileSystemMediaItem>
+            },
             onItemDoubleTap: { _ in },
-            minCellWidth: 80
+            minCellWidth: 80,
+            disableDuplicates: true,
+            onDuplicateCountChange: { duplicateCount = $0 }
           )
           .padding()
         }
@@ -412,6 +416,25 @@ struct ImportView: View {
     deviceConnectionError = nil
   }
 
+  private func importButton(forSelection selectedItems: Set<MediaItem>) -> String {
+    if selectedItems.count > 0 {
+      return "Import \(selectedItems.count) Selected"
+    }
+    return "Import All"
+  }
+
+  private func availabilityLabel(regarding items: [MediaItem]) -> String {
+    if items.count > 0 {
+      let totalCount = items.count
+      if duplicateCount > 0 {
+        let availableCount = items.count - duplicateCount
+        return "\(availableCount) available for import out of total \(totalCount)"
+      }
+      return "Total \(totalCount) available for import"
+    }
+    return ""
+  }
+
   private func openLocalDirectoryPicker() {
     let panel = NSOpenPanel()
     panel.allowsMultipleSelection = true
@@ -449,17 +472,26 @@ struct ImportView: View {
 
     if panel.runModal() == .OK {
       // Clear existing items before starting new preview
-      appleMediaItems = []
+      self.appleMediaItems = []
+
+      let importCallbacks = ImportCallbacks(
+        onMediaFound: { mediaItem in
+          // Update applePhotosItems in real-time when new media is found
+          self.appleMediaItems.insertSorted(
+            mediaItem as! ApplePhotosMediaItem,
+            by: \.thumbnailDate,
+            order: .descending
+          )
+        },
+        onComplete: {
+          self.isReadingApplePhotos = false
+        },
+        onError: { error in }
+      )
       Task {
         let _ = try await importApplePhotos.previewPhotos(
           from: panel.urls.first!,
-          onMediaFound: { mediaItem in
-            // Update applePhotosItems in real-time when new media is found
-            appleMediaItems.insertSorted(mediaItem, by: \.thumbnailDate, order: .descending)
-          },
-          onComplete: {
-            isReadingApplePhotos = false
-          }
+          with: importCallbacks
         )
       }
     }
@@ -481,7 +513,8 @@ struct ImportView: View {
       onError: { error in
         print("device media browsing error \(error.localizedDescription)")
         self.showError(error.localizedDescription)
-      })
+      }
+    )
 
     importFromDevice.scanForDevices(with: callbacks)
   }

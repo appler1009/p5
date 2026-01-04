@@ -64,7 +64,6 @@ struct ContentView: View {
       VStack(spacing: 0) {
         if viewMode == "Grid" {
           MediaGridView(
-            selectedItems: $selectedItems,
             lightboxItemId: $lightboxItemId,
             searchQuery: $searchQuery
           )

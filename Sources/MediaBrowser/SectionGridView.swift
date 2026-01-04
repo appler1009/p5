@@ -4,13 +4,13 @@ import SwiftUI
 struct SectionGridView: View {
   let title: String?
   let items: [MediaItem]
-  @Binding var selectedItems: Set<MediaItem>
   let onSelectionChange: (Set<MediaItem>) -> Void
   let onItemDoubleTap: (MediaItem) -> Void
   let minCellWidth: CGFloat
   let disableDuplicates: Bool
   let onDuplicateCountChange: ((Int) -> Void)?
 
+  @State private var selectedItems: Set<MediaItem>
   @State private var itemsNeedingThumbnailUpdate: Set<Int> = []
   @State private var thumbnailObserver: NSObjectProtocol?
   @State private var lastSelectedItem: MediaItem?
@@ -21,7 +21,7 @@ struct SectionGridView: View {
   init(
     title: String? = nil,
     items: [MediaItem],
-    selectedItems: Binding<Set<MediaItem>>,
+    selectedItems: Set<MediaItem>,
     onSelectionChange: @escaping (Set<MediaItem>) -> Void,
     onItemDoubleTap: @escaping (MediaItem) -> Void,
     minCellWidth: CGFloat = 80,
@@ -30,7 +30,7 @@ struct SectionGridView: View {
   ) {
     self.title = title
     self.items = items
-    self._selectedItems = selectedItems
+    self.selectedItems = Set(selectedItems)
     self.onSelectionChange = onSelectionChange
     self.onItemDoubleTap = onItemDoubleTap
     self.minCellWidth = minCellWidth
@@ -134,9 +134,14 @@ struct SectionGridView: View {
   }
 
   private func handleItemSelection(_ item: MediaItem) {
-    if duplicateIds.contains(item.id) { return }
-    let eventModifierFlags = NSApp.currentEvent?.modifierFlags ?? []
+    print("selecting \(item.displayName)")
 
+    if duplicateIds.contains(item.id) {
+      print("duplicated \(item.displayName)")
+      return
+    }
+
+    let eventModifierFlags = NSApp.currentEvent?.modifierFlags ?? []
     if eventModifierFlags.contains(.command) {
       // CMD+click: Toggle individual item
       if selectedItems.contains(item) {

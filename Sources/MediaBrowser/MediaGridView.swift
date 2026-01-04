@@ -2,10 +2,10 @@ import SwiftUI
 
 struct MediaGridView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
-  @Binding var selectedItems: Set<MediaItem>
   @Binding var lightboxItemId: Int?
   @Binding var searchQuery: String
 
+  @State private var selectedItems: Set<MediaItem> = Set()
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
   @FocusState private var isGridFocused: Bool
@@ -55,7 +55,7 @@ struct MediaGridView: View {
             SectionGridView(
               title: group.month,
               items: group.items,
-              selectedItems: $selectedItems,
+              selectedItems: selectedItems,
               onSelectionChange: { newSelectedItems in
                 selectedItems = newSelectedItems
               },
