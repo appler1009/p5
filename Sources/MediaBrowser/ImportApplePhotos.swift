@@ -82,17 +82,20 @@ class ImportApplePhotos: ObservableObject {
   @Published var sortedMediaItems: [ApplePhotosMediaItem] = []
   @Published var selectedMediaItems: Set<MediaItem> = []
 
+  private var scanCallbacks: ScanCallbacks?
   private var importCallbacks: ImportCallbacks?
 
-  func previewPhotos(from photosURL: URL, with importCallbacks: ImportCallbacks) async throws {
-    self.importCallbacks = importCallbacks
+  func previewPhotos(from photosURL: URL, with scanCallbacks: ScanCallbacks) async throws {
+    self.scanCallbacks = scanCallbacks
     self.sortedMediaItems = try await getMediaItems(from: photosURL)
   }
 
-  func importPhotos(
+  internal func importItems(
+    items: [ApplePhotosMediaItem],
     from photosURL: URL,
     to importedDirectory: URL,
-    with importCallbacks: ImportCallbacks
+    with importCallbacks: ImportCallbacks,
+    progress: URLImportProgressCounter
   ) async throws {
     self.importCallbacks = importCallbacks
 
@@ -100,10 +103,15 @@ class ImportApplePhotos: ObservableObject {
       at: importedDirectory, withIntermediateDirectories: true)
 
     let photos = try await getMediaItems(from: photosURL)
-
-    for metadata in photos {
-      try importPhoto(metadata, from: photosURL, to: importedDirectory)
+    for aPhoto in photos {
+      progress.add(mediaItem: aPhoto)
     }
+
+    for aPhoto in photos {
+      try importPhoto(aPhoto, from: photosURL, to: importedDirectory)
+    }
+
+    importCallbacks.onComplete()
   }
 
   private func getMediaItems(from photosURL: URL)
@@ -125,7 +133,7 @@ class ImportApplePhotos: ObservableObject {
           await MainActor.run { [mediaItem] in
             sortedMediaItems.insertSorted(mediaItem, by: \.thumbnailDate, order: .descending)
             // notify callback about new item in main thread to update UI asap
-            if let onMediaFound = self.importCallbacks?.onMediaFound {
+            if let onMediaFound = self.scanCallbacks?.onMediaFound {
               onMediaFound(mediaItem)
             }
           }
@@ -133,7 +141,7 @@ class ImportApplePhotos: ObservableObject {
       }
     }
     print("found \(sortedMediaItems.count) thumbnails")
-    if let onComplete = self.importCallbacks?.onComplete {
+    if let onComplete = self.scanCallbacks?.onComplete {
       onComplete()
     }
     return sortedMediaItems
@@ -305,9 +313,6 @@ class ImportApplePhotos: ObservableObject {
     }
   }
 
-  private func thumbnailPhoto(_ item: ApplePhotosMediaItem) {
-  }
-
   private func importPhoto(
     _ item: ApplePhotosMediaItem, from photosURL: URL, to importedDirectory: URL
   ) throws {
@@ -320,6 +325,9 @@ class ImportApplePhotos: ObservableObject {
 
     guard FileManager.default.fileExists(atPath: sourceURL.path) else {
       print("File not found: \(sourceURL.path)")
+      if let importCallbacks = self.importCallbacks {
+        importCallbacks.onMediaSkipped(item)
+      }
       return
     }
 
@@ -350,6 +358,9 @@ class ImportApplePhotos: ObservableObject {
 
     // Copy file
     try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+    if let importCallbacks = self.importCallbacks {
+      importCallbacks.onMediaImported(item)
+    }
 
     // Here you could store the metadata in your app's database
     print("\(destinationFilename) with on \(finalDate?.description ?? "unknown")")

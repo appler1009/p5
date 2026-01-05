@@ -20,14 +20,19 @@ struct ImportView: View {
   @State private var appleMediaItems: [ApplePhotosMediaItem] = []
   @State private var selectedAppleMediaItems: Set<ApplePhotosMediaItem> = Set()
 
+  @State private var importLocalFiles = ImportLocalFiles()
   @State private var localFilesItems: [LocalFileSystemMediaItem] = []
   @State private var isLocalFilesSelected: Bool = false
   @State private var selectedLocalFilesItems: Set<LocalFileSystemMediaItem> = Set()
+  @State private var selectedLocalDirectory: URL?
 
   @State private var duplicateCount = 0
+  @State private var isImportInProgress = false
+  @State private var progressCounter: ImportProgressCounter? = nil
 
   @Environment(\.dismiss) private var dismiss
 
+  // MARK: - Apple Photo Contents
   var applePhotosContent: some View {
     VStack(spacing: 16) {
       HStack {
@@ -40,16 +45,17 @@ struct ImportView: View {
         Spacer()
 
         if appleMediaItems.count > 0 {
-          Text(availabilityLabel(regarding: appleMediaItems))
+          Text(availabilityLabelText(regarding: appleMediaItems))
         }
 
-        Button(importButton(forSelection: selectedAppleMediaItems)) {
+        Button(importButtonText(forSelection: selectedAppleMediaItems)) {
           Task {
             self.showStatus("Import started")
+            await self.doImportApplePhotos()
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(appleMediaItems.isEmpty)
+        .disabled(appleMediaItems.count <= duplicateCount || isImportInProgress)
       }
 
       if appleMediaItems.isEmpty {
@@ -93,6 +99,7 @@ struct ImportView: View {
     }
   }
 
+  // MARK: - USB Device Contents
   var deviceContent: some View {
     VStack(alignment: .leading, spacing: 16) {
       HStack {
@@ -103,16 +110,16 @@ struct ImportView: View {
           .fontWeight(.semibold)
         Spacer()
         if deviceMediaItems.count > 0 {
-          Text(availabilityLabel(regarding: deviceMediaItems))
+          Text(availabilityLabelText(regarding: deviceMediaItems))
         }
-        Button(importButton(forSelection: selectedDeviceMediaItems)) {
+        Button(importButtonText(forSelection: selectedDeviceMediaItems)) {
           Task {
             self.showStatus("Download started")
-            await importFromDevice.requestDownloads()
+            await self.doImportMediaFromDevice()
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(deviceMediaItems.count <= duplicateCount)
+        .disabled(deviceMediaItems.count <= duplicateCount || isImportInProgress)
       }
 
       // Status messages
@@ -206,6 +213,7 @@ struct ImportView: View {
     }
   }
 
+  // MARK: - Local Files Contents
   var localFilesContent: some View {
     VStack(spacing: 16) {
       HStack {
@@ -218,16 +226,17 @@ struct ImportView: View {
         Spacer()
 
         if localFilesItems.count > 0 {
-          Text(availabilityLabel(regarding: localFilesItems))
+          Text(availabilityLabelText(regarding: localFilesItems))
         }
 
-        Button(importButton(forSelection: selectedLocalFilesItems)) {
+        Button(importButtonText(forSelection: selectedLocalFilesItems)) {
           Task {
             self.showStatus("Import started")
+            await self.doImportLocalFiles()
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(localFilesItems.isEmpty)
+        .disabled(localFilesItems.count <= duplicateCount || isImportInProgress)
       }
 
       if localFilesItems.isEmpty {
@@ -265,6 +274,7 @@ struct ImportView: View {
     }
   }
 
+  // MARK: - Devices List
   var connectedDevicesList: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("Available Devices")
@@ -296,6 +306,7 @@ struct ImportView: View {
     .cornerRadius(8)
   }
 
+  // MARK: - Main Body
   var body: some View {
     NavigationSplitView(columnVisibility: .constant(.all)) {
       // Sidebar
@@ -398,6 +409,8 @@ struct ImportView: View {
     .frame(minWidth: 700, minHeight: 500)
   }
 
+  // MARK: - Supporting Functions
+
   private func showStatus(_ message: String) {
     importStatus = message
     // Auto-clear after 10 seconds
@@ -416,14 +429,14 @@ struct ImportView: View {
     deviceConnectionError = nil
   }
 
-  private func importButton(forSelection selectedItems: Set<MediaItem>) -> String {
+  private func importButtonText(forSelection selectedItems: Set<MediaItem>) -> String {
     if selectedItems.count > 0 {
       return "Import \(selectedItems.count) Selected"
     }
     return "Import All"
   }
 
-  private func availabilityLabel(regarding items: [MediaItem]) -> String {
+  private func availabilityLabelText(regarding items: [MediaItem]) -> String {
     if items.count > 0 {
       let totalCount = items.count
       if duplicateCount > 0 {
@@ -445,18 +458,25 @@ struct ImportView: View {
     panel.prompt = "Import"
 
     if panel.runModal() == .OK {
-      do {
-        // Clear existing items before starting new preview
-        localFilesItems = []
-        let localFiles = try ImportLocalFiles(directory: panel.urls.first!)
+      // take the source directory
+      self.selectedLocalDirectory = panel.urls.first!
+
+      // Clear existing items before starting new preview
+      localFilesItems = []
+
+      if let sourceDir = self.selectedLocalDirectory {
         Task {
-          try await localFiles.previewPhotos { mediaItem in
-            // Update applePhotosItems in real-time when new media is found
-            localFilesItems.append(mediaItem)
-          }
+          try await importLocalFiles.previewPhotos(
+            sourceDirectory: sourceDir,
+            scanCallbacks: ScanCallbacks(
+              onMediaFound: { mediaItem in
+                localFilesItems.append(mediaItem as! LocalFileSystemMediaItem)
+              },
+              onComplete: {},
+              onError: { error in }
+            )
+          )
         }
-      } catch {
-        print("Error importing Local Files: \(error)")
       }
     }
   }
@@ -474,7 +494,7 @@ struct ImportView: View {
       // Clear existing items before starting new preview
       self.appleMediaItems = []
 
-      let importCallbacks = ImportCallbacks(
+      let importCallbacks = ScanCallbacks(
         onMediaFound: { mediaItem in
           // Update applePhotosItems in real-time when new media is found
           self.appleMediaItems.insertSorted(
@@ -498,7 +518,7 @@ struct ImportView: View {
   }
 
   private func scanForDevices() {
-    let callbacks = ImportCallbacks(
+    let callbacks = ScanCallbacks(
       onMediaFound: { mediaItem in
         // Update deviceMediaItems in real-time when new media is found
         self.deviceMediaItems.insertSorted(
@@ -524,52 +544,91 @@ struct ImportView: View {
     importFromDevice.selectDevice(device)
   }
 
-  private func importManualFiles(_ urls: [URL]) {
-    let importDirectory = DirectoryManager.shared.importDirectory
-    var newImportedItems: [LocalFileSystemMediaItem] = []
+  private func doImportMediaFromDevice() async {
+    let items: [ConnectedDeviceMediaItem] =
+      self.selectedDeviceMediaItems.isEmpty
+      ? self.deviceMediaItems : Array(self.selectedDeviceMediaItems)
 
-    for url in urls {
-      let fileName = url.lastPathComponent
-      let destinationUrl = importDirectory.appendingPathComponent(fileName)
-
-      do {
-        // Copy file to import directory
-        try FileManager.default.copyItem(at: url, to: destinationUrl)
-
-        // Add to MediaScanner
-        let mediaItem = LocalFileSystemMediaItem(
-          id: -1,
-          original: destinationUrl,
-        )
-
-        MediaScanner.shared.items.append(mediaItem)
-        newImportedItems.append(mediaItem)
-
-      } catch {
-        print("Failed to import file \(url.lastPathComponent): \(error)")
-      }
-    }
-
-    // Trigger metadata extraction and refresh
-    Task {
-      await MediaScanner.shared.scan(directories: DirectoryManager.shared.directories)
-
-      // Notify about new imported items that are duplicates
-      for item in newImportedItems {
-        let baseName = item.displayName.extractBaseName()
-        if DatabaseManager.shared.hasDuplicate(baseName: baseName, date: item.thumbnailDate) {
-          NotificationCenter.default.post(name: .newMediaItemImported, object: item.id)
+    let cameraItemProgressCounter = CameraFileImportProgressCounter()
+    self.progressCounter = cameraItemProgressCounter
+    await importFromDevice.requestDownloads(
+      items: items,
+      with: ImportCallbacks(
+        onMediaImported: { mediaItem in },
+        onMediaSkipped: { mediaItem in },
+        onComplete: {},
+        onError: { error in
+          showError("Failed to finish importing: \(error.localizedDescription)")
         }
-      }
+      ),
+      progress: cameraItemProgressCounter
+    )
+  }
 
-      dismiss()
+  private func doImportApplePhotos() async {
+    guard let photosLib = selectedApplePhotosLibrary else { return }
+
+    let urlProgressCounter = URLImportProgressCounter()
+    self.progressCounter = urlProgressCounter
+
+    let items: [ApplePhotosMediaItem] =
+      self.selectedAppleMediaItems.isEmpty
+      ? self.appleMediaItems : Array(self.selectedAppleMediaItems) as! [ApplePhotosMediaItem]
+
+    do {
+      try await importApplePhotos.importItems(
+        items: items,
+        from: photosLib,
+        to: DirectoryManager.shared.importDirectory,
+        with: ImportCallbacks(
+          onMediaImported: { mediaItem in },
+          onMediaSkipped: { mediaItem in },
+          onComplete: {},
+          onError: { error in
+            showError("Failed to import: \(error.localizedDescription)")
+          }
+        ),
+        progress: urlProgressCounter
+      )
+    } catch {
+      showError("Failed to import Apple Photos: \(error.localizedDescription)")
+    }
+  }
+
+  private func doImportLocalFiles() async {
+    guard let sourceDir = selectedLocalDirectory else { return }
+
+    let urlProgressCounter = URLImportProgressCounter()
+    self.progressCounter = urlProgressCounter
+
+    let items: [LocalFileSystemMediaItem] =
+      self.selectedLocalFilesItems.isEmpty
+      ? self.localFilesItems : Array(self.selectedLocalFilesItems)
+
+    do {
+      try await importLocalFiles.importPhotos(
+        items: items,
+        from: sourceDir,
+        to: DirectoryManager.shared.importDirectory,
+        callbacks: ImportCallbacks(
+          onMediaImported: { mediaItem in },
+          onMediaSkipped: { mediaItem in },
+          onComplete: {},
+          onError: { error in
+            showError("Failed to import: \(error.localizedDescription)")
+          }
+        ),
+        progress: urlProgressCounter
+      )
+    } catch {
+      showError("Failed to import from local directory: \(error.localizedDescription)")
     }
   }
 }
 
-// MARK: - Import Callback Handler
+// MARK: - Import Callback Handlers
 
-class ImportCallbacks {
+class ScanCallbacks {
   let onMediaFound: (MediaItem) -> Void
   let onComplete: () -> Void
   let onError: (Error) -> Void
@@ -582,5 +641,142 @@ class ImportCallbacks {
     self.onMediaFound = onMediaFound
     self.onComplete = onComplete
     self.onError = onError
+  }
+}
+
+class ImportCallbacks {
+  let onMediaImported: (MediaItem) -> Void
+  let onMediaSkipped: (MediaItem) -> Void
+  let onComplete: () -> Void
+  let onError: (Error) -> Void
+
+  init(
+    onMediaImported: @escaping (MediaItem) -> Void,
+    onMediaSkipped: @escaping (MediaItem) -> Void,
+    onComplete: @escaping () -> Void,
+    onError: @escaping (Error) -> Void
+  ) {
+    self.onMediaImported = onMediaImported
+    self.onMediaSkipped = onMediaSkipped
+    self.onComplete = onComplete
+    self.onError = onError
+  }
+}
+
+// MARK: - Import Progress Counters
+
+class ImportProgressCounter {
+  private var allItems: Set<MediaItem> = Set()
+
+  func add(mediaItem: MediaItem) {
+    self.allItems.insert(mediaItem)
+  }
+
+  func remove(mediaItem: MediaItem) {
+    self.allItems.remove(mediaItem)
+  }
+
+  func getAllMediaItems() -> Set<MediaItem> {
+    return self.allItems
+  }
+
+  func countAll() -> Int { return 0 }
+
+  func countItems() -> Int {
+    return allItems.count
+  }
+}
+
+class URLImportProgressCounter: ImportProgressCounter {
+  private var allURLs: Set<URL> = Set()
+  private var mediaItemLookup: [URL: MediaItem] = [:]
+
+  override func add(mediaItem: MediaItem) {
+    if let item = mediaItem as? LocalFileSystemMediaItem {
+      self.allURLs.insert(item.originalUrl)
+      self.mediaItemLookup[item.originalUrl] = mediaItem
+
+      if let edited = item.editedUrl {
+        self.allURLs.insert(edited)
+        self.mediaItemLookup[edited] = mediaItem
+      }
+
+      if let live = item.liveUrl {
+        self.allURLs.insert(live)
+        self.mediaItemLookup[live] = mediaItem
+      }
+
+      super.add(mediaItem: mediaItem)
+    }
+  }
+
+  override func countAll() -> Int {
+    return self.allURLs.count
+  }
+
+  override func countItems() -> Int {
+    return Set(self.mediaItemLookup.values).count
+  }
+
+  func processed(url: URL) -> MediaItem? {
+    self.allURLs.remove(url)
+    let mediaItemRemoved = self.mediaItemLookup.removeValue(forKey: url)
+    if let item = mediaItemRemoved {
+      let setAfterRemoved = Set(self.mediaItemLookup.values)
+      if setAfterRemoved.contains(item) == false {
+        super.remove(mediaItem: item)
+        return item
+      }
+    }
+    return nil
+  }
+}
+
+class CameraFileImportProgressCounter: ImportProgressCounter {
+  private var allCameraItems: Set<ICCameraItem> = Set()
+  private var mediaItemLookup: [ICCameraItem: MediaItem] = [:]
+
+  override func add(mediaItem: MediaItem) {
+    if let item = mediaItem as? ConnectedDeviceMediaItem {
+      self.allCameraItems.insert(item.originalItem)
+      self.mediaItemLookup[item.originalItem] = mediaItem
+
+      if let edited = item.editedItem {
+        self.allCameraItems.insert(edited)
+        self.mediaItemLookup[edited] = mediaItem
+      }
+
+      if let live = item.liveItem {
+        self.allCameraItems.insert(live)
+        self.mediaItemLookup[live] = mediaItem
+      }
+
+      super.add(mediaItem: mediaItem)
+    }
+  }
+
+  override func countAll() -> Int {
+    return self.allCameraItems.count
+  }
+
+  override func countItems() -> Int {
+    return Set(self.mediaItemLookup.values).count
+  }
+
+  func getAllCameraItems() -> Set<ICCameraItem> {
+    return allCameraItems
+  }
+
+  func processed(cameraItem: ICCameraItem) -> MediaItem? {
+    self.allCameraItems.remove(cameraItem)
+    let mediaItemRemoved = self.mediaItemLookup.removeValue(forKey: cameraItem)
+    if let item = mediaItemRemoved {
+      let setAfterRemoved = Set(self.mediaItemLookup.values)
+      if setAfterRemoved.contains(item) == false {
+        super.remove(mediaItem: item)
+        return item
+      }
+    }
+    return nil
   }
 }

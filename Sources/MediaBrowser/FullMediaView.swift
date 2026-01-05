@@ -346,7 +346,6 @@ struct FullMediaView: View {
                   .aspectRatio(contentMode: .fit)
                   .id(item.id)
                   .scaleEffect(currentScale)
-                  //.frame(maxWidth: .infinity, maxHeight: .infinity)
                   .frame(
                     width: geometry.size.width * currentScale,
                     height: geometry.size.height * currentScale

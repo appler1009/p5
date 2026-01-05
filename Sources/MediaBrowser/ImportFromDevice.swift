@@ -22,11 +22,11 @@ class ImportFromDevice: ObservableObject {
   private let downloadLimiter = ConcurrencyLimiter(limit: 2)
 
   // callbacks
-  private var importCallbacks: ImportCallbacks?
+  private var scanCallbacks: ScanCallbacks?
 
-  internal func scanForDevices(with importCallbacks: ImportCallbacks) {
+  internal func scanForDevices(with scanCallbacks: ScanCallbacks) {
     // update callbacks
-    self.importCallbacks = importCallbacks
+    self.scanCallbacks = scanCallbacks
 
     isScanning = true
     detectedDevices.removeAll()
@@ -147,7 +147,7 @@ class ImportFromDevice: ObservableObject {
       if let error = error {
         Task {
           self.isLoadingDeviceContents = false
-          if let onError = self.importCallbacks?.onError {
+          if let onError = self.scanCallbacks?.onError {
             onError(error)
           }
         }
@@ -250,7 +250,7 @@ class ImportFromDevice: ObservableObject {
       for mediaItem in mediaItems {
         // Check if thumbnail already exists in local cache
         if ThumbnailCache.shared.thumbnailExists(mediaItem: mediaItem) {
-          if let onMediaFound = self.importCallbacks?.onMediaFound {
+          if let onMediaFound = self.scanCallbacks?.onMediaFound {
             onMediaFound(mediaItem)
           }
           continue
@@ -274,7 +274,7 @@ class ImportFromDevice: ObservableObject {
         }
       }
 
-      if let onComplete = self.importCallbacks?.onComplete {
+      if let onComplete = self.scanCallbacks?.onComplete {
         onComplete()
       }
     }
@@ -294,7 +294,7 @@ class ImportFromDevice: ObservableObject {
       if let thumbnail = thumbnail {
         await MainActor.run {
           storeThumbnail(mediaItem: mediaItem, thumbnail: thumbnail)
-          if let onMediaFound = self.importCallbacks?.onMediaFound {
+          if let onMediaFound = self.scanCallbacks?.onMediaFound {
             onMediaFound(mediaItem)
           }
         }
@@ -330,32 +330,17 @@ class ImportFromDevice: ObservableObject {
     ThumbnailCache.shared.storePreGeneratedThumbnail(squareThumbnail, mediaItem: mediaItem)
   }
 
-  internal func requestDownloads() async {
-    var cameraItems: [ICCameraItem] = []
-    selectedMediaItems.forEach { mediaItem in
-      guard let connectedDeviceMediaItem = mediaItem as? ConnectedDeviceMediaItem else { return }
-      cameraItems.append(connectedDeviceMediaItem.originalItem)
-      print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") originalItem added")
-      if let edited = connectedDeviceMediaItem.editedItem {
-        cameraItems.append(edited)
-        print(
-          "\(connectedDeviceMediaItem.originalItem.name ?? "unknown") \(edited.name ?? "unknown") editedItem added"
-        )
-      } else {
-        print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") no editedItem added")
-      }
-      if let live = connectedDeviceMediaItem.liveItem {
-        cameraItems.append(live)
-        print(
-          "\(connectedDeviceMediaItem.originalItem.name ?? "unknown") \(live.name ?? "unknown") liveItem added"
-        )
-      } else {
-        print("\(connectedDeviceMediaItem.originalItem.name ?? "unknown") no liveItem available")
-      }
+  internal func requestDownloads(
+    items: [ConnectedDeviceMediaItem],
+    with importCallbacks: ImportCallbacks,
+    progress: CameraFileImportProgressCounter
+  ) async {
+    items.forEach { mediaItem in
+      progress.add(mediaItem: mediaItem)
     }
 
     await withTaskGroup(of: Void.self) { group in
-      for cameraItem in cameraItems {
+      for cameraItem in progress.getAllCameraItems() {
         // ICCameraFile is the subclass that supports downloading
         guard let cameraFile = cameraItem as? ICCameraFile else {
           return
@@ -375,12 +360,19 @@ class ImportFromDevice: ObservableObject {
               onComplete: {
                 Task { await downloadLimiter.release() }
                 await downloadState.clearRunningTask(for: cameraFileId)
+
+                let removed = progress.processed(cameraItem: cameraFile)
+                if let removed = removed {
+                  importCallbacks.onMediaImported(removed)
+                }
               })
           }
           await downloadState.setRunningTask(task, for: cameraFileId)
           await task.value
         }
       }
+
+      importCallbacks.onComplete()
     }
   }
 
