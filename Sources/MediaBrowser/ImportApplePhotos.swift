@@ -7,6 +7,7 @@ struct ApplePhotosItem {
   let fileName: String
   let directory: String
   let originalFileName: String
+  let fileURL: URL
   let fileSize: Int
   let metadata: MediaMetadata
 
@@ -33,6 +34,7 @@ struct ApplePhotosItem {
     fileName: String,
     directory: String,
     originalFileName: String,
+    fileURL: URL,
     fileSize: Int,
     metadata: MediaMetadata,
     uniformTypeIdentifier: String? = nil,
@@ -56,6 +58,7 @@ struct ApplePhotosItem {
     self.fileName = fileName
     self.directory = directory
     self.originalFileName = originalFileName
+    self.fileURL = fileURL
     self.fileSize = fileSize
     self.metadata = metadata
     self.uniformTypeIdentifier = uniformTypeIdentifier
@@ -86,8 +89,7 @@ class ImportApplePhotos: ObservableObject {
   private var importCallbacks: ImportCallbacks?
 
   func previewPhotos(from photosURL: URL, with scanCallbacks: ScanCallbacks) async throws {
-    self.scanCallbacks = scanCallbacks
-    self.sortedMediaItems = try await getMediaItems(from: photosURL)
+    self.sortedMediaItems = try await getMediaItems(from: photosURL, scanCallbacks: scanCallbacks)
   }
 
   internal func importItems(
@@ -108,23 +110,126 @@ class ImportApplePhotos: ObservableObject {
     }
 
     for aPhoto in photos {
-      try importPhoto(aPhoto, from: photosURL, to: importedDirectory)
+      try importOneItem(aPhoto, from: photosURL, to: importedDirectory, progress: progress)
     }
 
     importCallbacks.onComplete()
   }
 
-  private func getMediaItems(from photosURL: URL)
+  // Scan entire Apple Photos directory structure once
+  private func scanApplePhotosDirectory(_ photosURL: URL) -> [URL: [String]] {
+    var allFiles: [URL: [String]] = [:]
+
+    // Recursively scan all directories under originals/
+    let originalsURL = photosURL.appendingPathComponent("originals")
+
+    // Recursive enumeration
+    let resourceKeys: [URLResourceKey] = [.nameKey, .isDirectoryKey]
+    let enumerator = FileManager.default.enumerator(
+      at: originalsURL,
+      includingPropertiesForKeys: resourceKeys,
+      options: [.skipsHiddenFiles, .skipsPackageDescendants]
+    )
+
+    // Collect all files by full path
+    while let fileURL = enumerator?.nextObject() as? URL {
+      let path = fileURL.path.replacingOccurrences(
+        of: photosURL.appendingPathComponent("originals/").path, with: "")
+      let fileName = fileURL.lastPathComponent
+
+      // Group files by their parent directory path
+      let directoryPath = (path as NSString).deletingLastPathComponent
+      if let directoryURL = URL(string: "file://\(directoryPath)") {
+        if allFiles[directoryURL] == nil {
+          allFiles[directoryURL] = []
+        }
+        allFiles[directoryURL]!.append(fileName)
+      }
+    }
+
+    print("Scanned \(allFiles.values.flatMap { $0 }.count) files in Apple Photos library")
+    return allFiles
+  }
+
+  private func getMediaItems(from photosURL: URL, scanCallbacks: ScanCallbacks? = nil)
     async throws -> [ApplePhotosMediaItem]
   {
     if sortedMediaItems.isEmpty {
       let rawItems = try fetchRawItems(from: photosURL)
       print("found \(rawItems.count) items from DB")
 
-      let groupedItems = groupRelatedApplePhotoItems(rawItems, in: photosURL)
+      // Find all related items in the directory.
+      // 1) remove extension, 2) find any file that has the same prefix in the same directory with different suffix and extension
+      // For example, these two files are related (a live photo)
+      // file:///Users/appler/Downloads/ApplePhotos/originals/C/C02ABA48-1B5C-4ACF-AC42-6CF4B9313584.heic
+      // file:///Users/appler/Downloads/ApplePhotos/originals/C/C02ABA48-1B5C-4ACF-AC42-6CF4B9313584_3.mov
+      let allFiles = scanApplePhotosDirectory(photosURL)
+      var relatedItems: [ApplePhotosItem] = []
+      for rawItem in rawItems {
+        let baseURL = rawItem.fileURL.deletingLastPathComponent()
+        let basePrefix = rawItem.fileName.extractApplePhotosBaseName()
+
+        // Get directory contents from our pre-scanned data
+        let relativePath = baseURL.path.replacingOccurrences(
+          of: photosURL.appendingPathComponent("originals/").path, with: "")
+        guard let directoryPath = URL(string: "file://\(relativePath)"),
+          let allFilesInDir = allFiles[directoryPath]
+        else { continue }
+
+        // Filter files that match base prefix (from pre-scanned data)
+        let matchingFiles = allFilesInDir.filter { fileName in
+          let filePrefix = fileName.extractApplePhotosBaseName()
+          return filePrefix == basePrefix && rawItem.fileName != fileName
+        }
+
+        for matchingFile in matchingFiles {
+          let fileURL = baseURL.appendingPathComponent(matchingFile)
+          var fileSize = rawItem.fileSize
+          var uti = rawItem.uniformTypeIdentifier
+          let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .typeIdentifierKey])
+          if let sizeInBytes = values.fileSize {
+            fileSize = sizeInBytes
+          }
+          if let uniformTypeIdentifier = values.typeIdentifier {
+            uti = uniformTypeIdentifier
+          }
+          let relatedItem = ApplePhotosItem(
+            fileName: matchingFile,
+            directory: rawItem.directory,
+            originalFileName: rawItem.originalFileName,
+            fileURL: fileURL,
+            fileSize: fileSize,
+            metadata: rawItem.metadata,
+            uniformTypeIdentifier: uti,
+            timezoneName: rawItem.timezoneName,
+            timezoneOffset: rawItem.timezoneOffset,
+            addedDate: rawItem.addedDate,
+            longDescription: rawItem.longDescription,
+            focalLength: rawItem.focalLength,
+            focalLength35mm: rawItem.focalLength35mm,
+            flashFired: rawItem.flashFired,
+            exposureBias: rawItem.exposureBias,
+            meteringMode: rawItem.meteringMode,
+            whiteBalance: rawItem.whiteBalance,
+            digitalZoomRatio: rawItem.digitalZoomRatio,
+            fps: rawItem.fps,
+            bitrate: rawItem.bitrate,
+            codec: rawItem.codec,
+            extendedTimezoneName: rawItem.extendedTimezoneName,
+            extendedTimezoneOffset: rawItem.extendedTimezoneOffset
+          )
+          relatedItems.append(relatedItem)
+        }
+      }
+
+      let groupedItems = groupRelatedApplePhotoItems(rawItems + relatedItems, in: photosURL)
       print("found \(groupedItems.count) grouped items")
 
       for mediaItem in groupedItems {
+        let editedUrl = mediaItem.editedUrl != nil ? mediaItem.editedUrl!.path : "no edited"
+        let liveUrl = mediaItem.liveUrl != nil ? mediaItem.liveUrl!.path : "no live"
+        print("\(mediaItem.originalUrl), \(editedUrl), \(liveUrl)")
+
         // Pre-generate and cache thumbnail
         if await ThumbnailCache.shared.generateAndCacheThumbnail(
           for: mediaItem.displayURL,
@@ -133,7 +238,7 @@ class ImportApplePhotos: ObservableObject {
           await MainActor.run { [mediaItem] in
             sortedMediaItems.insertSorted(mediaItem, by: \.thumbnailDate, order: .descending)
             // notify callback about new item in main thread to update UI asap
-            if let onMediaFound = self.scanCallbacks?.onMediaFound {
+            if let onMediaFound = scanCallbacks?.onMediaFound {
               onMediaFound(mediaItem)
             }
           }
@@ -204,12 +309,12 @@ class ImportApplePhotos: ObservableObject {
       for row in rows {
         let dbFileName = row[Column("filename")] as String
         let dbDirectory = row[Column("directory")] as String
-        let originalFilePath =
+        let originalFileURL =
           photosURL
           .appendingPathComponent("originals")
           .appendingPathComponent(dbDirectory)
-          .appendingPathComponent(dbFileName).path
-        guard FileManager.default.fileExists(atPath: originalFilePath) else {
+          .appendingPathComponent(dbFileName)
+        guard FileManager.default.fileExists(atPath: originalFileURL.path) else {
           continue  // Skip this database row
         }
 
@@ -285,6 +390,7 @@ class ImportApplePhotos: ObservableObject {
           fileName: dbFileName,
           directory: dbDirectory,
           originalFileName: (row[Column("originalFilename")] as String?) ?? "",
+          fileURL: originalFileURL,
           fileSize: (row[Column("fileSize")] as Int?) ?? 0,
           metadata: metadata,
           uniformTypeIdentifier: row[Column("uniformTypeIdentifier")] as String?,
@@ -313,8 +419,11 @@ class ImportApplePhotos: ObservableObject {
     }
   }
 
-  private func importPhoto(
-    _ item: ApplePhotosMediaItem, from photosURL: URL, to importedDirectory: URL
+  private func importOneItem(
+    _ item: ApplePhotosMediaItem,
+    from photosURL: URL,
+    to importedDirectory: URL,
+    progress: URLImportProgressCounter
   ) throws {
     // Construct source URL
     var sourceURL = photosURL.appendingPathComponent("originals")
@@ -331,6 +440,12 @@ class ImportApplePhotos: ObservableObject {
       return
     }
 
+    var urls = [item.originalUrl]
+    if let edited = item.editedUrl { urls.append(edited) }
+    if let live = item.liveUrl { urls.append(live) }
+    for url in urls {
+
+    }
     // Extract metadata from file
     let extractedMetadata = extractMetadata(from: sourceURL)
 
@@ -358,6 +473,17 @@ class ImportApplePhotos: ObservableObject {
 
     // Copy file
     try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+    if let fileDate = finalDate {
+      var attributes = [FileAttributeKey: Any]()
+      attributes[.creationDate] = fileDate
+      attributes[.modificationDate] = fileDate
+
+      do {
+        try FileManager.default.setAttributes(attributes, ofItemAtPath: destinationURL.path)
+      } catch {
+        print("Failed to set file dates: \(error)")
+      }
+    }
     if let importCallbacks = self.importCallbacks {
       importCallbacks.onMediaImported(item)
     }

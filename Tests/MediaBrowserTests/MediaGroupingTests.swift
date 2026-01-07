@@ -270,4 +270,121 @@ final class MediaGroupingTests: XCTestCase {
     XCTAssertNil(yesterdayGroup?.editedUrl)
     XCTAssertNil(yesterdayGroup?.liveUrl)
   }
+
+  func testGroupRelatedApplePhotoItems() throws {
+    let today = Date()
+    let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+
+    // Create MediaSource instances with forApplePhotos flag
+    let uuid1_heic = MediaSource(
+      date: today,
+      name: "C1B92E12-56C5-46A8-9DD7-807F54F01AF3.jpeg",
+      uti: "public.image",
+      forApplePhotos: true
+    )
+
+    let uuid1_mov = MediaSource(
+      date: today,
+      name: "C1B92E12-56C5-46A8-9DD7-807F54F01AF3_3.mov",
+      uti: "public.video",
+      forApplePhotos: true
+    )
+
+    let uuid2_heic = MediaSource(
+      date: today,
+      name: "D2A81C33-5B9C-4D3A-9E8F-123456789ABC.jpeg",
+      uti: "public.image",
+      forApplePhotos: true
+    )
+
+    let uuid3_heic_yesterday = MediaSource(
+      date: yesterday,
+      name: "E3B92D44-6C0B-4E1B-8F2A-987654321DEF.jpeg",
+      uti: "public.image",
+      forApplePhotos: true
+    )
+
+    let uuid3_heic_today = MediaSource(
+      date: today,
+      name: "E3B92D44-6C0B-4E1B-8F2A-987654321DEF.jpeg",
+      uti: "public.image",
+      forApplePhotos: true
+    )
+
+    // Test case 1: Live photo grouping (HEIC + MOV with same UUID)
+    let livePhotoItems: [MediaSource] = [uuid1_heic, uuid1_mov]
+    let result1 = groupRelatedMedia(livePhotoItems)
+
+    XCTAssertEqual(result1.count, 1)
+    XCTAssertEqual(result1[0].main.fullName, uuid1_heic.fullName)
+    XCTAssertNotNil(result1[0].live)
+    XCTAssertEqual(result1[0].live!.fullName, uuid1_mov.fullName)
+
+    // Test case 2: Separate Apple Photos items (different UUIDs)
+    let separateItems: [MediaSource] = [uuid1_heic, uuid2_heic]
+    let result2 = groupRelatedMedia(separateItems)
+
+    XCTAssertEqual(result2.count, 2)
+    XCTAssertTrue(result2.contains { $0.main.fullName == uuid1_heic.fullName })
+    XCTAssertTrue(result2.contains { $0.main.fullName == uuid2_heic.fullName })
+
+    // Test case 3: Same filename, different dates (should be separate groups)
+    let sameNameDifferentDates: [MediaSource] = [uuid3_heic_yesterday, uuid3_heic_today]
+    let result3 = groupRelatedMedia(sameNameDifferentDates)
+
+    XCTAssertEqual(result3.count, 2)
+    // Both should have same baseName but different dates
+    XCTAssertEqual(result3[0].main.baseName, result3[1].main.baseName)
+
+    // Test case 4: Complex grouping with multiple items
+    let complexItems: [MediaSource] = [uuid1_heic, uuid1_mov, uuid2_heic]
+    let result4 = groupRelatedMedia(complexItems)
+
+    XCTAssertEqual(result4.count, 2)
+    // First group should be live photo (HEIC + MOV)
+    let liveGroup = result4.first { $0.main.fullName == uuid1_heic.fullName }
+    XCTAssertNotNil(liveGroup?.live)
+    XCTAssertEqual(liveGroup!.live!.fullName, uuid1_mov.fullName)
+    // Second group should be single photo
+    let photoGroup = result4.first { $0.main.fullName == uuid2_heic.fullName }
+    XCTAssertNil(photoGroup?.live)
+  }
+
+  func testApplePhotosBaseNameConsistency() throws {
+    // Test that extractApplePhotosBaseName() produces consistent results for grouping
+    let testFilenames = [
+      "C1B92E12-56C5-46A8-9DD7-807F54F01AF3.jpeg",
+      "C1B92E12-56C5-46A8-9DD7-807F54F01AF3_3.mov",
+      "C1B92E12-56C5-46A8-9DD7-807F54F01AF3_12.HEIC",
+      "IMG_1234.HEIC",
+      "IMG_1234_1.HEIC",
+      "IMG_1234_12.HEIC",
+    ]
+
+    // Group by extractApplePhotosBaseName()
+    var grouped: [String: [String]] = [:]
+    for filename in testFilenames {
+      let baseName = filename.extractApplePhotosBaseName()
+      if grouped[baseName] == nil {
+        grouped[baseName] = []
+      }
+      grouped[baseName]?.append(filename)
+    }
+
+    // Verify expected groupings
+    XCTAssertEqual(grouped["C1B92E12-56C5-46A8-9DD7-807F54F01AF3"]?.count, 3)
+    XCTAssertEqual(grouped["IMG_1234"]?.count, 3)
+    XCTAssertEqual(grouped.count, 2)
+
+    // Verify all files in same group share same base name
+    for (baseName, filenames) in grouped {
+      for filename in filenames {
+        XCTAssertEqual(
+          filename.extractApplePhotosBaseName(),
+          baseName,
+          "\(filename) should group to \(baseName)"
+        )
+      }
+    }
+  }
 }

@@ -3,7 +3,11 @@ import ImageCaptureCore
 // MARK: - extract base name
 extension String {
   // Extract base name from filename (remove extension and edit markers)
-  func extractBaseName() -> String {
+  func extractBaseName(forApplePhotos: Bool = false) -> String {
+    if forApplePhotos {
+      return extractApplePhotosBaseName()
+    }
+
     var baseName = self
 
     // Remove edit markers first (before extensions)
@@ -24,11 +28,29 @@ extension String {
     }
 
     // Then remove common extensions (remove all extensions)
-    if let dotIndex = baseName.lastIndex(of: ".") {
-      baseName = String(baseName[..<dotIndex])
+    return (baseName as NSString).deletingPathExtension
+  }
+
+  func extractApplePhotosBaseName() -> String {
+    let fileName = self
+
+    // Remove file extension
+    let nameWithoutExt = (fileName as NSString).deletingPathExtension
+
+    // Find and remove suffix
+    let cameraSequencePattern = try? NSRegularExpression(pattern: "_[0-9]{1,2}$")
+    let range = cameraSequencePattern?.rangeOfFirstMatch(
+      in: nameWithoutExt,
+      options: [],
+      range: NSRange(location: 0, length: nameWithoutExt.count)
+    )
+    if let range = range {
+      // Remove the matching part
+      let prefixLength = range.location
+      return String(nameWithoutExt.prefix(prefixLength))
     }
 
-    return baseName
+    return nameWithoutExt
   }
 }
 

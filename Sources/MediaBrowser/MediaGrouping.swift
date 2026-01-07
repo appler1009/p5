@@ -14,13 +14,13 @@ struct MediaSource: Hashable, Comparable {
   let fullName: String
   let uti: String
 
-  init(date: Date, name: String, uti: String) {
+  init(date: Date, name: String, uti: String, forApplePhotos: Bool = false) {
     let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
     self.year = components.year!
     self.month = components.month!
     self.day = components.day!
     self.fullName = name
-    self.baseName = name.extractBaseName()
+    self.baseName = name.extractBaseName(forApplePhotos: forApplePhotos)
     self.uti = uti
   }
 
@@ -69,8 +69,9 @@ struct MediaSource: Hashable, Comparable {
   init(applePhotosItem: ApplePhotosItem) {
     self.init(
       date: applePhotosItem.metadata.creationDate!,
-      name: applePhotosItem.originalFileName,
-      uti: applePhotosItem.uniformTypeIdentifier!
+      name: applePhotosItem.fileName,  // originalFileName
+      uti: applePhotosItem.uniformTypeIdentifier!,
+      forApplePhotos: true
     )
   }
 
@@ -219,11 +220,15 @@ func groupRelatedApplePhotoItems(_ applePhotosItems: [ApplePhotosItem], in photo
 
   let sources = applePhotosItems.map(MediaSource.init(applePhotosItem:))
 
-  let mediaGroups = groupRelatedMedia(sources)
+  let mediaGroups: [MediaGroupEntry] = groupRelatedMedia(sources)
   return mediaGroups.compactMap { group in
+    let edited = group.edited != nil ? itemLookup[group.edited!.lookupKey()] : nil
+    let live = group.live != nil ? itemLookup[group.live!.lookupKey()] : nil
     if let original = itemLookup[group.main.lookupKey()] {
       return ApplePhotosMediaItem(
         fileName: original.fileName,
+        editedFileName: edited != nil ? edited!.fileName : nil,
+        liveFileName: live != nil ? live!.fileName : nil,
         directory: original.directory,
         originalFileName: original.originalFileName,
         photosURL: photosURL,

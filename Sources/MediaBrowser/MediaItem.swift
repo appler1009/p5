@@ -169,26 +169,43 @@ class ApplePhotosMediaItem: LocalFileSystemMediaItem {
   let fileName: String
   let directory: String
   let originalFileName: String
+  let editedFileName: String?
+  let liveFileName: String?
 
   let extendedMetadata: [String: Any?]
 
   init(
     fileName: String,
+    editedFileName: String?,
+    liveFileName: String?,
     directory: String,
     originalFileName: String,
     photosURL: URL,
     metadata: MediaMetadata,
     extendedMetadata: [String: Any?] = [:],
   ) {
-    self.fileName = fileName
+    self.fileName = fileName  // UUID.heic
+    self.editedFileName = editedFileName  // UUID_x.heic
+    self.liveFileName = liveFileName  // UUID_3.mov
     self.directory = directory
-    self.originalFileName = originalFileName
+    self.originalFileName = originalFileName  // IMG_1234.HEIC
     self.extendedMetadata = extendedMetadata
 
     let sourceURL = photosURL.appendingPathComponent("originals")
       .appendingPathComponent(directory)
       .appendingPathComponent(fileName)
-    super.init(id: -1, original: sourceURL)
+    let editedURL =
+      editedFileName != nil
+      ? photosURL.appendingPathComponent("originals")
+        .appendingPathComponent(directory)
+        .appendingPathComponent(editedFileName!) : nil
+    let liveURL =
+      liveFileName != nil
+      ? photosURL.appendingPathComponent("originals")
+        .appendingPathComponent(directory)
+        .appendingPathComponent(liveFileName!) : nil
+
+    super.init(id: -1, original: sourceURL, edited: editedURL, live: liveURL)
 
     self.metadata = metadata
     self.s3SyncStatus = .notApplicable  // Apple Photos items are not synced to S3
