@@ -104,12 +104,10 @@ class ImportApplePhotos: ObservableObject {
     try FileManager.default.createDirectory(
       at: importedDirectory, withIntermediateDirectories: true)
 
-    let photos = try await getMediaItems(from: photosURL)
-    for aPhoto in photos {
+    for aPhoto in items {
       progress.add(mediaItem: aPhoto)
     }
-
-    for aPhoto in photos {
+    for aPhoto in items {
       try importOneItem(aPhoto, from: photosURL, to: importedDirectory, progress: progress)
     }
 
@@ -425,118 +423,129 @@ class ImportApplePhotos: ObservableObject {
     to importedDirectory: URL,
     progress: URLImportProgressCounter
   ) throws {
-    // Construct source URL
-    var sourceURL = photosURL.appendingPathComponent("originals")
-    if !item.directory.isEmpty {
-      sourceURL = sourceURL.appendingPathComponent(item.directory)
-    }
-    sourceURL = sourceURL.appendingPathComponent(item.fileName)
-
-    guard FileManager.default.fileExists(atPath: sourceURL.path) else {
-      print("File not found: \(sourceURL.path)")
-      if let importCallbacks = self.importCallbacks {
-        importCallbacks.onMediaSkipped(item)
-      }
-      return
-    }
-
-    var urls = [item.originalUrl]
-    if let edited = item.editedUrl { urls.append(edited) }
-    if let live = item.liveUrl { urls.append(live) }
-    for url in urls {
-
-    }
-    // Extract metadata from file
-    let extractedMetadata = extractMetadata(from: sourceURL)
-
-    // Use EXIF if available, else database
-    let finalDate = item.metadata?.creationDate ?? extractedMetadata.exifDate
-
-    // Determine destination filename
-    let destinationFilename = item.originalFileName.isEmpty ? item.fileName : item.originalFileName
 
     // Create yyyy/mm/dd subdirectory if date is available
-    let finalDirectory: URL
-    if let date = finalDate {
-      let calendar = Calendar.current
-      let year = calendar.component(.year, from: date)
-      let month = calendar.component(.month, from: date)
-      let day = calendar.component(.day, from: date)
-      let subDir = String(format: "%04d/%02d/%02d", year, month, day)
-      finalDirectory = importedDirectory.appendingPathComponent(subDir)
-      try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
-    } else {
-      finalDirectory = importedDirectory
+    let calendar = Calendar.current
+    let year = calendar.component(.year, from: item.thumbnailDate)
+    let month = calendar.component(.month, from: item.thumbnailDate)
+    let day = calendar.component(.day, from: item.thumbnailDate)
+    let subDir = String(format: "%04d/%02d/%02d", year, month, day)
+    let finalDirectory = importedDirectory.appendingPathComponent(subDir)
+    try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
+
+    try importOneURL(
+      sourceFile: item.originalUrl,
+      destinationDir: finalDirectory,
+      finalFileName: item.originalFileName,
+      creationDate: item.thumbnailDate
+    )
+    if let editedURL = item.editedUrl {
+      try importEditedURL(
+        sourceFile: editedURL,
+        destinationDir: finalDirectory,
+        originalFileName: item.originalFileName,
+        creationDate: item.thumbnailDate
+      )
+    }
+    if let liveURL = item.liveUrl {
+      try importLiveURL(
+        sourceFile: liveURL,
+        destinationDir: finalDirectory,
+        originalFileName: item.originalFileName,
+        creationDate: item.thumbnailDate
+      )
     }
 
-    let destinationURL = finalDirectory.appendingPathComponent(destinationFilename)
-
-    // Copy file
-    try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-    if let fileDate = finalDate {
-      var attributes = [FileAttributeKey: Any]()
-      attributes[.creationDate] = fileDate
-      attributes[.modificationDate] = fileDate
-
-      do {
-        try FileManager.default.setAttributes(attributes, ofItemAtPath: destinationURL.path)
-      } catch {
-        print("Failed to set file dates: \(error)")
-      }
-    }
     if let importCallbacks = self.importCallbacks {
       importCallbacks.onMediaImported(item)
     }
-
-    // Here you could store the metadata in your app's database
-    print("\(destinationFilename) with on \(finalDate?.description ?? "unknown")")
   }
 
-  private func extractMetadata(from url: URL) -> MediaMetadata {
-    var dateCreated: Date?
-    var latitude: Double?
-    var longitude: Double?
+  // fabricate an edited file name and call importOneURL()
+  private func importEditedURL(
+    sourceFile: URL, destinationDir: URL, originalFileName: String, creationDate: Date
+  ) throws {
+    let fileBaseName = (originalFileName as NSString).deletingPathExtension
+    let fileExtension = (originalFileName as NSString).pathExtension
+    var matchFound = false
+    var finalFileName = originalFileName
 
-    if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
-      if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-        // EXIF date
-        if let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
-          let dateString = exif[kCGImagePropertyExifDateTimeOriginal] as? String
-        {
-          let formatter = DateFormatter()
-          formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-          dateCreated = formatter.date(from: dateString)
-        }
+    // IMG_1234.HEIC pattern
+    let pattern = "^[A-Za-z0-9]+[-_][0-9]+$"
+    if let regex = try? NSRegularExpression(pattern: pattern) {
+      let range = NSRange(location: 0, length: fileBaseName.count)
+      let matches = regex.firstMatch(in: fileBaseName, options: [], range: range)
+      if matches != nil {
+        matchFound = true
 
-        // GPS
-        if let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any],
-          let lat = gps[kCGImagePropertyGPSLatitude] as? Double,
-          let latRef = gps[kCGImagePropertyGPSLatitudeRef] as? String,
-          let lon = gps[kCGImagePropertyGPSLongitude] as? Double,
-          let lonRef = gps[kCGImagePropertyGPSLongitudeRef] as? String
+        // Transform PREFIX_NUMBER to PREFIX_ENUMBER
+        let separatorPattern = "[-_]"
+        if let separatorRange = fileBaseName.range(
+          of: separatorPattern, options: .regularExpression)
         {
-          latitude = latRef == "N" ? lat : -lat
-          longitude = lonRef == "E" ? lon : -lon
+          let prefix = String(fileBaseName[..<separatorRange.lowerBound])
+          let separator = String(fileBaseName[separatorRange])
+          let digits = String(fileBaseName[separatorRange.upperBound...])
+          finalFileName = "\(prefix)\(separator)E\(digits).\(fileExtension)"
         }
       }
     }
 
-    return MediaMetadata(
-      creationDate: nil,
-      modificationDate: nil,
-      dimensions: nil,
-      exifDate: dateCreated,
-      gps: latitude.flatMap { latitude in
-        longitude.map { longitude in
-          GPSLocation(latitude: latitude, longitude: longitude)
-        }
-      },
-      make: nil,
-      model: nil,
-      lens: nil,
-      iso: nil,
-      aperture: nil,
-      shutterSpeed: nil
+    // 12341234-ABCD-9876-ABCD-1234ABCD1234.heic pattern
+    let uuidPattern = "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+    if matchFound == false, let regex = try? NSRegularExpression(pattern: uuidPattern) {
+      let range = NSRange(location: 0, length: fileBaseName.count)
+      let matches = regex.firstMatch(in: fileBaseName, options: [], range: range)
+      if matches != nil {
+        matchFound = true
+        finalFileName = "\(fileBaseName)_0.\(fileExtension)"
+      }
+    }
+
+    try self.importOneURL(
+      sourceFile: sourceFile,
+      destinationDir: destinationDir,
+      finalFileName: finalFileName,
+      creationDate: creationDate
     )
+  }
+
+  private func importLiveURL(
+    sourceFile: URL, destinationDir: URL, originalFileName: String, creationDate: Date
+  ) throws {
+    let fileBaseName = (originalFileName as NSString).deletingPathExtension
+    let fileExtension = (sourceFile.lastPathComponent as NSString).pathExtension
+    let finalFileName = "\(fileBaseName).\(fileExtension)"
+
+    try self.importOneURL(
+      sourceFile: sourceFile,
+      destinationDir: destinationDir,
+      finalFileName: finalFileName,
+      creationDate: creationDate
+    )
+  }
+
+  private func importOneURL(
+    sourceFile: URL, destinationDir: URL, finalFileName: String, creationDate: Date
+  ) throws {
+    guard FileManager.default.fileExists(atPath: sourceFile.path) else {
+      print("File not found: \(sourceFile.path)")
+      return
+    }
+
+    let destinationFile = destinationDir.appendingPathComponent(finalFileName)  // FIXME
+
+    // Copy file
+    try FileManager.default.copyItem(at: sourceFile, to: destinationFile)
+
+    // Set file dates
+    var attributes = [FileAttributeKey: Any]()
+    attributes[.creationDate] = creationDate
+    attributes[.modificationDate] = creationDate
+    do {
+      try FileManager.default.setAttributes(attributes, ofItemAtPath: destinationFile.path)
+    } catch {
+      print("Failed to set file dates: \(error)")
+    }
   }
 }
