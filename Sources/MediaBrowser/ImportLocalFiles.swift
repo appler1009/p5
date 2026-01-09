@@ -35,9 +35,7 @@ class ImportLocalFiles {
       at: importedDirectory, withIntermediateDirectories: true)
 
     // put them all into the progress
-    for oneItem in items {
-      progress.add(mediaItem: oneItem)
-    }
+    progress.setItems(items: items)
 
     // actually process one by one
     for oneItem in items {

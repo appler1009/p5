@@ -104,9 +104,8 @@ class ImportApplePhotos: ObservableObject {
     try FileManager.default.createDirectory(
       at: importedDirectory, withIntermediateDirectories: true)
 
-    for aPhoto in items {
-      progress.add(mediaItem: aPhoto)
-    }
+    progress.setItems(items: items)
+
     for aPhoto in items {
       try importOneItem(aPhoto, from: photosURL, to: importedDirectory, progress: progress)
     }
@@ -433,26 +432,34 @@ class ImportApplePhotos: ObservableObject {
     let finalDirectory = importedDirectory.appendingPathComponent(subDir)
     try FileManager.default.createDirectory(at: finalDirectory, withIntermediateDirectories: true)
 
+    // original
     try importOneURL(
       sourceFile: item.originalUrl,
       destinationDir: finalDirectory,
       finalFileName: item.originalFileName,
-      creationDate: item.thumbnailDate
+      creationDate: item.thumbnailDate,
+      progress: progress
     )
+
+    // edited
     if let editedURL = item.editedUrl {
       try importEditedURL(
         sourceFile: editedURL,
         destinationDir: finalDirectory,
         originalFileName: item.originalFileName,
-        creationDate: item.thumbnailDate
+        creationDate: item.thumbnailDate,
+        progress: progress
       )
     }
+
+    // live
     if let liveURL = item.liveUrl {
       try importLiveURL(
         sourceFile: liveURL,
         destinationDir: finalDirectory,
         originalFileName: item.originalFileName,
-        creationDate: item.thumbnailDate
+        creationDate: item.thumbnailDate,
+        progress: progress
       )
     }
 
@@ -463,7 +470,8 @@ class ImportApplePhotos: ObservableObject {
 
   // fabricate an edited file name and call importOneURL()
   private func importEditedURL(
-    sourceFile: URL, destinationDir: URL, originalFileName: String, creationDate: Date
+    sourceFile: URL, destinationDir: URL, originalFileName: String, creationDate: Date,
+    progress: URLImportProgressCounter
   ) throws {
     let fileBaseName = (originalFileName as NSString).deletingPathExtension
     let fileExtension = (originalFileName as NSString).pathExtension
@@ -506,12 +514,14 @@ class ImportApplePhotos: ObservableObject {
       sourceFile: sourceFile,
       destinationDir: destinationDir,
       finalFileName: finalFileName,
-      creationDate: creationDate
+      creationDate: creationDate,
+      progress: progress
     )
   }
 
   private func importLiveURL(
-    sourceFile: URL, destinationDir: URL, originalFileName: String, creationDate: Date
+    sourceFile: URL, destinationDir: URL, originalFileName: String, creationDate: Date,
+    progress: URLImportProgressCounter
   ) throws {
     let fileBaseName = (originalFileName as NSString).deletingPathExtension
     let fileExtension = (sourceFile.lastPathComponent as NSString).pathExtension
@@ -521,12 +531,14 @@ class ImportApplePhotos: ObservableObject {
       sourceFile: sourceFile,
       destinationDir: destinationDir,
       finalFileName: finalFileName,
-      creationDate: creationDate
+      creationDate: creationDate,
+      progress: progress
     )
   }
 
   private func importOneURL(
-    sourceFile: URL, destinationDir: URL, finalFileName: String, creationDate: Date
+    sourceFile: URL, destinationDir: URL, finalFileName: String, creationDate: Date,
+    progress: URLImportProgressCounter
   ) throws {
     guard FileManager.default.fileExists(atPath: sourceFile.path) else {
       print("File not found: \(sourceFile.path)")
@@ -535,8 +547,13 @@ class ImportApplePhotos: ObservableObject {
 
     let destinationFile = destinationDir.appendingPathComponent(finalFileName)  // FIXME
 
-    // Copy file
-    try FileManager.default.copyItem(at: sourceFile, to: destinationFile)
+    // Skip copy if file already exists
+    if FileManager.default.fileExists(atPath: destinationFile.path) {
+      print("File already exists, skipping copy: \(finalFileName)")
+    } else {
+      // Copy file
+      try FileManager.default.copyItem(at: sourceFile, to: destinationFile)
+    }
 
     // Set file dates
     var attributes = [FileAttributeKey: Any]()
@@ -547,5 +564,7 @@ class ImportApplePhotos: ObservableObject {
     } catch {
       print("Failed to set file dates: \(error)")
     }
+
+    let _ = progress.processed(url: sourceFile)
   }
 }

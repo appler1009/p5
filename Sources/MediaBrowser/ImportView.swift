@@ -17,6 +17,7 @@ struct ImportView: View {
   @State private var selectedApplePhotosLibrary: URL?
   @State private var isApplePhotosSelected: Bool = false
   @State private var isReadingApplePhotos: Bool = false
+  @State private var isImportingApplePhotos: Bool = false
   @State private var appleMediaItems: [ApplePhotosMediaItem] = []
   @State private var selectedAppleMediaItems: Set<ApplePhotosMediaItem> = Set()
 
@@ -27,8 +28,8 @@ struct ImportView: View {
   @State private var selectedLocalDirectory: URL?
 
   @State private var duplicateCount = 0
-  @State private var isImportInProgress = false
   @State private var progressCounter: ImportProgressCounter? = nil
+  @State private var progressUpdateTrigger = UUID()
 
   @Environment(\.dismiss) private var dismiss
 
@@ -44,18 +45,47 @@ struct ImportView: View {
 
         Spacer()
 
-        if appleMediaItems.count > 0 {
+        if let importProgress = self.progressCounter {
+          HStack {
+            Text("\(importProgress.doneItemsCount) / \(importProgress.totalItemsCount)")
+            ProgressView(
+              value: Double(importProgress.doneItemsCount),
+              total: Double(importProgress.totalItemsCount)
+            )
+            .frame(width: 120)
+            .id(progressUpdateTrigger)
+          }
+        } else if appleMediaItems.count > 0 {
           Text(availabilityLabelText(regarding: appleMediaItems))
         }
 
         Button(importButtonText(forSelection: selectedAppleMediaItems)) {
           Task {
             self.showStatus("Import started")
-            await self.doImportApplePhotos()
+
+            let importProgress = URLImportProgressCounter()
+            self.progressCounter = importProgress
+
+            let importCallbacks = ImportCallbacks(
+              onMediaImported: { mediaItem in
+                self.progressUpdateTrigger = UUID()
+              },
+              onMediaSkipped: { mediaItem in },
+              onComplete: {
+                print("Done importing \(importProgress.doneItemsCount) items")
+                self.showStatus("Done importing \(importProgress.doneItemsCount) items")
+                self.progressCounter = nil
+              },
+              onError: { error in
+                showError("Failed to import: \(error.localizedDescription)")
+              }
+            )
+            await self.doImportApplePhotos(
+              importCallbacks: importCallbacks, progressCounter: importProgress)
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(appleMediaItems.count <= duplicateCount || isImportInProgress)
+        .disabled(appleMediaItems.count <= duplicateCount || self.progressCounter != nil)
       }
 
       if appleMediaItems.isEmpty {
@@ -119,7 +149,7 @@ struct ImportView: View {
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(deviceMediaItems.count <= duplicateCount || isImportInProgress)
+        .disabled(deviceMediaItems.count <= duplicateCount || self.progressCounter != nil)
       }
 
       // Status messages
@@ -236,7 +266,7 @@ struct ImportView: View {
           }
         }
         .buttonStyle(.borderedProminent)
-        .disabled(localFilesItems.count <= duplicateCount || isImportInProgress)
+        .disabled(localFilesItems.count <= duplicateCount || self.progressCounter != nil)
       }
 
       if localFilesItems.isEmpty {
@@ -493,26 +523,28 @@ struct ImportView: View {
     if panel.runModal() == .OK {
       // Clear existing items before starting new preview
       self.appleMediaItems = []
-
-      let importCallbacks = ScanCallbacks(
-        onMediaFound: { mediaItem in
-          // Update applePhotosItems in real-time when new media is found
-          self.appleMediaItems.insertSorted(
-            mediaItem as! ApplePhotosMediaItem,
-            by: \.thumbnailDate,
-            order: .descending
-          )
-        },
-        onComplete: {
-          self.isReadingApplePhotos = false
-        },
-        onError: { error in }
-      )
-      Task {
-        let _ = try await importApplePhotos.previewPhotos(
-          from: panel.urls.first!,
-          with: importCallbacks
+      self.selectedApplePhotosLibrary = panel.urls.first!
+      if let photosLib = self.selectedApplePhotosLibrary {
+        let importCallbacks = ScanCallbacks(
+          onMediaFound: { mediaItem in
+            // Update applePhotosItems in real-time when new media is found
+            self.appleMediaItems.insertSorted(
+              mediaItem as! ApplePhotosMediaItem,
+              by: \.thumbnailDate,
+              order: .descending
+            )
+          },
+          onComplete: {
+            self.isReadingApplePhotos = false
+          },
+          onError: { error in }
         )
+        Task {
+          let _ = try await importApplePhotos.previewPhotos(
+            from: photosLib,
+            with: importCallbacks
+          )
+        }
       }
     }
   }
@@ -565,11 +597,13 @@ struct ImportView: View {
     )
   }
 
-  private func doImportApplePhotos() async {
+  private func doImportApplePhotos(
+    importCallbacks: ImportCallbacks,
+    progressCounter: URLImportProgressCounter
+  ) async {
     guard let photosLib = selectedApplePhotosLibrary else { return }
 
-    let urlProgressCounter = URLImportProgressCounter()
-    self.progressCounter = urlProgressCounter
+    self.progressCounter = progressCounter  // FIXME should remove self.progressCount if possible
 
     let items: [ApplePhotosMediaItem] =
       self.selectedAppleMediaItems.isEmpty
@@ -580,15 +614,8 @@ struct ImportView: View {
         items: items,
         from: photosLib,
         to: DirectoryManager.shared.importDirectory,
-        with: ImportCallbacks(
-          onMediaImported: { mediaItem in },
-          onMediaSkipped: { mediaItem in },
-          onComplete: {},
-          onError: { error in
-            showError("Failed to import: \(error.localizedDescription)")
-          }
-        ),
-        progress: urlProgressCounter
+        with: importCallbacks,
+        progress: progressCounter
       )
     } catch {
       showError("Failed to import Apple Photos: \(error.localizedDescription)")
@@ -665,44 +692,57 @@ class ImportCallbacks {
 
 // MARK: - Import Progress Counters
 
-class ImportProgressCounter {
+class ImportProgressCounter: ObservableObject {
   private var allItems: Set<MediaItem> = Set()
+  @Published var doneItemsCount: Int = 0
+  @Published var totalItemsCount: Int = 0
+
+  var inProgress: Bool {
+    totalItemsCount > 0 && doneItemsCount < totalItemsCount
+  }
+
+  func setItems(items: [MediaItem]) {
+    for item in items {
+      self.add(mediaItem: item)
+    }
+    self.totalItemsCount = self.allItems.count
+  }
 
   func add(mediaItem: MediaItem) {
     self.allItems.insert(mediaItem)
   }
 
-  func remove(mediaItem: MediaItem) {
+  func processed(mediaItem: MediaItem) {
     self.allItems.remove(mediaItem)
+    self.doneItemsCount += 1
   }
 
   func getAllMediaItems() -> Set<MediaItem> {
     return self.allItems
-  }
-
-  func countAll() -> Int { return 0 }
-
-  func countItems() -> Int {
-    return allItems.count
   }
 }
 
 class URLImportProgressCounter: ImportProgressCounter {
   private var allURLs: Set<URL> = Set()
   private var mediaItemLookup: [URL: MediaItem] = [:]
+  private var doneURLsCount: Int = 0
+  private var totalURLsCount: Int = 0
 
   override func add(mediaItem: MediaItem) {
     if let item = mediaItem as? LocalFileSystemMediaItem {
       self.allURLs.insert(item.originalUrl)
+      self.totalURLsCount = self.allURLs.count
       self.mediaItemLookup[item.originalUrl] = mediaItem
 
       if let edited = item.editedUrl {
         self.allURLs.insert(edited)
+        self.totalURLsCount = self.allURLs.count
         self.mediaItemLookup[edited] = mediaItem
       }
 
       if let live = item.liveUrl {
         self.allURLs.insert(live)
+        self.totalURLsCount = self.allURLs.count
         self.mediaItemLookup[live] = mediaItem
       }
 
@@ -710,21 +750,22 @@ class URLImportProgressCounter: ImportProgressCounter {
     }
   }
 
-  override func countAll() -> Int {
-    return self.allURLs.count
+  func countTotalURLs() -> Int {
+    return self.totalURLsCount
   }
 
-  override func countItems() -> Int {
-    return Set(self.mediaItemLookup.values).count
+  func countDoneURLs() -> Int {
+    return self.doneURLsCount
   }
 
   func processed(url: URL) -> MediaItem? {
     self.allURLs.remove(url)
+    self.doneURLsCount += 1
     let mediaItemRemoved = self.mediaItemLookup.removeValue(forKey: url)
     if let item = mediaItemRemoved {
       let setAfterRemoved = Set(self.mediaItemLookup.values)
       if setAfterRemoved.contains(item) == false {
-        super.remove(mediaItem: item)
+        super.processed(mediaItem: item)
         return item
       }
     }
@@ -735,19 +776,24 @@ class URLImportProgressCounter: ImportProgressCounter {
 class CameraFileImportProgressCounter: ImportProgressCounter {
   private var allCameraItems: Set<ICCameraItem> = Set()
   private var mediaItemLookup: [ICCameraItem: MediaItem] = [:]
+  private var doneCameraItemsCount: Int = 0
+  private var totalCameraItemsCount: Int = 0
 
   override func add(mediaItem: MediaItem) {
     if let item = mediaItem as? ConnectedDeviceMediaItem {
       self.allCameraItems.insert(item.originalItem)
+      self.totalCameraItemsCount = self.allCameraItems.count
       self.mediaItemLookup[item.originalItem] = mediaItem
 
       if let edited = item.editedItem {
         self.allCameraItems.insert(edited)
+        self.totalCameraItemsCount = self.allCameraItems.count
         self.mediaItemLookup[edited] = mediaItem
       }
 
       if let live = item.liveItem {
         self.allCameraItems.insert(live)
+        self.totalCameraItemsCount = self.allCameraItems.count
         self.mediaItemLookup[live] = mediaItem
       }
 
@@ -755,12 +801,12 @@ class CameraFileImportProgressCounter: ImportProgressCounter {
     }
   }
 
-  override func countAll() -> Int {
-    return self.allCameraItems.count
+  func countTotalCameraItems() -> Int {
+    return self.totalCameraItemsCount
   }
 
-  override func countItems() -> Int {
-    return Set(self.mediaItemLookup.values).count
+  func countDoneCameraItems() -> Int {
+    return self.doneCameraItemsCount
   }
 
   func getAllCameraItems() -> Set<ICCameraItem> {
@@ -769,11 +815,12 @@ class CameraFileImportProgressCounter: ImportProgressCounter {
 
   func processed(cameraItem: ICCameraItem) -> MediaItem? {
     self.allCameraItems.remove(cameraItem)
+    self.doneCameraItemsCount += 1
     let mediaItemRemoved = self.mediaItemLookup.removeValue(forKey: cameraItem)
     if let item = mediaItemRemoved {
       let setAfterRemoved = Set(self.mediaItemLookup.values)
       if setAfterRemoved.contains(item) == false {
-        super.remove(mediaItem: item)
+        super.processed(mediaItem: item)
         return item
       }
     }

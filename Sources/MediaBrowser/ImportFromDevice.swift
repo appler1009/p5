@@ -335,9 +335,7 @@ class ImportFromDevice: ObservableObject {
     with importCallbacks: ImportCallbacks,
     progress: CameraFileImportProgressCounter
   ) async {
-    items.forEach { mediaItem in
-      progress.add(mediaItem: mediaItem)
-    }
+    progress.setItems(items: items)
 
     await withTaskGroup(of: Void.self) { group in
       for cameraItem in progress.getAllCameraItems() {
