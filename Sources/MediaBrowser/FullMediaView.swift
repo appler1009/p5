@@ -13,6 +13,8 @@ struct Triangle: Shape {
   }
 }
 
+let animationDuration: TimeInterval = 0.1
+
 struct MediaDetailsSidebar: View {
   let item: LocalFileSystemMediaItem
 
@@ -437,7 +439,7 @@ struct FullMediaView: View {
           switch event.keyCode {
           case 53:
             if currentScale < 0.99 || currentScale > 1.01 {
-              withAnimation(.easeInOut(duration: 0.15)) {
+              withAnimation(.easeInOut(duration: animationDuration)) {
                 currentScale = 1.0
                 imageOffset = .zero
               }
@@ -447,16 +449,28 @@ struct FullMediaView: View {
               return nil  // ESC
             }
           case 123:
-            onPrev()
+            withAnimation(.easeInOut(duration: animationDuration)) {
+              currentScale = 1.0
+              imageOffset = .zero
+              onPrev()
+            }
             return nil  // left arrow
           case 124:
-            onNext()
+            withAnimation(.easeInOut(duration: animationDuration)) {
+              currentScale = 1.0
+              imageOffset = .zero
+              onNext()
+            }
             return nil  // right arrow
           case 23:
-            showSidebar.toggle()
+            withAnimation(.easeInOut(duration: animationDuration)) {
+              showSidebar.toggle()
+            }
             return nil  // CMD+I
           case 33:
-            showSidebar.toggle()
+            withAnimation(.easeInOut(duration: animationDuration)) {
+              showSidebar.toggle()
+            }
             return nil  // [ key
           default: return event
           }
@@ -511,6 +525,7 @@ struct FullMediaView: View {
         loadImage()
       }
     }
+    .animation(.easeInOut(duration: animationDuration), value: showSidebar)
   }
 
   private func loadImage() {

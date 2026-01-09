@@ -154,9 +154,7 @@ struct ContentView: View {
     else { return }
     let nextIndex = (index + 1) % sortedItems.count
     selectedItems = [sortedItems[nextIndex]]
-    withAnimation(.easeInOut(duration: 0.1)) {
-      lightboxItemId = sortedItems[nextIndex].id
-    }
+    lightboxItemId = sortedItems[nextIndex].id
   }
 
   private func prevItem() {
@@ -165,9 +163,7 @@ struct ContentView: View {
     else { return }
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
     selectedItems = [sortedItems[prevIndex]]
-    withAnimation(.easeInOut(duration: 0.1)) {
-      lightboxItemId = sortedItems[prevIndex].id
-    }
+    lightboxItemId = sortedItems[prevIndex].id
   }
 
   /// Update a media item
