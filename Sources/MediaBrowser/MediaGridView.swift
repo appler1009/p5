@@ -4,8 +4,8 @@ struct MediaGridView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
   @Binding var lightboxItemId: Int?
   @Binding var searchQuery: String
+  @Binding var selectedItems: Set<MediaItem>
 
-  @State private var selectedItems: Set<MediaItem> = Set()
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
   @FocusState private var isGridFocused: Bool

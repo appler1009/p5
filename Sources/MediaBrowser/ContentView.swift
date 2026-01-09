@@ -65,7 +65,8 @@ struct ContentView: View {
         if viewMode == "Grid" {
           MediaGridView(
             lightboxItemId: $lightboxItemId,
-            searchQuery: $searchQuery
+            searchQuery: $searchQuery,
+            selectedItems: $selectedItems
           )
         } else if viewMode == "Map" {
           MediaMapView(
