@@ -2,6 +2,10 @@ import AppKit
 import MapKit
 import SwiftUI
 
+extension Notification.Name {
+  static let mediaGridSelectItem = Notification.Name("mediaGridSelectItem")
+}
+
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
@@ -149,7 +153,13 @@ struct ContentView: View {
       let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id }) else { return }
 
     let nextIndex = (index + 1) % sortedItems.count
-    lightboxItem = sortedItems[nextIndex]
+    let nextItem = sortedItems[nextIndex]
+    lightboxItem = nextItem
+    NotificationCenter.default.post(
+      name: .mediaGridSelectItem,
+      object: nil,
+      userInfo: ["item": nextItem]
+    )
   }
 
   private func prevFullScreenItem() {
@@ -157,7 +167,13 @@ struct ContentView: View {
       let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id }) else { return }
 
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
-    lightboxItem = sortedItems[prevIndex]
+    let prevItem = sortedItems[prevIndex]
+    lightboxItem = prevItem
+    NotificationCenter.default.post(
+      name: .mediaGridSelectItem,
+      object: nil,
+      userInfo: ["item": prevItem]
+    )
   }
 
   private func selectItems(_ items: Set<MediaItem>) {

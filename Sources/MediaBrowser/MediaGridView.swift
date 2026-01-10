@@ -11,6 +11,7 @@ struct MediaGridView: View {
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
   @State private var sectionUpdateClosures: [String: (Set<MediaItem>) -> Void] = [:]
+  @State private var notificationObserver: NSObjectProtocol?
 
   @FocusState private var isGridFocused: Bool
 
@@ -19,7 +20,8 @@ struct MediaGridView: View {
   init(
     searchQuery: String,
     onSelected: @escaping (Set<MediaItem>) -> Void,
-    onFullScreen: @escaping (MediaItem) -> Void
+    onFullScreen: @escaping (MediaItem) -> Void,
+    updateSelectionFromOutside: Binding<((MediaItem) -> Void)?> = .constant(nil)
   ) {
     self.searchQuery = searchQuery
     self.onSelected = onSelected
@@ -99,6 +101,21 @@ struct MediaGridView: View {
       .focused($isGridFocused)
       .onAppear {
         isGridFocused = true
+        notificationObserver = NotificationCenter.default.addObserver(
+          forName: .mediaGridSelectItem,
+          object: nil,
+          queue: .main
+        ) { notification in
+          if let item = notification.userInfo?["item"] as? MediaItem {
+            self.selectItem(item)
+          }
+        }
+      }
+      .onDisappear {
+        if let observer = notificationObserver {
+          NotificationCenter.default.removeObserver(observer)
+          notificationObserver = nil
+        }
       }
       .onKeyPress { press in
         // Update window width for dynamic column calculation
@@ -169,5 +186,11 @@ struct MediaGridView: View {
         return .ignored
       }
     }
+  }
+
+  func selectItem(_ item: MediaItem) {
+    selectedItems = [item]
+    selectionState.selectedItems = selectedItems
+    onSelected(selectedItems)
   }
 }
