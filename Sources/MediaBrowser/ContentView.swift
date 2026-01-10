@@ -2,10 +2,6 @@ import AppKit
 import MapKit
 import SwiftUI
 
-extension Notification.Name {
-  static let mediaGridSelectItem = Notification.Name("mediaGridSelectItem")
-}
-
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
@@ -13,6 +9,7 @@ struct ContentView: View {
   @State private var lightboxItem: MediaItem?
   @AppStorage("viewMode") private var viewMode = "Grid"
   @State private var searchQuery = ""
+  @StateObject private var selectionState = GridSelectionState()
 
   @FocusState private var focusedField: String?
   @State private var searchTextField: NSTextField?
@@ -69,7 +66,8 @@ struct ContentView: View {
           MediaGridView(
             searchQuery: searchQuery,
             onSelected: selectItems,
-            onFullScreen: goFullScreen
+            onFullScreen: goFullScreen,
+            selectionState: selectionState
           )
         } else if viewMode == "Map" {
           MediaMapView(
@@ -150,33 +148,30 @@ struct ContentView: View {
 
   private func nextFullScreenItem() {
     guard let currentLightboxItem = lightboxItem,
-      let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id }) else { return }
+      let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id })
+    else { return }
 
     let nextIndex = (index + 1) % sortedItems.count
     let nextItem = sortedItems[nextIndex]
     lightboxItem = nextItem
-    NotificationCenter.default.post(
-      name: .mediaGridSelectItem,
-      object: nil,
-      userInfo: ["item": nextItem]
-    )
+    selectionState.selectedItems = [nextItem]
   }
 
   private func prevFullScreenItem() {
     guard let currentLightboxItem = lightboxItem,
-      let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id }) else { return }
+      let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id })
+    else { return }
 
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
     let prevItem = sortedItems[prevIndex]
     lightboxItem = prevItem
-    NotificationCenter.default.post(
-      name: .mediaGridSelectItem,
-      object: nil,
-      userInfo: ["item": prevItem]
-    )
+    selectionState.selectedItems = [prevItem]
   }
 
   private func selectItems(_ items: Set<MediaItem>) {
+    DispatchQueue.main.async {
+      selectionState.selectedItems = items
+    }
   }
 
   private func goFullScreen(_ item: MediaItem) {
