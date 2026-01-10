@@ -6,8 +6,7 @@ struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
   @Environment(\.openWindow) private var openWindow
-  @State private var selectedItems: Set<MediaItem> = []
-  @State private var lightboxItemId: Int?
+  @State private var lightboxItem: MediaItem?
   @AppStorage("viewMode") private var viewMode = "Grid"
   @State private var searchQuery = ""
 
@@ -64,28 +63,25 @@ struct ContentView: View {
       VStack(spacing: 0) {
         if viewMode == "Grid" {
           MediaGridView(
-            lightboxItemId: $lightboxItemId,
-            searchQuery: $searchQuery,
-            selectedItems: $selectedItems
+            searchQuery: searchQuery,
+            onSelected: selectItems,
+            onFullScreen: goFullScreen
           )
         } else if viewMode == "Map" {
           MediaMapView(
-            lightboxItemId: $lightboxItemId,
-            searchQuery: $searchQuery
+            lightboxItem: lightboxItem,
+            searchQuery: searchQuery,
+            onFullScreen: goFullScreen
           )
         }
       }
 
-      if let selectedIdForLightbox = lightboxItemId,
-        let selectedItemForLightbox = mediaScanner.items.first(where: { item in
-          item.id == selectedIdForLightbox
-        })
-      {
+      if let selectedLightboxItem = lightboxItem {
         FullMediaView(
-          item: selectedItemForLightbox,
-          onClose: { lightboxItemId = nil },
-          onNext: { nextItem() },
-          onPrev: { prevItem() }
+          item: selectedLightboxItem as! LocalFileSystemMediaItem,
+          onClose: { lightboxItem = nil },
+          onNext: nextFullScreenItem,
+          onPrev: prevFullScreenItem
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
@@ -148,22 +144,27 @@ struct ContentView: View {
 
   }
 
-  private func nextItem() {
-    guard let firstSelected = selectedItems.first,
-      let index = sortedItems.firstIndex(where: { $0.id == firstSelected.id })
-    else { return }
+  private func nextFullScreenItem() {
+    guard let currentLightboxItem = lightboxItem,
+      let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id }) else { return }
+
     let nextIndex = (index + 1) % sortedItems.count
-    selectedItems = [sortedItems[nextIndex]]
-    lightboxItemId = sortedItems[nextIndex].id
+    lightboxItem = sortedItems[nextIndex]
   }
 
-  private func prevItem() {
-    guard let firstSelected = selectedItems.first,
-      let index = sortedItems.firstIndex(where: { $0.id == firstSelected.id })
-    else { return }
+  private func prevFullScreenItem() {
+    guard let currentLightboxItem = lightboxItem,
+      let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id }) else { return }
+
     let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
-    selectedItems = [sortedItems[prevIndex]]
-    lightboxItemId = sortedItems[prevIndex].id
+    lightboxItem = sortedItems[prevIndex]
+  }
+
+  private func selectItems(_ items: Set<MediaItem>) {
+  }
+
+  private func goFullScreen(_ item: MediaItem) {
+    self.lightboxItem = item
   }
 
   /// Update a media item

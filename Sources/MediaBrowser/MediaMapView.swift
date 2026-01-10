@@ -3,14 +3,25 @@ import SwiftUI
 
 struct MediaMapView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
-  @Binding var lightboxItemId: Int?
-  @Binding var searchQuery: String
+  let lightboxItem: MediaItem?
+  let searchQuery: String
+  let onFullScreen: (MediaItem) -> Void
 
   @State private var region = MKCoordinateRegion(
     center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
     span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)
   )
   @State private var clusters: [Cluster] = []
+
+  init(
+    lightboxItem: MediaItem?,
+    searchQuery: String,
+    onFullScreen: @escaping (MediaItem) -> Void
+  ) {
+    self.lightboxItem = lightboxItem
+    self.searchQuery = searchQuery
+    self.onFullScreen = onFullScreen
+  }
 
   private var itemsWithGPS: [LocalFileSystemMediaItem] {
     let filteredItems = mediaScanner.items.filter { $0.metadata?.gps != nil }
@@ -159,7 +170,7 @@ struct MediaMapView: View {
           if let firstItem = cluster.items.first,
             let selectedItem = firstItem as LocalFileSystemMediaItem?
           {
-            lightboxItemId = selectedItem.id
+            onFullScreen(selectedItem)
           }
         } else {
           zoomToCluster(cluster)

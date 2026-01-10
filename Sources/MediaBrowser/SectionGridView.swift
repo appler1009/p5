@@ -10,7 +10,8 @@ struct SectionGridView: View {
   let disableDuplicates: Bool
   let onDuplicateCountChange: ((Int) -> Void)?
 
-  @State private var selectedItems: Set<MediaItem>
+  @State internal var selectedItems: Set<MediaItem>
+
   @State private var itemsNeedingThumbnailUpdate: Set<Int> = []
   @State private var thumbnailObserver: NSObjectProtocol?
   @State private var lastSelectedItem: MediaItem?
@@ -30,7 +31,7 @@ struct SectionGridView: View {
   ) {
     self.title = title
     self.items = items
-    self.selectedItems = Set(selectedItems)
+    self.selectedItems = selectedItems
     self.onSelectionChange = onSelectionChange
     self.onItemDoubleTap = onItemDoubleTap
     self.minCellWidth = minCellWidth

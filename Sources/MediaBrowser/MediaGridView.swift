@@ -2,15 +2,27 @@ import SwiftUI
 
 struct MediaGridView: View {
   @ObservedObject private var mediaScanner = MediaScanner.shared
-  @Binding var lightboxItemId: Int?
-  @Binding var searchQuery: String
-  @Binding var selectedItems: Set<MediaItem>
+  let searchQuery: String
+  let onSelected: (Set<MediaItem>) -> Void
+  let onFullScreen: (MediaItem) -> Void
 
+  @State private var selectedItems: Set<MediaItem> = Set()
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
+
   @FocusState private var isGridFocused: Bool
 
   private let lightboxOpeningDelay = 0.1
+
+  init(
+    searchQuery: String,
+    onSelected: @escaping (Set<MediaItem>) -> Void,
+    onFullScreen: @escaping (MediaItem) -> Void
+  ) {
+    self.searchQuery = searchQuery
+    self.onSelected = onSelected
+    self.onFullScreen = onFullScreen
+  }
 
   private var sortedItems: [MediaItem] {
     let filteredItems =
@@ -58,10 +70,16 @@ struct MediaGridView: View {
               selectedItems: selectedItems,
               onSelectionChange: { newSelectedItems in
                 selectedItems = newSelectedItems
+                onSelected(newSelectedItems)
+                if let firstSelectedItem = selectedItems.first,
+                  let currentIndex = sortedItems.firstIndex(where: { $0.id == firstSelectedItem.id })
+                {
+                  print("currentIndex \(currentIndex) \(firstSelectedItem.displayName)")
+                }
               },
               onItemDoubleTap: { item in
                 withAnimation(.easeInOut(duration: lightboxOpeningDelay)) {
-                  lightboxItemId = item.id
+                  onFullScreen(item)
                 }
               },
               minCellWidth: 80
@@ -80,12 +98,15 @@ struct MediaGridView: View {
       .onKeyPress { press in
         // Update window width for dynamic column calculation
         let windowWidth = geo.size.width
+
         // Grid navigation when lightbox is not open
-        if lightboxItemId == nil,
-          selectedItems.count == 1,
+        print("\(sortedItems.count), \(selectedItems.count)")
+        selectedItems.forEach({ body in print("\(body.displayName)")})
+        if selectedItems.count == 1,
           let firstSelectedItem = selectedItems.first,
           let currentIndex = sortedItems.firstIndex(where: { $0.id == firstSelectedItem.id })
         {
+          print("currentIndex \(currentIndex) \(firstSelectedItem.displayName)")
           let availableWidth = windowWidth - 16  // subtract horizontal padding
           let columns = max(1, Int(floor((availableWidth + 10) / 90)))  // spacing = 10, minWidth = 80
           let currentRow = currentIndex / columns
@@ -93,6 +114,7 @@ struct MediaGridView: View {
 
           var newRow = currentRow
           var newCol = currentCol
+          var newIndex = 0
 
           switch press.key {
           case .upArrow:
@@ -100,28 +122,23 @@ struct MediaGridView: View {
           case .downArrow:
             newRow = min((sortedItems.count + columns - 1) / columns - 1, currentRow + 1)
           case .leftArrow:
-            if currentCol == 0 && currentRow > 0 {
-              // Wrap to previous row's last column
-              newRow = currentRow - 1
-              newCol = min(columns - 1, sortedItems.count - newRow * columns - 1)
-            } else {
-              newCol = max(0, currentCol - 1)
-            }
+            selectedItems = [sortedItems[currentIndex - 1]]
+            onSelected(selectedItems)
+            return .handled
           case .rightArrow:
-            let maxColInRow = min(columns - 1, sortedItems.count - currentRow * columns - 1)
-            if currentCol == maxColInRow
-              && currentRow < (sortedItems.count + columns - 1) / columns - 1
-            {
-              // Wrap to next row's first column
-              newRow = currentRow + 1
-              newCol = 0
-            } else {
-              newCol = min(maxColInRow, currentCol + 1)
-            }
+            selectedItems = [sortedItems[currentIndex + 1]]
+            onSelected(selectedItems)
+            return .handled
+          case .rightArrow:
+            newIndex = min(currentIndex + 1, sortedItems.count - 1)  // stop at the end
+            selectedItems = [sortedItems[newIndex]]
+            print("currentIndex \(newIndex) \(sortedItems[newIndex].displayName)")
+            onSelected(selectedItems)
+            return .handled
           case .space, .return:
             if let item = selectedItems.first {
               withAnimation(.easeInOut(duration: lightboxOpeningDelay)) {
-                lightboxItemId = item.id
+                onFullScreen(item)
               }
             }
             return .handled
@@ -129,31 +146,18 @@ struct MediaGridView: View {
             return .ignored
           }
 
-          let newIndex = newRow * columns + newCol
-          if newIndex < sortedItems.count {
-            selectedItems = [sortedItems[newIndex]]
-
-            // Calculate total rows and visible rows to determine optimal anchor
-            let totalRows = (sortedItems.count + columns - 1) / columns
-            let estimatedItemHeight: CGFloat = 90  // Approximate height of grid item
-            let estimatedHeaderHeight: CGFloat = 40  // Approximate height of section headers
-            let visibleRows = Int(
-              (geo.size.height - estimatedHeaderHeight) / (estimatedItemHeight + 16))  // 16 is spacing
-
             // Determine anchor based on position
-            if newRow <= visibleRows / 3 {
-              // Top third - anchor to top
-              scrollAnchor = .top
-            } else if newRow >= totalRows - visibleRows / 3 {
-              // Bottom third - anchor to bottom
-              scrollAnchor = .bottom
-            } else {
-              // Middle - center
-              scrollAnchor = .center
-            }
-            scrollTarget = selectedItems.first?.id
-          }
-          return .handled
+//            if newRow <= visibleRows / 3 {
+//              // Top third - anchor to top
+//              scrollAnchor = .top
+//            } else if newRow >= totalRows - visibleRows / 3 {
+//              // Bottom third - anchor to bottom
+//              scrollAnchor = .bottom
+//            } else {
+//              // Middle - center
+//              scrollAnchor = .center
+//            }
+//            scrollTarget = selectedItems.first?.id
         }
         return .ignored
       }
