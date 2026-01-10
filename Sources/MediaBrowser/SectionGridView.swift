@@ -1,6 +1,10 @@
 import SwiftUI
 
-// Simplified version that works specifically with MediaItem and supports multiple selection
+class GridSelectionState: ObservableObject {
+  @Published var selectedItems: Set<MediaItem> = []
+  @Published var lastSelectedByKeyboard: MediaItem?
+}
+
 struct SectionGridView: View {
   let title: String?
   let items: [MediaItem]
@@ -9,6 +13,7 @@ struct SectionGridView: View {
   let minCellWidth: CGFloat
   let disableDuplicates: Bool
   let onDuplicateCountChange: ((Int) -> Void)?
+  let selectionState: GridSelectionState?
 
   @State internal var selectedItems: Set<MediaItem>
 
@@ -27,7 +32,8 @@ struct SectionGridView: View {
     onItemDoubleTap: @escaping (MediaItem) -> Void,
     minCellWidth: CGFloat = 80,
     disableDuplicates: Bool = false,
-    onDuplicateCountChange: ((Int) -> Void)? = nil
+    onDuplicateCountChange: ((Int) -> Void)? = nil,
+    selectionState: GridSelectionState? = nil
   ) {
     self.title = title
     self.items = items
@@ -37,6 +43,7 @@ struct SectionGridView: View {
     self.minCellWidth = minCellWidth
     self.disableDuplicates = disableDuplicates
     self.onDuplicateCountChange = onDuplicateCountChange
+    self.selectionState = selectionState
   }
 
   var body: some View {
@@ -78,6 +85,12 @@ struct SectionGridView: View {
     .onAppear {
       setupThumbnailObserver()
       checkForDuplicates()
+    }
+    .onChange(of: selectionState?.selectedItems ?? []) { newItems in
+      if let selectionState = selectionState {
+        selectedItems = selectionState.selectedItems
+        lastSelectedItem = selectionState.selectedItems.first
+      }
     }
     .onDisappear {
       cleanupThumbnailObserver()
@@ -179,5 +192,10 @@ struct SectionGridView: View {
 
     // Replace current selection with items in range
     selectedItems = Set(itemsInRange)
+  }
+
+  func updateFromKeyboardNavigation(_ newItems: Set<MediaItem>) {
+    selectedItems = newItems
+    lastSelectedItem = newItems.first
   }
 }

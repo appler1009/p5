@@ -6,9 +6,11 @@ struct MediaGridView: View {
   let onSelected: (Set<MediaItem>) -> Void
   let onFullScreen: (MediaItem) -> Void
 
+  @StateObject private var selectionState = GridSelectionState()
   @State private var selectedItems: Set<MediaItem> = Set()
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
+  @State private var sectionUpdateClosures: [String: (Set<MediaItem>) -> Void] = [:]
 
   @FocusState private var isGridFocused: Bool
 
@@ -70,6 +72,7 @@ struct MediaGridView: View {
               selectedItems: selectedItems,
               onSelectionChange: { newSelectedItems in
                 selectedItems = newSelectedItems
+                selectionState.selectedItems = newSelectedItems
                 onSelected(newSelectedItems)
                 if let firstSelectedItem = selectedItems.first,
                   let currentIndex = sortedItems.firstIndex(where: { $0.id == firstSelectedItem.id })
@@ -82,8 +85,10 @@ struct MediaGridView: View {
                   onFullScreen(item)
                 }
               },
-              minCellWidth: 80
+              minCellWidth: 80,
+              selectionState: selectionState
             )
+            .id(group.month)
           }
         }
         .padding(.bottom, 8)
@@ -122,17 +127,19 @@ struct MediaGridView: View {
           case .downArrow:
             newRow = min((sortedItems.count + columns - 1) / columns - 1, currentRow + 1)
           case .leftArrow:
-            selectedItems = [sortedItems[currentIndex - 1]]
-            onSelected(selectedItems)
-            return .handled
-          case .rightArrow:
-            selectedItems = [sortedItems[currentIndex + 1]]
-            onSelected(selectedItems)
-            return .handled
-          case .rightArrow:
-            newIndex = min(currentIndex + 1, sortedItems.count - 1)  // stop at the end
+            newIndex = max(currentIndex - 1, 0)
             selectedItems = [sortedItems[newIndex]]
-            print("currentIndex \(newIndex) \(sortedItems[newIndex].displayName)")
+            DispatchQueue.main.async {
+              selectionState.selectedItems = selectedItems
+            }
+            onSelected(selectedItems)
+            return .handled
+          case .rightArrow:
+            newIndex = min(currentIndex + 1, sortedItems.count - 1)
+            selectedItems = [sortedItems[newIndex]]
+            DispatchQueue.main.async {
+              selectionState.selectedItems = selectedItems
+            }
             onSelected(selectedItems)
             return .handled
           case .space, .return:
