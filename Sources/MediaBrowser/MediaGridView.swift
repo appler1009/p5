@@ -10,8 +10,7 @@ struct MediaGridView: View {
   @State private var scrollTarget: Int? = nil
   @State private var scrollAnchor: UnitPoint = .center
   @State private var sectionUpdateClosures: [String: (Set<MediaItem>) -> Void] = [:]
-
-  @FocusState private var isGridFocused: Bool
+  @State private var visibleItemIds: Set<Int> = Set()
 
   private let lightboxOpeningDelay = 0.1
 
@@ -38,7 +37,7 @@ struct MediaGridView: View {
     return filteredItems.sorted { item1, item2 in
       let date1 = item1.metadata?.creationDate ?? Date.distantPast
       let date2 = item2.metadata?.creationDate ?? Date.distantPast
-      return date1 > date2  // Most recent first
+      return date1 > date2
     }
   }
 
@@ -57,13 +56,13 @@ struct MediaGridView: View {
       .sorted { group1, group2 in
         let date1 = group1.items.first?.metadata?.creationDate ?? Date.distantPast
         let date2 = group2.items.first?.metadata?.creationDate ?? Date.distantPast
-        return date1 > date2  // Most recent first (descending)
+        return date1 > date2
       }
   }
 
   var body: some View {
-    GeometryReader { geo in
-      ScrollView {
+    ScrollView {
+      ScrollViewReader { proxy in
         VStack(alignment: .leading, spacing: 16) {
           ForEach(monthlyGroups, id: \.month) { group in
             SectionGridView(
@@ -73,6 +72,7 @@ struct MediaGridView: View {
               onSelectionChange: { newSelectedItems in
                 selectionState.selectedItems = newSelectedItems
                 onSelected(newSelectedItems)
+                handleSelectionScroll(newSelectedItems, proxy: proxy)
               },
               onItemDoubleTap: { item in
                 withAnimation(.easeInOut(duration: lightboxOpeningDelay)) {
@@ -80,7 +80,8 @@ struct MediaGridView: View {
                 }
               },
               minCellWidth: 80,
-              selectionState: selectionState
+              selectionState: selectionState,
+              onItemAppearanceChange: changedItemAppearance
             )
             .id(group.month)
           }
@@ -88,80 +89,39 @@ struct MediaGridView: View {
         .padding(.bottom, 8)
       }
       .scrollPosition(id: $scrollTarget, anchor: scrollAnchor)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .focusable()
-      .focused($isGridFocused)
-      .onAppear {
-        isGridFocused = true
-      }
-      .onKeyPress { press in
-        let windowWidth = geo.size.width
-
-        if selectionState.selectedItems.count == 1,
-          let firstSelectedItem = selectionState.selectedItems.first,
-          let currentIndex = sortedItems.firstIndex(where: { $0.id == firstSelectedItem.id })
-        {
-          let availableWidth = windowWidth - 16
-          let columns = max(1, Int(floor((availableWidth + 10) / 90)))
-          let currentRow = currentIndex / columns
-          let currentCol = currentIndex % columns
-
-          var newRow = currentRow
-          let newCol = currentCol
-          let newIndex: Int
-
-          switch press.key {
-          case .upArrow:
-            newRow = max(0, currentRow - 1)
-            let upIndex = newRow * columns + currentCol
-            if upIndex < sortedItems.count {
-              let newItem = sortedItems[upIndex]
-              DispatchQueue.main.async {
-                selectionState.selectedItems = [newItem]
-              }
-              onSelected([newItem])
-            }
-            return .handled
-          case .downArrow:
-            newRow = min((sortedItems.count + columns - 1) / columns - 1, currentRow + 1)
-            let downIndex = newRow * columns + currentCol
-            if downIndex < sortedItems.count {
-              let newItem = sortedItems[downIndex]
-              DispatchQueue.main.async {
-                selectionState.selectedItems = [newItem]
-              }
-              onSelected([newItem])
-            }
-            return .handled
-          case .leftArrow:
-            newIndex = max(currentIndex - 1, 0)
-            let newItem = sortedItems[newIndex]
-            DispatchQueue.main.async {
-              selectionState.selectedItems = [newItem]
-            }
-            onSelected([newItem])
-            return .handled
-          case .rightArrow:
-            newIndex = min(currentIndex + 1, sortedItems.count - 1)
-            let newItem = sortedItems[newIndex]
-            DispatchQueue.main.async {
-              selectionState.selectedItems = [newItem]
-            }
-            onSelected([newItem])
-            return .handled
-          case .space, .return:
-            if let item = selectionState.selectedItems.first {
-              withAnimation(.easeInOut(duration: lightboxOpeningDelay)) {
-                onFullScreen(item)
-              }
-            }
-            return .handled
-          default:
-            return .ignored
-          }
-        }
-        return .ignored
-      }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private func changedItemAppearance(itemId: Int, visible: Bool) {
+    if visible {
+      visibleItemIds.insert(itemId)
+    } else {
+      visibleItemIds.remove(itemId)
+    }
+  }
+
+  private func handleSelectionScroll(_ newSelectedItems: Set<MediaItem>, proxy: ScrollViewProxy) {
+    guard let selectedFirst = newSelectedItems.first else { return }
+
+    if visibleItemIds.contains(selectedFirst.id) {
+      return
+    }
+
+    withAnimation(.easeInOut(duration: 0.1)) {
+      proxy.scrollTo("item-\(selectedFirst.id)", anchor: .center)
+    }
+  }
+}
+
+struct NoFocusRingView: NSViewRepresentable {
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    view.focusRingType = .none
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    nsView.focusRingType = .none
   }
 }

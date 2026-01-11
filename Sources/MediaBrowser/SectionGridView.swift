@@ -14,6 +14,7 @@ struct SectionGridView: View {
   let disableDuplicates: Bool
   let onDuplicateCountChange: ((Int) -> Void)?
   let selectionState: GridSelectionState?
+  let onItemAppearanceChange: ((Int, Bool) -> Void)?
 
   @State internal var selectedItems: Set<MediaItem>
 
@@ -33,7 +34,8 @@ struct SectionGridView: View {
     minCellWidth: CGFloat = 80,
     disableDuplicates: Bool = false,
     onDuplicateCountChange: ((Int) -> Void)? = nil,
-    selectionState: GridSelectionState? = nil
+    selectionState: GridSelectionState? = nil,
+    onItemAppearanceChange: ((Int, Bool) -> Void)? = nil
   ) {
     self.title = title
     self.items = items
@@ -44,6 +46,7 @@ struct SectionGridView: View {
     self.disableDuplicates = disableDuplicates
     self.onDuplicateCountChange = onDuplicateCountChange
     self.selectionState = selectionState
+    self.onItemAppearanceChange = onItemAppearanceChange
   }
 
   var body: some View {
@@ -64,11 +67,22 @@ struct SectionGridView: View {
             externalThumbnail: nil,
             shouldReloadThumbnail: itemsNeedingThumbnailUpdate.contains(item.id)
           )
+          .id("item-\(item.id)")
+          .onAppear {
+            if let callback = self.onItemAppearanceChange {
+              callback(item.id, true)
+            }
+          }
+          .onDisappear {
+            if let callback = self.onItemAppearanceChange {
+              callback(item.id, false)
+            }
+          }
           .onHover { hovering in
             hoveredItemId = hovering ? item.id : nil
           }
           .scaleEffect(hoveredItemId == item.id ? 1.05 : 1.0)
-          .animation(.easeInOut(duration: 0.2), value: hoveredItemId)
+          .animation(.easeInOut(duration: 0.1), value: hoveredItemId)
           .contentShape(Rectangle())
           .onTapGesture {
             handleItemSelection(item)
@@ -86,11 +100,9 @@ struct SectionGridView: View {
       setupThumbnailObserver()
       checkForDuplicates()
     }
-    .onChange(of: selectionState?.selectedItems ?? []) { newItems in
-      if let selectionState = selectionState {
-        selectedItems = selectionState.selectedItems
-        lastSelectedItem = selectionState.selectedItems.first
-      }
+    .onChange(of: selectionState?.selectedItems ?? []) { _, newItems in
+      selectedItems = newItems
+      lastSelectedItem = newItems.first
     }
     .onDisappear {
       cleanupThumbnailObserver()
@@ -161,37 +173,32 @@ struct SectionGridView: View {
         selectedItems.insert(item)
         lastSelectedItem = item
       }
+      onSelectionChange(selectedItems)
     } else if eventModifierFlags.contains(.shift) {
       // SHIFT+click: Select range from last selected item to current item
-      if let lastSelected = lastSelectedItem ?? selectedItems.first {
-        selectRange(from: lastSelected, to: item)
+      if let lastSelected = lastSelectedItem ?? selectedItems.first,
+        let startIndex = items.firstIndex(where: { $0.id == lastSelected.id }),
+        let endIndex = items.firstIndex(where: { $0.id == item.id })
+      {
+        let range = min(startIndex, endIndex)...max(startIndex, endIndex)
+        let itemsInRange = items[range].filter { !duplicateIds.contains($0.id) }
+
+        // Replace current selection with items in range
+        selectedItems = Set(itemsInRange)
+        onSelectionChange(selectedItems)
         lastSelectedItem = item
       } else {
         // No previous selection, just select this item
         selectedItems = [item]
+        onSelectionChange(selectedItems)
         lastSelectedItem = item
       }
     } else {
       // Regular click: Select only this item
       selectedItems = [item]
+      onSelectionChange(selectedItems)
       lastSelectedItem = item
     }
-
-    onSelectionChange(selectedItems)
-  }
-
-  private func selectRange(from startItem: MediaItem, to endItem: MediaItem) {
-    guard let startIndex = items.firstIndex(where: { $0.id == startItem.id }),
-      let endIndex = items.firstIndex(where: { $0.id == endItem.id })
-    else {
-      return
-    }
-
-    let range = min(startIndex, endIndex)...max(startIndex, endIndex)
-    let itemsInRange = items[range].filter { !duplicateIds.contains($0.id) }
-
-    // Replace current selection with items in range
-    selectedItems = Set(itemsInRange)
   }
 
   func updateFromKeyboardNavigation(_ newItems: Set<MediaItem>) {
