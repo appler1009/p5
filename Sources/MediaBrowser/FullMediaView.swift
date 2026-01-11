@@ -116,8 +116,8 @@ struct MediaDetailsSidebar: View {
           )
 
           Map(position: .constant(.region(region))) {
-            Annotation("Photo Location", coordinate: coordinate) {
-              Image(systemName: "mappin.circle.fill")
+            Annotation("", coordinate: coordinate) {
+              Image(systemName: "mappin.and.ellipse")
                 .foregroundColor(.red)
                 .font(.title)
             }
