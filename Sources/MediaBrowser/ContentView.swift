@@ -155,7 +155,8 @@ struct ContentView: View {
       let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id })
     else { return }
 
-    let nextIndex = (index + 1) % sortedItems.count
+    guard index < sortedItems.count - 1 else { return }
+    let nextIndex = index + 1
     let nextItem = sortedItems[nextIndex]
     lightboxItem = nextItem
     selectionState.selectedItems = [nextItem]
@@ -166,7 +167,8 @@ struct ContentView: View {
       let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id })
     else { return }
 
-    let prevIndex = (index - 1 + sortedItems.count) % sortedItems.count
+    guard index > 0 else { return }
+    let prevIndex = index - 1
     let prevItem = sortedItems[prevIndex]
     lightboxItem = prevItem
     selectionState.selectedItems = [prevItem]
