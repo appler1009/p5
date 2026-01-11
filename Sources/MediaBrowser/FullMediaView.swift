@@ -518,16 +518,21 @@ struct FullMediaView: View {
         loadImage()
       }
     }
+    .onDisappear {
+      player?.pause()
+    }
     .animation(.easeInOut(duration: animationDuration), value: showSidebar)
   }
 
   private func showPreviousMedia() {
+    player?.pause()
     currentScale = 1.0
     imageOffset = .zero
     onPrev()
   }
 
   private func showNextMedia() {
+    player?.pause()
     currentScale = 1.0
     imageOffset = .zero
     onNext()
