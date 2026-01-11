@@ -287,6 +287,15 @@
         "revision" : "18ff09e6b30e589ed38f90a1af23e193b8ecef8e",
         "version" : "1.1.2"
       }
+    },
+    {
+      "identity" : "tzf-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ringsaturn/tzf-swift.git",
+      "state" : {
+        "revision" : "81128ab9c8309deed02d8c1b28f12a748303c7c2",
+        "version" : "0.2.2"
+      }
     }
   ],
   "version" : 2
