@@ -345,6 +345,7 @@ struct FullMediaView: View {
               ScrollView([.horizontal, .vertical]) {
                 Image(nsImage: image)
                   .resizable()
+                  .interpolation(.high)
                   .aspectRatio(contentMode: .fit)
                   .id(item.id)
                   .scaleEffect(currentScale)

@@ -53,6 +53,7 @@ struct MediaItemView: View {
           // Use pre-loaded thumbnail (for import view)
           externalThumbnail
             .resizable()
+            .interpolation(.medium)
             .aspectRatio(contentMode: .fill)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
@@ -61,6 +62,7 @@ struct MediaItemView: View {
           // Use loaded thumbnail (for main gallery)
           Image(nsImage: thumbnail)
             .resizable()
+            .interpolation(.medium)
             .aspectRatio(contentMode: .fill)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
