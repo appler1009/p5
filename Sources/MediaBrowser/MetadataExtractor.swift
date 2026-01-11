@@ -96,34 +96,30 @@ struct MetadataExtractor {
 
     if url.isVideo() {
       let asset = AVAsset(url: url)
-
-      metadata.duration = CMTimeGetSeconds(asset.duration)
-
-      if let creationDate = asset.creationDate?.dateValue {
-        metadata.creationDate = creationDate
-        metadata.exifDate = creationDate
-      }
-
       do {
+        let duration = try await asset.load(.duration)
+        metadata.duration = CMTimeGetSeconds(duration)
+
         let metadataItems = try await asset.load(.commonMetadata)
 
         for item in metadataItems {
           guard let key = item.identifier,
-                let stringValue = try? await item.load(.stringValue) else { continue }
+            let stringValue = try? await item.load(.stringValue)
+          else { continue }
 
           let keyString = key.rawValue
 
           if keyString.localizedCaseInsensitiveContains("creationdate") {
-            if metadata.creationDate == nil {
-              let formatter = DateFormatter()
-              formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
-              metadata.creationDate = formatter.date(from: stringValue)
-              metadata.exifDate = metadata.creationDate
-            }
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+            metadata.creationDate = formatter.date(from: stringValue)
+            metadata.exifDate = formatter.date(from: stringValue)
             continue
           }
 
-          if keyString.localizedCaseInsensitiveContains("gps") || keyString.localizedCaseInsensitiveContains("location") {
+          if keyString.localizedCaseInsensitiveContains("gps")
+            || keyString.localizedCaseInsensitiveContains("location")
+          {
             var cleaned = stringValue
             if cleaned.hasSuffix("/") {
               cleaned.removeLast()
@@ -165,7 +161,8 @@ struct MetadataExtractor {
               if values.count >= 3 {
                 altitude = values[2]
               }
-              metadata.gps = GPSLocation(latitude: latitude, longitude: longitude, altitude: altitude)
+              metadata.gps = GPSLocation(
+                latitude: latitude, longitude: longitude, altitude: altitude)
             }
             continue
           }
@@ -191,6 +188,15 @@ struct MetadataExtractor {
         print("Error loading video metadata: \(error)")
       }
     }
+
+    let exifDateString: String = {
+      if let date = metadata.exifDate {
+        let formatter = ISO8601DateFormatter()
+        return formatter.string(from: date)
+      } else {
+        return "unknown"
+      }
+    }()
 
     return metadata
   }
