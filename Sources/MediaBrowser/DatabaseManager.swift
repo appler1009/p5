@@ -249,7 +249,13 @@ class DatabaseManager {
           let syncStatusString = row["s3_sync_status"] as String?
           let syncStatus = syncStatusString.flatMap { S3SyncStatus(rawValue: $0) } ?? .notSynced
 
-          let item = LocalFileSystemMediaItem(id: itemId, original: originalUrl)
+          let editedUrlString = row["edited_url"] as? String
+          let editedUrl = editedUrlString.flatMap { URL(string: $0) }
+          let liveUrlString = row["live_video_url"] as? String
+          let liveUrl = liveUrlString.flatMap { URL(string: $0) }
+
+          let item = LocalFileSystemMediaItem(
+            id: itemId, original: originalUrl, edited: editedUrl, live: liveUrl)
           item.metadata = meta
           item.s3SyncStatus = syncStatus
           items.append(item)
