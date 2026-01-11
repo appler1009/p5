@@ -89,7 +89,7 @@ struct MediaDetailsSidebar: View {
             // File Size
             if let fileSize = getFileSize() {
               detailRow("File Size", formatFileSize(fileSize))
-              detailRow("Size in bytes", "\(fileSize)")
+              detailRow("Size in bytes", formatNumber(fileSize))
             }
           }
         }
@@ -281,6 +281,12 @@ struct MediaDetailsSidebar: View {
     formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
     formatter.countStyle = .file
     return formatter.string(fromByteCount: Int64(bytes))
+  }
+
+  private func formatNumber(_ number: Int) -> String {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    return formatter.string(from: NSNumber(value: number)) ?? "\(number)"
   }
 }
 
