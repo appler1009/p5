@@ -395,6 +395,7 @@ struct FullMediaView: View {
             if showVideo {
               loadVideo()
             } else {
+              player?.pause()
               loadImage()
             }
           }) {
