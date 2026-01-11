@@ -87,8 +87,10 @@ struct MetadataExtractor {
           }
 
           if let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
-            metadata.make = tiff[kCGImagePropertyTIFFMake] as? String
-            metadata.model = tiff[kCGImagePropertyTIFFModel] as? String
+            metadata.make = (tiff[kCGImagePropertyTIFFMake] as? String)?.trimmingCharacters(
+              in: .whitespaces)
+            metadata.model = (tiff[kCGImagePropertyTIFFModel] as? String)?.trimmingCharacters(
+              in: .whitespaces)
           }
         }
       }
@@ -168,12 +170,12 @@ struct MetadataExtractor {
           }
 
           if keyString.localizedCaseInsensitiveContains("make") {
-            metadata.make = stringValue
+            metadata.make = stringValue.trimmingCharacters(in: .whitespaces)
             continue
           }
 
           if keyString.localizedCaseInsensitiveContains("model") {
-            metadata.model = stringValue
+            metadata.model = stringValue.trimmingCharacters(in: .whitespaces)
             continue
           }
 
