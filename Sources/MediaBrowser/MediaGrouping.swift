@@ -32,30 +32,14 @@ struct MediaSource: Hashable, Comparable {
     )
   }
 
-  init(url: URL) {
+  init(url: URL) async {
     let fileName = url.lastPathComponent
     let pathExtension = url.pathExtension
     let uti = UTType(filenameExtension: pathExtension)?.identifier ?? ""
 
-    // Try to extract date from EXIF data first, then fall back to file metadata
-    var fileDate: Date?
-    if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-    {
-
-      // EXIF date
-      if let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
-        let dateString = exif[kCGImagePropertyExifDateTimeOriginal] as? String
-      {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-        fileDate = formatter.date(from: dateString)
-      }
-    }
-
-    // Fall back to file system dates
+    let metadata = await MetadataExtractor.extractMetadata(for: url)
     let finalDate =
-      fileDate
+      metadata.exifDate ?? metadata.creationDate
       ?? {
         let resourceValues = try? url.resourceValues(forKeys: [
           .creationDateKey, .contentModificationDateKey,
@@ -185,22 +169,36 @@ func groupRelatedCameraItems(_ items: [ICCameraItem]) -> [ConnectedDeviceMediaIt
 }
 
 /// Groups related URLs by creating MediaSource objects and grouping them
-func groupRelatedURLs(_ urls: [URL]) -> [LocalFileSystemMediaItem] {
-  let itemLookup: [String: URL] = urls.reduce(into: [String: URL]()) {
-    dict, item in
-    dict[MediaSource(url: item).lookupKey()] = item
+func groupRelatedURLs(_ urls: [URL]) async -> [LocalFileSystemMediaItem] {
+  let sources = await withTaskGroup(of: (URL, MediaSource?).self) { group in
+    for item in urls {
+      group.addTask {
+        let source = await MediaSource(url: item)
+        return (item, source)
+      }
+    }
+
+    var results: [(URL, MediaSource)] = []
+    for await (url, source) in group {
+      if let source = source {
+        results.append((url, source))
+      }
+    }
+    return results
   }
 
-  let sources = urls.map(MediaSource.init(url:))
+  let sourceLookup: [String: URL] = sources.reduce(into: [String: URL]()) { dict, item in
+    dict[item.1.lookupKey()] = item.0
+  }
 
-  let mediaGroups = groupRelatedMedia(sources)
+  let mediaGroups = groupRelatedMedia(sources.map { $0.1 })
   return mediaGroups.compactMap { group in
-    if let original = itemLookup[group.main.lookupKey()] {
+    if let original = sourceLookup[group.main.lookupKey()] {
       return LocalFileSystemMediaItem(
         id: -1,
         original: original,
-        edited: group.edited != nil ? itemLookup[group.edited!.lookupKey()] : nil,
-        live: group.live != nil ? itemLookup[group.live!.lookupKey()] : nil
+        edited: group.edited != nil ? sourceLookup[group.edited!.lookupKey()] : nil,
+        live: group.live != nil ? sourceLookup[group.live!.lookupKey()] : nil
       )
     } else {
       return nil

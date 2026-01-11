@@ -4,10 +4,10 @@ import Foundation
 import ImageIO
 import tzf
 
-extension MediaScanner {
+struct MetadataExtractor {
   private static let timezoneFinder: tzf.DefaultFinder? = try? tzf.DefaultFinder()
 
-  func extractMetadata(for url: URL) async -> MediaMetadata {
+  static func extractMetadata(for url: URL) async -> MediaMetadata {
     var metadata = MediaMetadata(
       creationDate: nil,
       modificationDate: nil,
@@ -53,14 +53,17 @@ extension MediaScanner {
 
               var dateToUse: Date?
 
-              if let offsetTime = exif[kCGImagePropertyExifOffsetTimeOriginal] as? String ?? exif[kCGImagePropertyExifOffsetTimeDigitized] as? String {
+              if let offsetTime = exif[kCGImagePropertyExifOffsetTimeOriginal] as? String ?? exif[
+                kCGImagePropertyExifOffsetTimeDigitized] as? String
+              {
                 let tzFormatter = DateFormatter()
                 tzFormatter.dateFormat = "yyyy:MM:dd HH:mm:ssZ"
                 dateToUse = tzFormatter.date(from: dateString + offsetTime)
               } else if let gps = gpsLocation {
                 if let finder = Self.timezoneFinder,
-                   let tzString = try? finder.getTimezone(lng: gps.longitude, lat: gps.latitude),
-                   let timezone = TimeZone(identifier: tzString) {
+                  let tzString = try? finder.getTimezone(lng: gps.longitude, lat: gps.latitude),
+                  let timezone = TimeZone(identifier: tzString)
+                {
                   let tzFormatter = DateFormatter()
                   tzFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
                   tzFormatter.timeZone = timezone
@@ -93,109 +96,67 @@ extension MediaScanner {
 
     if url.isVideo() {
       let asset = AVAsset(url: url)
-      do {
-        let duration = try await asset.load(.duration)
-        metadata.duration = CMTimeGetSeconds(duration)
-//        let tracks = try await asset.loadTracks(withMediaType: .video)
-//        if let track = tracks.first {
-//          metadata.dimensions = try await track.load(.naturalSize)
-//        }
 
-        let metadataItems = try await asset.load(.commonMetadata)
+      metadata.duration = CMTimeGetSeconds(asset.duration)
 
-        for item in metadataItems {
-          guard let key = item.identifier,
-                let stringValue = try? await item.load(.stringValue) else { continue }
-
-          let keyString = key.rawValue
-
-          if keyString.localizedCaseInsensitiveContains("creationdate") {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
-            metadata.creationDate = formatter.date(from: stringValue)
-            metadata.exifDate = formatter.date(from: stringValue)
-            continue
-          }
-
-          if keyString.localizedCaseInsensitiveContains("gps") || keyString.localizedCaseInsensitiveContains("location") {
-            var cleaned = stringValue
-            if cleaned.hasSuffix("/") {
-              cleaned.removeLast()
-            }
-
-            var latitude = 0.0
-            var longitude = 0.0
-            var altitude: Double? = nil
-
-            var currentNumber = ""
-            var sign = 1.0
-            var values: [Double] = []
-
-            for char in cleaned {
-              if char == "+" {
-                if !currentNumber.isEmpty, let val = Double(currentNumber) {
-                  values.append(val * sign)
-                }
-                sign = 1.0
-                currentNumber = ""
-              } else if char == "-" {
-                if !currentNumber.isEmpty, let val = Double(currentNumber) {
-                  values.append(val * sign)
-                }
-                sign = -1.0
-                currentNumber = ""
-              } else if char.isNumber || char == "." {
-                currentNumber.append(char)
-              }
-            }
-
-            if !currentNumber.isEmpty, let val = Double(currentNumber) {
-              values.append(val * sign)
-            }
-
-            if values.count >= 2 {
-              latitude = values[0]
-              longitude = values[1]
-              if values.count >= 3 {
-                altitude = values[2]
-              }
-              metadata.gps = GPSLocation(latitude: latitude, longitude: longitude, altitude: altitude)
-            }
-            continue
-          }
-
-          if keyString.localizedCaseInsensitiveContains("make") {
-            metadata.make = stringValue
-            continue
-          }
-
-          if keyString.localizedCaseInsensitiveContains("model") {
-            metadata.model = stringValue
-            continue
-          }
-
-          if keyString.localizedCaseInsensitiveContains("iso") {
-            if let isoValue = Int(stringValue) {
-              metadata.iso = isoValue
-            }
-            continue
-          }
-        }
-      } catch {
-        print("Error loading video metadata: \(error)")
+      if let creationDate = asset.creationDate?.dateValue {
+        metadata.creationDate = creationDate
+        metadata.exifDate = creationDate
       }
     }
 
-    let exifDateString: String = {
-      if let date = metadata.exifDate {
-        let formatter = ISO8601DateFormatter()
-        return formatter.string(from: date)
-      } else {
-        return "unknown"
-      }
-    }()
-    print("\(url.lastPathComponent) \(exifDateString)")
     return metadata
   }
-}
 
+  static func extractImageMetadataSync(for url: URL) -> (date: Date?, gps: GPSLocation?) {
+    var gpsLocation: GPSLocation?
+    var exifDate: Date?
+
+    if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    {
+      if let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+        let lat = gps[kCGImagePropertyGPSLatitude] as? Double,
+        let latRef = gps[kCGImagePropertyGPSLatitudeRef] as? String,
+        let lon = gps[kCGImagePropertyGPSLongitude] as? Double,
+        let lonRef = gps[kCGImagePropertyGPSLongitudeRef] as? String
+      {
+        let latitude = latRef == "N" ? lat : -lat
+        let longitude = lonRef == "E" ? lon : -lon
+        let altitude = gps[kCGImagePropertyGPSAltitude] as? Double
+        gpsLocation = GPSLocation(latitude: latitude, longitude: longitude, altitude: altitude)
+      }
+
+      if let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
+        let dateString = exif[kCGImagePropertyExifDateTimeOriginal] as? String
+      {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+
+        if let offsetTime = exif[kCGImagePropertyExifOffsetTimeOriginal] as? String ?? exif[
+          kCGImagePropertyExifOffsetTimeDigitized] as? String
+        {
+          let tzFormatter = DateFormatter()
+          tzFormatter.dateFormat = "yyyy:MM:dd HH:mm:ssZ"
+          exifDate = tzFormatter.date(from: dateString + offsetTime)
+        } else if let gps = gpsLocation {
+          if let finder = Self.timezoneFinder,
+            let tzString = try? finder.getTimezone(lng: gps.longitude, lat: gps.latitude),
+            let timezone = TimeZone(identifier: tzString)
+          {
+            let tzFormatter = DateFormatter()
+            tzFormatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+            tzFormatter.timeZone = timezone
+            exifDate = tzFormatter.date(from: dateString)
+          }
+        }
+
+        if exifDate == nil {
+          exifDate = formatter.date(from: dateString)
+        }
+      }
+    }
+
+    return (exifDate, gpsLocation)
+  }
+}

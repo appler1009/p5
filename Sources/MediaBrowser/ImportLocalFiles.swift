@@ -64,7 +64,7 @@ class ImportLocalFiles {
       }
       print("found \(rawItems.count) items from \(sourceDirectory)")
 
-      let groupedItems = groupRelatedURLs(rawItems)
+      let groupedItems = await groupRelatedURLs(rawItems)
       print("found \(groupedItems.count) grouped items")
     }
 

@@ -108,10 +108,10 @@ class MediaScanner: ObservableObject {
       }
     }
 
-    let mediaItems = groupRelatedURLs(allFileURLs)
+    let mediaItems = await groupRelatedURLs(allFileURLs)
     for mediaItem in mediaItems {
       // extract metadata
-      let metadata = await extractMetadata(for: mediaItem.originalUrl)
+      let metadata = await MetadataExtractor.extractMetadata(for: mediaItem.originalUrl)
       mediaItem.metadata = metadata
 
       // Pre-generate and cache thumbnail

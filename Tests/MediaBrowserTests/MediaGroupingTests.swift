@@ -220,7 +220,7 @@ final class MediaGroupingTests: XCTestCase {
     XCTAssertEqual(result[0].liveItem!.name!, "IMG_1234.MOV")
   }
 
-  func testGroupRelatedURLs() throws {
+  func testGroupRelatedURLs() async throws {
     // Create temporary directory for test files
     let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -252,7 +252,7 @@ final class MediaGroupingTests: XCTestCase {
 
     let testURLs = [imageURL1, imageURL2, videoURL1, imageURL3]
 
-    let result = groupRelatedURLs(testURLs)
+    let result = await groupRelatedURLs(testURLs)
 
     XCTAssertEqual(result.count, 2)
 
