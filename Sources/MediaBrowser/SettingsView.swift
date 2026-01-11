@@ -100,7 +100,7 @@ struct SettingsView: View {
                   await MediaScanner.shared.scan(directories: directoryManager.directories)
                 }
               }
-              .disabled(MediaScanner.shared.isScanning || directoryManager.directories.isEmpty)
+              .disabled(MediaScanner.shared.isScanning)
               .buttonStyle(.borderedProminent)
             }
             .padding(.top)

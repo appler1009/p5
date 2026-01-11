@@ -409,7 +409,7 @@ struct FullMediaView: View {
       .overlay(alignment: .leading) {
         VStack {
           Spacer()
-          Button(action: onPrev) {
+          Button(action: showPreviousMedia) {
             Image(systemName: "chevron.left")
               .foregroundColor(.white)
               .padding(10)
@@ -423,7 +423,7 @@ struct FullMediaView: View {
       .overlay(alignment: .trailing) {
         VStack {
           Spacer()
-          Button(action: onNext) {
+          Button(action: showNextMedia) {
             Image(systemName: "chevron.right")
               .foregroundColor(.white)
               .padding(10)
@@ -449,18 +449,10 @@ struct FullMediaView: View {
               return nil  // ESC
             }
           case 123:
-            withAnimation(.easeInOut(duration: animationDuration)) {
-              currentScale = 1.0
-              imageOffset = .zero
-              onPrev()
-            }
+            showPreviousMedia()
             return nil  // left arrow
           case 124:
-            withAnimation(.easeInOut(duration: animationDuration)) {
-              currentScale = 1.0
-              imageOffset = .zero
-              onNext()
-            }
+            showNextMedia()
             return nil  // right arrow
           case 23:
             withAnimation(.easeInOut(duration: animationDuration)) {
@@ -526,6 +518,18 @@ struct FullMediaView: View {
       }
     }
     .animation(.easeInOut(duration: animationDuration), value: showSidebar)
+  }
+
+  private func showPreviousMedia() {
+    currentScale = 1.0
+    imageOffset = .zero
+    onPrev()
+  }
+
+  private func showNextMedia() {
+    currentScale = 1.0
+    imageOffset = .zero
+    onNext()
   }
 
   private func loadImage() {
