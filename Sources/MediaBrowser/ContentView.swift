@@ -61,6 +61,32 @@ struct ContentView: View {
       .keyboardShortcut("/", modifiers: [])
       .hidden()
 
+      // Keyboard shortcuts for grid navigation
+      KeyCaptureView(onKey: { event in
+        guard lightboxItem == nil else { return event }
+        switch event.keyCode {
+        case 36, 49:  // Enter or Space
+          if let selectedItem = selectionState.selectedItems.first {
+            withAnimation(.easeInOut(duration: 0.1)) {
+              goFullScreen(selectedItem)
+            }
+          }
+          return nil
+        case 123:  // Left arrow
+          moveSelectionLeft()
+          return nil
+        case 124:  // Right arrow
+          moveSelectionRight()
+          return nil
+        case 53:  // ESC
+          selectionState.selectedItems.removeAll()
+          return nil
+        default: return event
+        }
+      })
+      .opacity(0)
+      .allowsHitTesting(false)
+
       VStack(spacing: 0) {
         if viewMode == "Grid" {
           MediaGridView(
@@ -178,6 +204,40 @@ struct ContentView: View {
     DispatchQueue.main.async {
       selectionState.selectedItems = items
     }
+  }
+
+  private func moveSelectionLeft() {
+    guard !sortedItems.isEmpty else { return }
+    let currentItem = selectionState.selectedItems.first
+
+    let targetIndex: Int
+    if let currentItem = currentItem,
+      let idx = sortedItems.firstIndex(where: { $0.id == currentItem.id })
+    {
+      targetIndex = max(0, idx - 1)
+    } else {
+      targetIndex = sortedItems.count - 1
+    }
+    let targetItem = sortedItems[targetIndex]
+    selectionState.selectedItems = [targetItem]
+    selectionState.lastSelectedByKeyboard = targetItem
+  }
+
+  private func moveSelectionRight() {
+    guard !sortedItems.isEmpty else { return }
+    let currentItem = selectionState.selectedItems.first
+
+    let targetIndex: Int
+    if let currentItem = currentItem,
+      let idx = sortedItems.firstIndex(where: { $0.id == currentItem.id })
+    {
+      targetIndex = min(sortedItems.count - 1, idx + 1)
+    } else {
+      targetIndex = 0
+    }
+    let targetItem = sortedItems[targetIndex]
+    selectionState.selectedItems = [targetItem]
+    selectionState.lastSelectedByKeyboard = targetItem
   }
 
   private func goFullScreen(_ item: MediaItem) {
