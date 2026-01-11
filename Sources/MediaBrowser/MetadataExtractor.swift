@@ -191,15 +191,6 @@ struct MetadataExtractor {
       }
     }
 
-    let exifDateString: String = {
-      if let date = metadata.exifDate {
-        let formatter = ISO8601DateFormatter()
-        return formatter.string(from: date)
-      } else {
-        return "unknown"
-      }
-    }()
-
     return metadata
   }
 }
