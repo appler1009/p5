@@ -93,7 +93,8 @@ struct ContentView: View {
             searchQuery: searchQuery,
             onSelected: selectItems,
             onFullScreen: goFullScreen,
-            selectionState: selectionState
+            selectionState: selectionState,
+            onScrollToItem: nil
           )
         } else if viewMode == "Map" {
           MediaMapView(

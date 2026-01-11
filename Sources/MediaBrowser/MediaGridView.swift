@@ -5,6 +5,7 @@ struct MediaGridView: View {
   let searchQuery: String
   let onSelected: (Set<MediaItem>) -> Void
   let onFullScreen: (MediaItem) -> Void
+  let onScrollToItem: ((Int) -> Void)?
   @ObservedObject var selectionState: GridSelectionState
 
   @State private var scrollTarget: Int? = nil
@@ -18,11 +19,13 @@ struct MediaGridView: View {
     searchQuery: String,
     onSelected: @escaping (Set<MediaItem>) -> Void,
     onFullScreen: @escaping (MediaItem) -> Void,
-    selectionState: GridSelectionState
+    selectionState: GridSelectionState,
+    onScrollToItem: ((Int) -> Void)? = nil
   ) {
     self.searchQuery = searchQuery
     self.onSelected = onSelected
     self.onFullScreen = onFullScreen
+    self.onScrollToItem = onScrollToItem
     self.selectionState = selectionState
   }
 
@@ -87,6 +90,13 @@ struct MediaGridView: View {
           }
         }
         .padding(.bottom, 8)
+        .onChange(of: selectionState.lastSelectedByKeyboard) { _, newValue in
+          if let item = newValue {
+            withAnimation(.easeInOut(duration: 0.1)) {
+              proxy.scrollTo("item-\(item.id)", anchor: .center)
+            }
+          }
+        }
       }
       .scrollPosition(id: $scrollTarget, anchor: scrollAnchor)
     }
