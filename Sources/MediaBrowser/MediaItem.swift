@@ -235,13 +235,14 @@ struct MediaMetadata {
   var dimensions: CGSize?
   var exifDate: Date?
   var gps: GPSLocation?
-  var duration: TimeInterval?  // for videos
+  var duration: TimeInterval?
   var make: String?
   var model: String?
   var lens: String?
   var iso: Int?
   var aperture: Double?
   var shutterSpeed: String?
+  var extraEXIF: [String: Any]
 }
 
 struct GPSLocation {

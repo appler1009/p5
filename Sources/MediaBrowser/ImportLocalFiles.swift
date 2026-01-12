@@ -149,7 +149,8 @@ class ImportLocalFiles {
       lens: nil,
       iso: nil,
       aperture: nil,
-      shutterSpeed: nil
+      shutterSpeed: nil,
+      extraEXIF: [:]
     )
   }
 }

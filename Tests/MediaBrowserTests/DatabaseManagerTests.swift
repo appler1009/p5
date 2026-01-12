@@ -15,15 +15,16 @@ final class DatabaseManagerTests: XCTestCase {
       creationDate: Date(),
       modificationDate: Date(),
       dimensions: CGSize(width: 1920, height: 1080),
-      exifDate: nil,
-      gps: nil,
-      duration: nil,
+      exifDate: Date(),
+      gps: GPSLocation(latitude: 37.7749, longitude: -122.4194),
+      duration: 60.0,
       make: "Test",
       model: "Test",
       lens: nil,
       iso: 100,
       aperture: 2.8,
-      shutterSpeed: "1/100"
+      shutterSpeed: "1/100",
+      extraEXIF: [:]
     )
     let item = LocalFileSystemMediaItem(id: 2, original: url)
     item.metadata = metadata

@@ -131,17 +131,40 @@ class DatabaseManager {
 
   func insertItem(_ item: LocalFileSystemMediaItem) {
     guard let metadata = item.metadata else { return }
-    let exifDict: [String: Any] = [
-      "altitude": metadata.gps?.altitude as Any,
-      "duration": metadata.duration as Any,
-      "make": metadata.make as Any,
-      "model": metadata.model as Any,
-      "lens": metadata.lens as Any,
-      "iso": metadata.iso as Any,
-      "aperture": metadata.aperture as Any,
-      "shutter_speed": metadata.shutterSpeed as Any,
-    ].compactMapValues { $0 }
-    let exifData = try? JSONSerialization.data(withJSONObject: exifDict, options: [])
+
+    var filteredEXIF: [String: Any] = [:]
+
+    if let altitude = metadata.gps?.altitude, altitude.isFinite {
+      filteredEXIF["altitude"] = altitude
+    }
+    if let duration = metadata.duration, duration.isFinite {
+      filteredEXIF["duration"] = duration
+    }
+    if let make = metadata.make { filteredEXIF["make"] = make }
+    if let model = metadata.model { filteredEXIF["model"] = model }
+    if let lens = metadata.lens { filteredEXIF["lens"] = lens }
+    if let iso = metadata.iso { filteredEXIF["iso"] = iso }
+    if let aperture = metadata.aperture, aperture.isFinite {
+      filteredEXIF["aperture"] = aperture
+    }
+    if let shutterSpeed = metadata.shutterSpeed { filteredEXIF["shutter_speed"] = shutterSpeed }
+
+    for (key, value) in metadata.extraEXIF {
+      if let doubleValue = value as? Double {
+        if doubleValue.isFinite {
+          filteredEXIF[key] = doubleValue
+        }
+      } else if let arrayValue = value as? [Any] {
+        filteredEXIF[key] = arrayValue.filter { value in
+          guard let doubleVal = value as? Double else { return true }
+          return doubleVal.isFinite
+        }
+      } else {
+        filteredEXIF[key] = value
+      }
+    }
+
+    let exifData = try? JSONSerialization.data(withJSONObject: filteredEXIF, options: [])
     let exifString = exifData.flatMap { String(data: $0, encoding: .utf8) }
 
     do {
@@ -230,7 +253,8 @@ class DatabaseManager {
             lens: nil,
             iso: nil,
             aperture: nil,
-            shutterSpeed: nil
+            shutterSpeed: nil,
+            extraEXIF: [:]
           )
 
           if let exifString = row["exif"] as String?, let exifData = exifString.data(using: .utf8),
@@ -244,6 +268,15 @@ class DatabaseManager {
             meta.iso = exifDict["iso"] as? Int
             meta.aperture = exifDict["aperture"] as? Double
             meta.shutterSpeed = exifDict["shutter_speed"] as? String
+
+            let knownKeys = Set([
+              "altitude", "duration", "make", "model", "lens", "iso", "aperture", "shutter_speed",
+            ])
+            for (key, value) in exifDict {
+              if !knownKeys.contains(key) {
+                meta.extraEXIF[key] = value
+              }
+            }
           }
 
           let syncStatusString = row["s3_sync_status"] as String?

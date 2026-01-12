@@ -16,18 +16,18 @@ struct Triangle: Shape {
 let animationDuration: TimeInterval = 0.1
 
 struct SectionHeader: View {
-    let title: String
-    let iconName: String
+  let title: String
+  let iconName: String
 
-    var body: some View {
-        HStack {
-            Image(systemName: iconName)
-                .foregroundColor(.accentColor)
-            Text(title)
-                .font(.headline)
-            Spacer()
-        }
+  var body: some View {
+    HStack {
+      Image(systemName: iconName)
+        .foregroundColor(.accentColor)
+      Text(title)
+        .font(.headline)
+      Spacer()
     }
+  }
 }
 
 struct MediaDetailsSidebar: View {
@@ -123,6 +123,26 @@ struct MediaDetailsSidebar: View {
                 if let altitude = metadata.gps?.altitude {
                   detailRow("Altitude", String(format: "%.1f m", altitude))
                 }
+
+                // Display all extra EXIF data
+                ForEach(Array(metadata.extraEXIF.keys.sorted()), id: \.self) { key in
+                  if let value = metadata.extraEXIF[key], shouldShowTag(key) {
+                    let cleanKey = key.replacingOccurrences(of: "exif_", with: "")
+                      .replacingOccurrences(of: "tiff_", with: "")
+                      .replacingOccurrences(of: "gps_", with: "")
+                      .replacingOccurrences(of: "image_", with: "")
+
+                    if let stringValue = value as? String {
+                      detailRow(cleanKey, stringValue)
+                    } else if let intValue = value as? Int {
+                      detailRow(cleanKey, String(intValue))
+                    } else if let doubleValue = value as? Double {
+                      detailRow(cleanKey, String(format: "%.6f", doubleValue))
+                    } else {
+                      detailRow(cleanKey, String(describing: value))
+                    }
+                  }
+                }
               }
             }
           }
@@ -177,8 +197,8 @@ struct MediaDetailsSidebar: View {
 
         // S3 Sync Status
         SectionHeader(title: "S3 Sync", iconName: s3SyncIcon)
-        .padding(.top, 16)
-        .padding(.bottom, 4)
+          .padding(.top, 16)
+          .padding(.bottom, 4)
 
         VStack(alignment: .leading, spacing: 12) {
           detailRow("Status", s3SyncStatusText)
@@ -193,7 +213,19 @@ struct MediaDetailsSidebar: View {
   @State private var showAdditionalMetadata = false
 
   private func hasAdditionalMetadata(metadata: MediaMetadata) -> Bool {
-    return metadata.gps?.altitude != nil
+    return metadata.extraEXIF.keys.contains { shouldShowTag($0) }
+  }
+
+  private func shouldShowTag(_ key: String) -> Bool {
+    let blacklistedTags: Set<String> = [
+      "ColorSpace", "BrightnessValue", "ExifVersion", "LensSpecification", "SubjectArea",
+      "{ExifAux}",
+    ]
+    let cleanKey = key.replacingOccurrences(of: "exif_", with: "")
+      .replacingOccurrences(of: "tiff_", with: "")
+      .replacingOccurrences(of: "gps_", with: "")
+      .replacingOccurrences(of: "image_", with: "")
+    return !blacklistedTags.contains(cleanKey)
   }
 
   private func detailRow(_ label: String, _ value: String, allowCopy: Bool = true) -> some View {

@@ -380,7 +380,8 @@ class ImportApplePhotos: ObservableObject {
           lens: lens,
           iso: iso,
           aperture: aperture,
-          shutterSpeed: shutterSpeed
+          shutterSpeed: shutterSpeed,
+          extraEXIF: [:]
         )
 
         let item = ApplePhotosItem(

@@ -7,6 +7,24 @@ import tzf
 struct MetadataExtractor {
   private static let timezoneFinder: tzf.DefaultFinder? = try? tzf.DefaultFinder()
 
+  private static func sanitizeEXIFValue(_ value: Any) -> Any {
+    if let stringValue = value as? String {
+      return stringValue.trimmingCharacters(in: .whitespaces)
+    } else if let doubleValue = value as? Double {
+      if doubleValue.isInfinite {
+        return -1.0
+      }
+      return doubleValue
+    } else if let dataValue = value as? Data {
+      return dataValue.base64EncodedString()
+    } else if let arrayValue = value as? [Any] {
+      return arrayValue.map { sanitizeEXIFValue($0) }
+    } else if let dictValue = value as? [String: Any] {
+      return dictValue.mapValues { sanitizeEXIFValue($0) }
+    }
+    return value
+  }
+
   static func extractMetadata(for url: URL) async -> MediaMetadata {
     var metadata = MediaMetadata(
       creationDate: nil,
@@ -14,7 +32,14 @@ struct MetadataExtractor {
       dimensions: nil,
       exifDate: nil,
       gps: nil,
-      duration: nil
+      duration: nil,
+      make: nil,
+      model: nil,
+      lens: nil,
+      iso: nil,
+      aperture: nil,
+      shutterSpeed: nil,
+      extraEXIF: [:]
     )
 
     if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) {
@@ -25,6 +50,8 @@ struct MetadataExtractor {
     if url.isImage() {
       if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
         if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+          var extraEXIF: [String: Any] = [:]
+
           if let width = properties[kCGImagePropertyPixelWidth] as? Double,
             let height = properties[kCGImagePropertyPixelHeight] as? Double
           {
@@ -44,6 +71,10 @@ struct MetadataExtractor {
             let altitude = gps[kCGImagePropertyGPSAltitude] as? Double
             gpsLocation = GPSLocation(latitude: latitude, longitude: longitude, altitude: altitude)
             metadata.gps = gpsLocation
+
+            for (key, value) in gps {
+              extraEXIF["gps_\(key)"] = value
+            }
           }
 
           if let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] {
@@ -84,6 +115,22 @@ struct MetadataExtractor {
               let shutter = 1 / pow(2, shutterValue)
               metadata.shutterSpeed = String(format: "1/%.0f", 1 / shutter)
             }
+
+            let knownEXIFKeys: Set<CFString> = [
+              kCGImagePropertyExifDateTimeOriginal,
+              kCGImagePropertyExifDateTimeDigitized,
+              kCGImagePropertyExifOffsetTimeOriginal,
+              kCGImagePropertyExifOffsetTimeDigitized,
+              kCGImagePropertyExifISOSpeedRatings,
+              kCGImagePropertyExifApertureValue,
+              kCGImagePropertyExifShutterSpeedValue,
+            ]
+
+            for (key, value) in exif {
+              if !knownEXIFKeys.contains(key) {
+                extraEXIF["exif_\(key)"] = sanitizeEXIFValue(value)
+              }
+            }
           }
 
           if let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
@@ -91,7 +138,56 @@ struct MetadataExtractor {
               in: .whitespaces)
             metadata.model = (tiff[kCGImagePropertyTIFFModel] as? String)?.trimmingCharacters(
               in: .whitespaces)
+
+            let knownTIFFKeys: Set<CFString> = [
+              kCGImagePropertyTIFFMake,
+              kCGImagePropertyTIFFModel,
+            ]
+
+            for (key, value) in tiff {
+              if !knownTIFFKeys.contains(key) {
+                extraEXIF["tiff_\(key)"] = sanitizeEXIFValue(value)
+              }
+            }
           }
+
+          let imageIOKeysToSkip: Set<CFString> = [
+            kCGImagePropertyPixelWidth,
+            kCGImagePropertyPixelHeight,
+            kCGImagePropertyOrientation,
+            kCGImagePropertyColorModel,
+            kCGImagePropertyDepth,
+            kCGImagePropertyGPSDictionary,
+            kCGImagePropertyExifDictionary,
+            kCGImagePropertyIPTCDictionary,
+            kCGImagePropertyTIFFDictionary,
+          ]
+
+          for (key, value) in properties {
+            if !imageIOKeysToSkip.contains(key) {
+              if key as String == "{MakerApple}" {
+                if let dataValue = value as? Data {
+                  do {
+                    var format = PropertyListSerialization.PropertyListFormat.binary
+                    let plist = try PropertyListSerialization.propertyList(
+                      from: dataValue,
+                      options: [],
+                      format: &format
+                    )
+                    extraEXIF["image_\(key)"] = plist
+                  } catch {
+                    extraEXIF["image_\(key)"] = "bplist_parse_error"
+                  }
+                } else {
+                  extraEXIF["image_\(key)"] = sanitizeEXIFValue(value)
+                }
+              } else {
+                extraEXIF["image_\(key)"] = sanitizeEXIFValue(value)
+              }
+            }
+          }
+
+          metadata.extraEXIF = extraEXIF
         }
       }
     }
@@ -103,6 +199,8 @@ struct MetadataExtractor {
         metadata.duration = CMTimeGetSeconds(duration)
 
         let metadataItems = try await asset.load(.commonMetadata)
+
+        var extraEXIF: [String: Any] = [:]
 
         for item in metadataItems {
           guard let key = item.identifier,
@@ -185,7 +283,11 @@ struct MetadataExtractor {
             }
             continue
           }
+
+          extraEXIF["video_\(keyString)"] = stringValue.trimmingCharacters(in: .whitespaces)
         }
+
+        metadata.extraEXIF = extraEXIF
       } catch {
         print("Error loading video metadata: \(error)")
       }
