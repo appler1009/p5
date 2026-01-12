@@ -15,24 +15,31 @@ struct Triangle: Shape {
 
 let animationDuration: TimeInterval = 0.1
 
+struct SectionHeader: View {
+    let title: String
+    let iconName: String
+
+    var body: some View {
+        HStack {
+            Image(systemName: iconName)
+                .foregroundColor(.accentColor)
+            Text(title)
+                .font(.headline)
+            Spacer()
+        }
+    }
+}
+
 struct MediaDetailsSidebar: View {
   let item: LocalFileSystemMediaItem
-
-  var detailsHeader: some View {
-
-  }
 
   var body: some View {
     ScrollView(.vertical) {
       VStack(alignment: .leading, spacing: 8) {
         // Header
-        HStack {
-          Image(systemName: item.type == .video ? "video.fill" : "photo.fill")
-            .foregroundColor(.accentColor)
-          Text("Details")
-            .font(.headline)
-          Spacer()
-        }
+        SectionHeader(title: "Details", iconName: item.type == .video ? "video.fill" : "photo.fill")
+          .padding(.top, 8)
+          .padding(.bottom, 4)
 
         // Basic Information
         Group {
@@ -92,23 +99,46 @@ struct MediaDetailsSidebar: View {
             detailRow("File Size", formatFileSize(fileSize))
             detailRow("Size in bytes", formatNumber(fileSize))
           }
+
+          // Additional EXIF Metadata (Collapsible)
+          if hasAdditionalMetadata(metadata: metadata) {
+            Button(action: {
+              withAnimation(.easeInOut(duration: 0.2)) {
+                showAdditionalMetadata.toggle()
+              }
+            }) {
+              HStack {
+                Image(systemName: showAdditionalMetadata ? "chevron.down" : "chevron.right")
+                  .font(.caption)
+                Text("More Metadata")
+                  .font(.headline)
+                Spacer()
+              }
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.primary)
+
+            if showAdditionalMetadata {
+              VStack(alignment: .leading, spacing: 8) {
+                if let altitude = metadata.gps?.altitude {
+                  detailRow("Altitude", String(format: "%.1f m", altitude))
+                }
+              }
+            }
+          }
         }
 
         Divider()
+          .padding(.top, 16)
 
         // Mini Map
         if let metadata = item.metadata,
           let gps = metadata.gps
         {
           // Location header with icon
-          HStack {
-            Image(systemName: "location.fill")
-              .foregroundColor(.accentColor)
-            Text("Location")
-              .font(.headline)
-            Spacer()
-          }
-          .padding(.bottom, 4)
+          SectionHeader(title: "Location", iconName: "location.fill")
+            .padding(.top, 16)
+            .padding(.bottom, 4)
 
           let coordinate = CLLocationCoordinate2D(latitude: gps.latitude, longitude: gps.longitude)
           let region = MKCoordinateRegion(
@@ -142,54 +172,16 @@ struct MediaDetailsSidebar: View {
           .padding(.top, 8)
 
           Divider()
+            .padding(.top, 16)
         }
 
         // S3 Sync Status
-        HStack {
-          Image(systemName: s3SyncIcon)
-            .foregroundColor(.accentColor)
-          Text("S3 Sync")
-            .font(.headline)
-          Spacer()
-        }
+        SectionHeader(title: "S3 Sync", iconName: s3SyncIcon)
         .padding(.top, 16)
         .padding(.bottom, 4)
 
         VStack(alignment: .leading, spacing: 12) {
           detailRow("Status", s3SyncStatusText)
-        }
-
-        // Additional EXIF Metadata (Collapsible)
-        if let metadata = item.metadata,
-           hasAdditionalMetadata(metadata: metadata)
-        {
-          Divider()
-          .padding(.vertical, 8)
-
-          Button(action: {
-            withAnimation(.easeInOut(duration: 0.2)) {
-              showAdditionalMetadata.toggle()
-            }
-          }) {
-            HStack {
-              Image(systemName: showAdditionalMetadata ? "chevron.down" : "chevron.right")
-                .font(.caption)
-              Text("More Metadata")
-                .font(.headline)
-              Spacer()
-            }
-          }
-          .buttonStyle(.plain)
-          .foregroundColor(.primary)
-
-          if showAdditionalMetadata {
-            VStack(alignment: .leading, spacing: 8) {
-              if let altitude = metadata.gps?.altitude {
-                detailRow("Altitude", String(format: "%.1f m", altitude))
-              }
-            }
-            .padding(.top, 8)
-          }
         }
       }
     }
