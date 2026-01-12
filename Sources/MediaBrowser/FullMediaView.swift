@@ -18,82 +18,83 @@ let animationDuration: TimeInterval = 0.1
 struct MediaDetailsSidebar: View {
   let item: LocalFileSystemMediaItem
 
+  var detailsHeader: some View {
+
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      // Header
-      HStack {
-        Image(systemName: item.type == .video ? "video.fill" : "photo.fill")
-          .foregroundColor(.accentColor)
-        Text("Details")
-          .font(.headline)
-        Spacer()
-      }
+    ScrollView(.vertical) {
+      VStack(alignment: .leading, spacing: 8) {
+        // Header
+        HStack {
+          Image(systemName: item.type == .video ? "video.fill" : "photo.fill")
+            .foregroundColor(.accentColor)
+          Text("Details")
+            .font(.headline)
+          Spacer()
+        }
 
-      Divider()
+        // Basic Information
+        Group {
+          detailRow("Filename", item.displayName)
+          detailRow("Type", mediaTypeString)
+          detailRow("Path", item.originalUrl.path)  // TODO show original, edited, live, all three.
+        }
 
-      ScrollView {
-        VStack(alignment: .leading, spacing: 12) {
-          // Basic Information
-          Group {
-            detailRow("Filename", item.displayName)
-            detailRow("Type", mediaTypeString)
-            detailRow("Path", item.originalUrl.path)  // TODO show original, edited, live, all three.
+        if let metadata = item.metadata {
+          // Date Information
+          if let creationDate = metadata.creationDate {
+            detailRow("Created", formatDate(creationDate))
+          }
+          if let modificationDate = metadata.modificationDate {
+            detailRow("Modified", formatDate(modificationDate))
           }
 
-          if let metadata = item.metadata {
-            // Date Information
-            if let creationDate = metadata.creationDate {
-              detailRow("Created", formatDate(creationDate))
-            }
-            if let modificationDate = metadata.modificationDate {
-              detailRow("Modified", formatDate(modificationDate))
-            }
+          // EXIF Information
+          if let exifDate = metadata.exifDate {
+            detailRow("EXIF Date", formatDate(exifDate))
+          }
 
-            // EXIF Information
-            if let exifDate = metadata.exifDate {
-              detailRow("EXIF Date", formatDate(exifDate))
-            }
+          // Dimensions
+          if let dimensions = metadata.dimensions {
+            detailRow("Dimensions", "\(Int(dimensions.width)) × \(Int(dimensions.height))")
+          }
 
-            // Dimensions
-            if let dimensions = metadata.dimensions {
-              detailRow("Dimensions", "\(Int(dimensions.width)) × \(Int(dimensions.height))")
-            }
+          // Duration (for videos)
+          if let duration = metadata.duration {
+            detailRow("Duration", formatDuration(duration))
+          }
 
-            // Duration (for videos)
-            if let duration = metadata.duration {
-              detailRow("Duration", formatDuration(duration))
-            }
+          // Camera Information
+          if let make = metadata.make {
+            detailRow("Camera Make", make)
+          }
+          if let model = metadata.model {
+            detailRow("Camera Model", model)
+          }
+          if let lens = metadata.lens {
+            detailRow("Lens", lens)
+          }
 
-            // Camera Information
-            if let make = metadata.make {
-              detailRow("Camera Make", make)
-            }
-            if let model = metadata.model {
-              detailRow("Camera Model", model)
-            }
-            if let lens = metadata.lens {
-              detailRow("Lens", lens)
-            }
+          // Camera Settings
+          if let iso = metadata.iso {
+            detailRow("ISO", "ISO \(iso)")
+          }
+          if let aperture = metadata.aperture {
+            detailRow("Aperture", String(format: "f/%.1f", aperture))
+          }
+          if let shutterSpeed = metadata.shutterSpeed {
+            detailRow("Shutter Speed", shutterSpeed)
+          }
 
-            // Camera Settings
-            if let iso = metadata.iso {
-              detailRow("ISO", "ISO \(iso)")
-            }
-            if let aperture = metadata.aperture {
-              detailRow("Aperture", String(format: "f/%.1f", aperture))
-            }
-            if let shutterSpeed = metadata.shutterSpeed {
-              detailRow("Shutter Speed", shutterSpeed)
-            }
-
-            // File Size
-            if let fileSize = getFileSize() {
-              detailRow("File Size", formatFileSize(fileSize))
-              detailRow("Size in bytes", formatNumber(fileSize))
-            }
+          // File Size
+          if let fileSize = getFileSize() {
+            detailRow("File Size", formatFileSize(fileSize))
+            detailRow("Size in bytes", formatNumber(fileSize))
           }
         }
-        .padding(.bottom, 16)
+
+        Divider()
 
         // Mini Map
         if let metadata = item.metadata,
@@ -139,6 +140,8 @@ struct MediaDetailsSidebar: View {
             }
           }
           .padding(.top, 8)
+
+          Divider()
         }
 
         // S3 Sync Status
@@ -152,15 +155,53 @@ struct MediaDetailsSidebar: View {
         .padding(.top, 16)
         .padding(.bottom, 4)
 
-        Divider()
-
         VStack(alignment: .leading, spacing: 12) {
           detailRow("Status", s3SyncStatusText)
+        }
+
+        // Additional EXIF Metadata (Collapsible)
+        if let metadata = item.metadata,
+           hasAdditionalMetadata(metadata: metadata)
+        {
+          Divider()
+          .padding(.vertical, 8)
+
+          Button(action: {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              showAdditionalMetadata.toggle()
+            }
+          }) {
+            HStack {
+              Image(systemName: showAdditionalMetadata ? "chevron.down" : "chevron.right")
+                .font(.caption)
+              Text("More Metadata")
+                .font(.headline)
+              Spacer()
+            }
+          }
+          .buttonStyle(.plain)
+          .foregroundColor(.primary)
+
+          if showAdditionalMetadata {
+            VStack(alignment: .leading, spacing: 8) {
+              if let altitude = metadata.gps?.altitude {
+                detailRow("Altitude", String(format: "%.1f m", altitude))
+              }
+            }
+            .padding(.top, 8)
+          }
         }
       }
     }
     .padding(16)
+    .padding(.bottom, 32)
     .frame(width: 350)
+  }
+
+  @State private var showAdditionalMetadata = false
+
+  private func hasAdditionalMetadata(metadata: MediaMetadata) -> Bool {
+    return metadata.gps?.altitude != nil
   }
 
   private func detailRow(_ label: String, _ value: String, allowCopy: Bool = true) -> some View {
@@ -176,7 +217,7 @@ struct MediaDetailsSidebar: View {
           .frame(width: 80, alignment: .leading)
       }
       .buttonStyle(.plain)
-      .help("Copy \(label.lowercased()) to clipboard")
+      .help("Copy \(label.lowercased())")
 
       // Value (always clickable for copy)
       Button(action: {
