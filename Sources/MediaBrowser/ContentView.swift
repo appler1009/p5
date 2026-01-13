@@ -126,7 +126,7 @@ struct ContentView: View {
       setupS3SyncNotifications()
     }
     .toolbar {
-      ToolbarItem {
+      ToolbarItem(placement: .navigation) {
         Picker("View Mode", selection: $viewMode) {
           Image(systemName: "square.grid.2x2").tag("Grid")
           Image(systemName: "map").tag("Map")
