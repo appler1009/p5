@@ -7,6 +7,47 @@ import tzf
 struct MetadataExtractor {
   private static let timezoneFinder: tzf.DefaultFinder? = try? tzf.DefaultFinder()
 
+  private static let appleTagMappings: [String: String] = [
+    "0": "MakerNoteVersion",
+    "1": "AEMatrix",
+    "2": "RunTime",
+    "3": "AEStable",
+    "4": "AETarget",
+    "5": "AEAverage",
+    "6": "AFStable",
+    "7": "AFPerformance",
+    "8": "AccelerationVector",
+    "9": "HDRImageType",
+    "10": "BurstUUID",
+    "11": "ContentIdentifier",
+    "12": "ImageCaptureType",
+    "13": "RunTime",
+    "14": "QualityHint",
+    "15": "AETarget",
+    "16": "AETarget",
+    "17": "LuminanceNoiseAmplitude",
+    "18": "PhotosAppFeatureFlags",
+    "19": "ImageCaptureRequestID",
+    "20": "Q",
+    "21": "HDRHeadroom",
+    "22": "FocusDistanceRange",
+    "23": "OISMode",
+    "24": "ImageUniqueID",
+    "25": "ColorTemperature",
+    "26": "CameraType",
+    "27": "FocusPosition",
+    "28": "HDRGain",
+    "29": "AFMeasuredDepth",
+    "30": "AFConfidence",
+    "31": "ColorCorrectionMatrix",
+    "32": "GreenGhostMitigationStatus",
+    "33": "SemanticStyle",
+    "34": "SemanticStyleRenderingVer",
+    "35": "SceneFlags",
+    "36": "SignalToNoiseRatioType",
+    "39": "SignalToNoiseRatio",
+  ]
+
   private static func sanitizeEXIFValue(_ value: Any) -> Any {
     if let stringValue = value as? String {
       return stringValue.trimmingCharacters(in: .whitespaces)
@@ -174,12 +215,17 @@ struct MetadataExtractor {
                       options: [],
                       format: &format
                     )
-                    extraEXIF["image_\(key)"] = plist
+                    if let appleDict = plist as? [String: Any] {
+                      for (appleKey, appleValue) in appleDict {
+                        let tagName = Self.appleTagMappings[appleKey] ?? appleKey
+                        extraEXIF["apple_\(tagName)"] = sanitizeEXIFValue(appleValue)
+                      }
+                    }
                   } catch {
-                    extraEXIF["image_\(key)"] = "bplist_parse_error"
+                    extraEXIF["{MakerApple}"] = "bplist_parse_error"
                   }
                 } else {
-                  extraEXIF["image_\(key)"] = sanitizeEXIFValue(value)
+                  extraEXIF["{MakerApple}"] = sanitizeEXIFValue(value)
                 }
               } else {
                 extraEXIF["image_\(key)"] = sanitizeEXIFValue(value)
