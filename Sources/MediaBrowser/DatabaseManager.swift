@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 
+@MainActor
 class DatabaseManager {
   static let shared = DatabaseManager()
   private var dbQueue: DatabaseQueue?
@@ -150,18 +151,7 @@ class DatabaseManager {
     if let shutterSpeed = metadata.shutterSpeed { filteredEXIF["shutter_speed"] = shutterSpeed }
 
     for (key, value) in metadata.extraEXIF {
-      if let doubleValue = value as? Double {
-        if doubleValue.isFinite {
-          filteredEXIF[key] = doubleValue
-        }
-      } else if let arrayValue = value as? [Any] {
-        filteredEXIF[key] = arrayValue.filter { value in
-          guard let doubleVal = value as? Double else { return true }
-          return doubleVal.isFinite
-        }
-      } else {
-        filteredEXIF[key] = value
-      }
+      filteredEXIF[key] = value
     }
 
     let exifData = try? JSONSerialization.data(withJSONObject: filteredEXIF, options: [])
@@ -274,7 +264,7 @@ class DatabaseManager {
             ])
             for (key, value) in exifDict {
               if !knownKeys.contains(key) {
-                meta.extraEXIF[key] = value
+                meta.extraEXIF[key] = value as? String ?? "\(value)"
               }
             }
           }

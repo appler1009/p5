@@ -132,14 +132,12 @@ struct MediaDetailsSidebar: View {
                       .replacingOccurrences(of: "gps_", with: "")
                       .replacingOccurrences(of: "image_", with: "")
 
-                    if let stringValue = value as? String {
-                      detailRow(cleanKey, stringValue)
-                    } else if let intValue = value as? Int {
+                    if let intValue = Int(value) {
                       detailRow(cleanKey, String(intValue))
-                    } else if let doubleValue = value as? Double {
+                    } else if let doubleValue = Double(value) {
                       detailRow(cleanKey, String(format: "%.6f", doubleValue))
                     } else {
-                      detailRow(cleanKey, String(describing: value))
+                      detailRow(cleanKey, value)
                     }
                   }
                 }
@@ -438,7 +436,7 @@ struct FullMediaView: View {
   private var imageView: some View {
     Group {
       if let image = fullImage {
-        GeometryReader { geometry in
+        GeometryReader { outerGeo in
           ScrollView([.horizontal, .vertical], showsIndicators: false) {
             Image(nsImage: image)
               .resizable()
@@ -447,12 +445,32 @@ struct FullMediaView: View {
               .id(item.id)
               .scaleEffect(currentScale)
               .frame(
-                width: geometry.size.width * currentScale,
-                height: geometry.size.height * currentScale
+                width: outerGeo.size.width * currentScale,
+                height: outerGeo.size.height * currentScale
               )
               .gesture(magnifyGesture)
           }
-          .highPriorityGesture(swipeNavigationGesture)
+          .background(Color.black)
+          // 1. Force the bounce behavior even if the image fits perfectly
+          .scrollBounceBehavior(.always, axes: .horizontal)
+          // 2. Detect the phase of the scroll
+          .onScrollPhaseChange { oldPhase, newPhase, context in
+            print("currentScale \(currentScale)")
+            guard currentScale <= 1.05 else { return }
+
+            // 'idle' is the correct state for when the scroll/bounce has finished
+            print("newPhase \(newPhase)")
+            if newPhase == .idle || newPhase == .interacting {
+              let offsetX = context.geometry.contentOffset.x
+              print("offsetX \(offsetX)")
+
+              if offsetX < -60 {
+                showPreviousMedia()
+              } else if offsetX > 60 {
+                showNextMedia()
+              }
+            }
+          }
         }
       } else {
         ProgressView()
@@ -475,7 +493,8 @@ struct FullMediaView: View {
   private var swipeNavigationGesture: some Gesture {
     DragGesture(minimumDistance: 30)
       .onEnded { value in
-        if currentScale == 1.0 {  // Only swipe if not zoomed
+        print("\(currentScale)")
+        if currentScale >= 0.95 && currentScale <= 1.05 {  // Only swipe if not zoomed
           if value.translation.width > 0 {
             showNextMedia()
           } else if value.translation.width < 0 {

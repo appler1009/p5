@@ -1,7 +1,9 @@
+// swift-settings: SWIFT_STRICT_CONCURRENCY = 0
 @preconcurrency import ImageCaptureCore
 import SwiftUI
 
-class ImportFromDevice: ObservableObject {
+@MainActor
+class ImportFromDevice: ObservableObject, @unchecked Sendable {
   @Published var detectedDevices: [ICCameraDevice] = []
   @Published var mediaItems: [ConnectedDeviceMediaItem] = []
   @Published var isLoadingDeviceContents = false
@@ -145,9 +147,9 @@ class ImportFromDevice: ObservableObject {
     // Request to open session with the device
     device.requestOpenSession { error in
       if let error = error {
-        Task {
-          self.isLoadingDeviceContents = false
-          if let onError = self.scanCallbacks?.onError {
+        DispatchQueue.main.async { [weak self] in
+          self?.isLoadingDeviceContents = false
+          if let onError = self?.scanCallbacks?.onError {
             onError(error)
           }
         }
@@ -155,7 +157,8 @@ class ImportFromDevice: ObservableObject {
         return
       }
 
-      Task {
+      Task { @MainActor [weak self] in
+        guard let self = self else { return }
         print("checking device contents")
         await self.checkDeviceContents(device)
       }
@@ -304,7 +307,7 @@ class ImportFromDevice: ObservableObject {
     }
   }
 
-  private func storeThumbnail(mediaItem: ConnectedDeviceMediaItem, thumbnail: NSImage) {
+  @MainActor private func storeThumbnail(mediaItem: ConnectedDeviceMediaItem, thumbnail: NSImage) {
     guard let cgImage = thumbnail.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
       return
     }
@@ -380,14 +383,13 @@ class ImportFromDevice: ObservableObject {
     let cameraFileId = String(describing: cameraFile.name!)  // FIXME
     do {
       if Task.isCancelled { return }
+      let importDir = await MainActor.run { DirectoryManager.shared.importDirectory }
       let _ = try await withCheckedThrowingContinuation {
         (continuation: CheckedContinuation<NSImage?, Error>) in
         Task {
           await downloadState.setPending(for: cameraFile, continuation: continuation)
         }
 
-        // Request download of the camera file with completion handler
-        let importDir = DirectoryManager.shared.importDirectory
         let options: [ICDownloadOption: Any] = [
           .downloadsDirectoryURL: importDir
         ]
@@ -399,10 +401,12 @@ class ImportFromDevice: ObservableObject {
           if let error = error {
             print(
               "DEBUG: Download request failed for \(cameraFileId): \(error.localizedDescription)")
+            continuation.resume(throwing: error)
+          } else {
+            continuation.resume(returning: nil)
           }
 
           if let fileName = cameraFile.name {
-            let importDir = DirectoryManager.shared.importDirectory
             let downloadedPath = importDir.appendingPathComponent(fileName)
             do {
               let attributes = try FileManager.default.attributesOfItem(atPath: downloadedPath.path)
@@ -453,6 +457,7 @@ class ImportFromDevice: ObservableObject {
 
 // MARK: - Thumbnail Coordination Actors
 actor CameraItemState {
+  private let lock = NSLock()
   private var requested: Set<String> = []
   private var pending: [ObjectIdentifier: CheckedContinuation<NSImage?, Error>] = [:]
   private var runningTasks: [String: Task<Void, Never>] = [:]
@@ -464,22 +469,32 @@ actor CameraItemState {
   }
 
   func setPending(for item: ICCameraItem, continuation: CheckedContinuation<NSImage?, Error>) {
+    lock.lock()
+    defer { lock.unlock() }
     pending[ObjectIdentifier(item)] = continuation
   }
 
   func takePending(for item: ICCameraItem) -> CheckedContinuation<NSImage?, Error>? {
-    pending.removeValue(forKey: ObjectIdentifier(item))
+    lock.lock()
+    defer { lock.unlock() }
+    return pending.removeValue(forKey: ObjectIdentifier(item))
   }
 
   func setRunningTask(_ task: Task<Void, Never>, for id: String) {
+    lock.lock()
+    defer { lock.unlock() }
     runningTasks[id] = task
   }
 
   func clearRunningTask(for id: String) {
+    lock.lock()
+    defer { lock.unlock() }
     runningTasks[id] = nil
   }
 
   func cancelAll() {
+    lock.lock()
+    defer { lock.unlock() }
     for (_, task) in runningTasks { task.cancel() }
     runningTasks.removeAll()
     pending.values.forEach { $0.resume(returning: nil) }
@@ -488,6 +503,8 @@ actor CameraItemState {
   }
 
   func cancel(id: String) {
+    lock.lock()
+    defer { lock.unlock() }
     runningTasks[id]?.cancel()
     runningTasks[id] = nil
   }
@@ -533,7 +550,7 @@ actor ConcurrencyLimiter {
 }
 
 // MARK: - Device Delegate for ImageCaptureCore
-class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCameraDeviceDelegate {
+class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCameraDeviceDelegate, @unchecked Sendable {
   weak var thumbnailStateRef: AnyObject?
 
   let onDeviceFound: (ICDevice) -> Void

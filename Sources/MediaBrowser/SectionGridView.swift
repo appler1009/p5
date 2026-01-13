@@ -127,11 +127,15 @@ struct SectionGridView: View {
       // Check if this item is in our current items list
       if self.items.contains(where: { $0.id == mediaItemId }) {
         // Mark this item as needing thumbnail update
-        itemsNeedingThumbnailUpdate.insert(mediaItemId)
+        Task { @MainActor in
+          itemsNeedingThumbnailUpdate.insert(mediaItemId)
 
-        // Clear all items after a short delay to allow views to update
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-          self.itemsNeedingThumbnailUpdate.removeAll()
+          // Clear all items after a short delay to allow views to update
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task { @MainActor in
+              itemsNeedingThumbnailUpdate.removeAll()
+            }
+          }
         }
       }
     }

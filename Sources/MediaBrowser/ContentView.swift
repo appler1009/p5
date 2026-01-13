@@ -247,13 +247,11 @@ struct ContentView: View {
 
   /// Update a media item
   func updateItem(itemId: Int, statusRaw: String) {
-    DispatchQueue.main.async {
-      guard let status = S3SyncStatus(rawValue: statusRaw),
-        let sourceIndex = mediaScanner.items.firstIndex(where: { $0.id == itemId })
-      else { return }
+    guard let status = S3SyncStatus(rawValue: statusRaw),
+      let sourceIndex = mediaScanner.items.firstIndex(where: { $0.id == itemId })
+    else { return }
 
-      mediaScanner.items[sourceIndex].s3SyncStatus = status
-    }
+    mediaScanner.items[sourceIndex].s3SyncStatus = status
   }
 
   /// Listen for S3 sync status updates
@@ -267,7 +265,9 @@ struct ContentView: View {
         let itemId = userInfo["itemId"] as? Int,
         let statusRaw = userInfo["status"] as? String
       {
-        updateItem(itemId: itemId, statusRaw: statusRaw)
+        Task { @MainActor in
+          updateItem(itemId: itemId, statusRaw: statusRaw)
+        }
       }
     }
   }

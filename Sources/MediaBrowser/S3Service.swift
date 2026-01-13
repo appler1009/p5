@@ -4,6 +4,7 @@ import AWSSDKIdentity
 import Combine
 import Foundation
 
+@MainActor
 class S3Service: ObservableObject {
   static let shared = S3Service()
 
@@ -96,14 +97,14 @@ class S3Service: ObservableObject {
 
   func shouldUploadFile(fileDate: Date, fileURL: URL) async -> Bool {
     guard config.isValid else { return false }
-    guard let s3Client = s3Client else { return false }
+    guard let client = s3Client else { return false }
 
     let s3Key = createS3Key(for: fileDate, fileURL: fileURL)
 
     do {
       // Check if object exists in S3
       let headInput = HeadObjectInput(bucket: config.bucketName, key: s3Key)
-      let headOutput = try await s3Client.headObject(input: headInput)
+      let headOutput = try await client.headObject(input: headInput)
 
       // If object exists, compare timestamps
       if let s3LastModified = headOutput.lastModified {
@@ -184,6 +185,10 @@ class S3Service: ObservableObject {
   }
 
   private func uploadSingleFile(fileDate: Date, fileURL: URL) async throws {
+    guard let client = s3Client else {
+      throw S3Error.clientNotInitialized
+    }
+
     let s3Key = createS3Key(for: fileDate, fileURL: fileURL)
 
     do {
@@ -197,7 +202,7 @@ class S3Service: ObservableObject {
         storageClass: .intelligentTiering
       )
 
-      _ = try await s3Client!.putObject(input: input)
+      _ = try await client.putObject(input: input)
     } catch {
       throw error
     }

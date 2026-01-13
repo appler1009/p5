@@ -1,7 +1,7 @@
 import ImageCaptureCore
 import SwiftUI
 
-class MediaItem: Identifiable, Equatable, Hashable, ObservableObject {
+class MediaItem: Identifiable, Equatable, Hashable, ObservableObject, @unchecked Sendable {
   let id: Int
   var metadata: MediaMetadata?  // to be filled later
   @Published var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
@@ -34,8 +34,9 @@ class MediaItem: Identifiable, Equatable, Hashable, ObservableObject {
   }
 }
 
-class LocalFileSystemMediaItem: MediaItem {
-  private static var nextId = 1
+class LocalFileSystemMediaItem: MediaItem, @unchecked Sendable {
+  nonisolated(unsafe) private static var nextId = 1
+  private static let nextIdLock = NSLock()
 
   let originalUrl: URL
   let editedUrl: URL?
@@ -74,9 +75,14 @@ class LocalFileSystemMediaItem: MediaItem {
     originalUrl = original
     editedUrl = edited
     liveUrl = live
-    let actualId = id == -1 ? LocalFileSystemMediaItem.nextId : id
+    let actualId: Int
     if id == -1 {
+      LocalFileSystemMediaItem.nextIdLock.lock()
+      actualId = LocalFileSystemMediaItem.nextId
       LocalFileSystemMediaItem.nextId += 1
+      LocalFileSystemMediaItem.nextIdLock.unlock()
+    } else {
+      actualId = id
     }
     super.init(id: actualId)
   }
@@ -90,7 +96,7 @@ class LocalFileSystemMediaItem: MediaItem {
   }
 }
 
-class ConnectedDeviceMediaItem: MediaItem {
+class ConnectedDeviceMediaItem: MediaItem, @unchecked Sendable {
   let originalItem: ICCameraItem
   let editedItem: ICCameraItem?
   let liveItem: ICCameraItem?
@@ -127,7 +133,8 @@ class ConnectedDeviceMediaItem: MediaItem {
     return .photo
   }
 
-  private static var nextId = 1
+  nonisolated(unsafe) private static var nextId = 1
+  private static let nextIdLock = NSLock()
 
   init(
     id: Int, original: ICCameraItem, edited: ICCameraItem? = nil,
@@ -136,9 +143,14 @@ class ConnectedDeviceMediaItem: MediaItem {
     originalItem = original
     editedItem = edited
     liveItem = live
-    let actualId = id == -1 ? ConnectedDeviceMediaItem.nextId : id
+    let actualId: Int
     if id == -1 {
+      ConnectedDeviceMediaItem.nextIdLock.lock()
+      actualId = ConnectedDeviceMediaItem.nextId
       ConnectedDeviceMediaItem.nextId += 1
+      ConnectedDeviceMediaItem.nextIdLock.unlock()
+    } else {
+      actualId = id
     }
     super.init(id: actualId)
     self.s3SyncStatus = .notApplicable  // Connected device items are not synced to S3
@@ -149,8 +161,12 @@ class ConnectedDeviceMediaItem: MediaItem {
     editedItem = edited
     liveItem = live
 
-    super.init(id: ConnectedDeviceMediaItem.nextId)
+    ConnectedDeviceMediaItem.nextIdLock.lock()
+    let actualId = ConnectedDeviceMediaItem.nextId
     ConnectedDeviceMediaItem.nextId += 1
+    ConnectedDeviceMediaItem.nextIdLock.unlock()
+
+    super.init(id: actualId)
     self.s3SyncStatus = .notApplicable  // Connected device items are not synced to S3
   }
 
@@ -165,7 +181,7 @@ class ConnectedDeviceMediaItem: MediaItem {
   }
 }
 
-class ApplePhotosMediaItem: LocalFileSystemMediaItem {
+class ApplePhotosMediaItem: LocalFileSystemMediaItem, @unchecked Sendable {
   let fileName: String
   let directory: String
   let originalFileName: String
@@ -242,7 +258,7 @@ struct MediaMetadata {
   var iso: Int?
   var aperture: Double?
   var shutterSpeed: String?
-  var extraEXIF: [String: Any]
+  var extraEXIF: [String: String]
 }
 
 struct GPSLocation {

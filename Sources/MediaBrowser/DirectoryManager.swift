@@ -1,8 +1,9 @@
 import AppKit
 import Foundation
 
+@MainActor
 class DirectoryManager: ObservableObject {
-  static let shared = DirectoryManager()
+  @MainActor static let shared = DirectoryManager()
   @Published var directories: [URL] = []
 
   // Import directory configuration

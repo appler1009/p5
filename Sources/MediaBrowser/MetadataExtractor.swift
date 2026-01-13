@@ -5,7 +5,7 @@ import ImageIO
 import tzf
 
 struct MetadataExtractor {
-  private static let timezoneFinder: tzf.DefaultFinder? = try? tzf.DefaultFinder()
+  @MainActor private static let timezoneFinder: tzf.DefaultFinder? = try? tzf.DefaultFinder()
 
   private static let appleTagMappings: [String: String] = [
     "0": "MakerNoteVersion",
@@ -48,25 +48,25 @@ struct MetadataExtractor {
     "39": "SignalToNoiseRatio",
   ]
 
-  private static func sanitizeEXIFValue(_ value: Any) -> Any {
+  private static func sanitizeEXIFValue(_ value: Any) -> String {
     if let stringValue = value as? String {
       return stringValue.trimmingCharacters(in: .whitespaces)
     } else if let doubleValue = value as? Double {
       if doubleValue.isInfinite {
-        return -1.0
+        return "-1.0"
       }
-      return doubleValue
+      return "\(doubleValue)"
     } else if let dataValue = value as? Data {
       return dataValue.base64EncodedString()
     } else if let arrayValue = value as? [Any] {
-      return arrayValue.map { sanitizeEXIFValue($0) }
+      return "\(arrayValue.map { sanitizeEXIFValue($0) })"
     } else if let dictValue = value as? [String: Any] {
-      return dictValue.mapValues { sanitizeEXIFValue($0) }
+      return "\(dictValue.mapValues { sanitizeEXIFValue($0) })"
     }
-    return value
+    return "\(value)"
   }
 
-  static func extractMetadata(for url: URL) async -> MediaMetadata {
+  @MainActor static func extractMetadata(for url: URL) async -> MediaMetadata {
     var metadata = MediaMetadata(
       creationDate: nil,
       modificationDate: nil,
@@ -91,7 +91,7 @@ struct MetadataExtractor {
     if url.isImage() {
       if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
         if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-          var extraEXIF: [String: Any] = [:]
+          var extraEXIF: [String: String] = [:]
 
           if let width = properties[kCGImagePropertyPixelWidth] as? Double,
             let height = properties[kCGImagePropertyPixelHeight] as? Double
@@ -114,7 +114,7 @@ struct MetadataExtractor {
             metadata.gps = gpsLocation
 
             for (key, value) in gps {
-              extraEXIF["gps_\(key)"] = value
+              extraEXIF["gps_\(key)"] = "\(value)"
             }
           }
 
@@ -239,14 +239,14 @@ struct MetadataExtractor {
     }
 
     if url.isVideo() {
-      let asset = AVAsset(url: url)
+      let asset = AVURLAsset(url: url)
       do {
         let duration = try await asset.load(.duration)
         metadata.duration = CMTimeGetSeconds(duration)
 
         let metadataItems = try await asset.load(.commonMetadata)
 
-        var extraEXIF: [String: Any] = [:]
+        var extraEXIF: [String: String] = [:]
 
         for item in metadataItems {
           guard let key = item.identifier,

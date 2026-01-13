@@ -81,7 +81,7 @@ struct ApplePhotosItem {
   }
 }
 
-class ImportApplePhotos: ObservableObject {
+class ImportApplePhotos: ObservableObject, @unchecked Sendable {
   @Published var sortedMediaItems: [ApplePhotosMediaItem] = []
   @Published var selectedMediaItems: Set<MediaItem> = []
 

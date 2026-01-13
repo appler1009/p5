@@ -3,7 +3,7 @@ import Foundation
 import GRDB
 import ImageIO
 
-class ImportLocalFiles {
+class ImportLocalFiles: @unchecked Sendable {
   private var mediaItems: [LocalFileSystemMediaItem] = []
   private var sourceDirectory: URL?
 

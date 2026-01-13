@@ -5,22 +5,23 @@ extension Notification.Name {
   static let newMediaItemImported = Notification.Name("newMediaItemImported")
 }
 
+@MainActor
 class MediaScanner: ObservableObject {
-  static let shared = MediaScanner()
+  @MainActor static let shared = MediaScanner()
 
   @Published var items: [LocalFileSystemMediaItem] = []
   @Published var isScanning = false
   @Published var scanProgress: (current: Int, total: Int)? = nil
 
   private init() {
-    loadFromDB()
+    Task { await loadFromDB() }
   }
 
-  func loadFromDB() {
+  func loadFromDB() async {
     items = DatabaseManager.shared.getAllItems()
   }
 
-  func reset() {
+  func reset() async {
     items.removeAll()
     DatabaseManager.shared.clearAll()
   }

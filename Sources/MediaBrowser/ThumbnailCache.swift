@@ -1,4 +1,5 @@
 import AVFoundation
+import AVFoundation
 import Combine
 import CryptoKit
 import SwiftUI
@@ -7,8 +8,9 @@ extension Notification.Name {
   static let thumbnailDidBecomeAvailable = Notification.Name("ThumbnailDidBecomeAvailable")
 }
 
+@MainActor
 class ThumbnailCache {
-  static let shared = ThumbnailCache()
+  @MainActor static let shared = ThumbnailCache()
   private var cache = NSCache<NSString, NSImage>()
   private let cacheDir: String
   static let thumbnailSize = CGSize(width: 200, height: 200)
@@ -132,14 +134,24 @@ class ThumbnailCache {
     var cgImage: CGImage?
     if url.isVideo() {
       // For videos, use AVAssetImageGenerator
-      let asset = AVAsset(url: url)
+      let asset = AVURLAsset(url: url)
       let generator = AVAssetImageGenerator(asset: asset)
       generator.maximumSize = ThumbnailCache.thumbnailSize
       generator.appliesPreferredTrackTransform = true
       do {
         let duration = try await asset.load(.duration)
         let time = CMTime(seconds: min(0.5, CMTimeGetSeconds(duration) / 2), preferredTimescale: 30)
-        cgImage = try? generator.copyCGImage(at: time, actualTime: nil)
+        cgImage = try await withCheckedThrowingContinuation { continuation in
+          generator.generateCGImageAsynchronously(for: time) { cg, actualTime, error in
+            if let error = error {
+              continuation.resume(throwing: error)
+            } else if let cg = cg {
+              continuation.resume(returning: cg)
+            } else {
+              continuation.resume(throwing: NSError(domain: "Thumbnail", code: 0, userInfo: nil))
+            }
+          }
+        }
       } catch {
         // ignore
       }

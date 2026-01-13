@@ -655,7 +655,7 @@ struct ImportView: View {
 
 // MARK: - Import Callback Handlers
 
-class ScanCallbacks {
+class ScanCallbacks: @unchecked Sendable {
   let onMediaFound: (MediaItem) -> Void
   let onComplete: () -> Void
   let onError: (Error) -> Void
@@ -671,7 +671,7 @@ class ScanCallbacks {
   }
 }
 
-class ImportCallbacks {
+class ImportCallbacks: @unchecked Sendable {
   let onMediaImported: (MediaItem) -> Void
   let onMediaSkipped: (MediaItem) -> Void
   let onComplete: () -> Void
@@ -692,7 +692,7 @@ class ImportCallbacks {
 
 // MARK: - Import Progress Counters
 
-class ImportProgressCounter: ObservableObject {
+class ImportProgressCounter: ObservableObject, @unchecked Sendable {
   private var allItems: Set<MediaItem> = Set()
   @Published var doneItemsCount: Int = 0
   @Published var totalItemsCount: Int = 0
@@ -722,7 +722,7 @@ class ImportProgressCounter: ObservableObject {
   }
 }
 
-class URLImportProgressCounter: ImportProgressCounter {
+class URLImportProgressCounter: ImportProgressCounter, @unchecked Sendable {
   private var allURLs: Set<URL> = Set()
   private var mediaItemLookup: [URL: MediaItem] = [:]
   private var doneURLsCount: Int = 0
@@ -773,7 +773,7 @@ class URLImportProgressCounter: ImportProgressCounter {
   }
 }
 
-class CameraFileImportProgressCounter: ImportProgressCounter {
+class CameraFileImportProgressCounter: ImportProgressCounter, @unchecked Sendable {
   private var allCameraItems: Set<ICCameraItem> = Set()
   private var mediaItemLookup: [ICCameraItem: MediaItem] = [:]
   private var doneCameraItemsCount: Int = 0

@@ -139,7 +139,7 @@ struct SettingsView: View {
             }
             Spacer()
             Button("Reset") {
-              MediaScanner.shared.reset()
+              Task { await MediaScanner.shared.reset() }
             }
             .buttonStyle(.bordered)
             .foregroundColor(.red)
@@ -365,8 +365,8 @@ struct SettingsView: View {
 
   /// Update uploading file name
   func updateUploadProgress(fileName: String?) {
-    DispatchQueue.main.async {
-      self.currentUploadItem = fileName
+    Task { @MainActor in
+      updateUploadProgress(fileName: fileName)
     }
   }
 
@@ -380,7 +380,9 @@ struct SettingsView: View {
       if let userInfo = notification.userInfo,
         let fileName = userInfo["fileName"] as? String
       {
-        updateUploadProgress(fileName: fileName)
+        Task { @MainActor in
+          updateUploadProgress(fileName: fileName)
+        }
       }
     }
   }
