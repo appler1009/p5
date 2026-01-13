@@ -79,8 +79,15 @@ struct ContentView: View {
           moveSelectionRight()
           return nil
         case 53:  // ESC
-          selectionState.selectedItems.removeAll()
-          return nil
+          // When the search field (NSTextView editor) has focus, let ESC pass to the custom ToolbarSearchField.performKeyEquivalent
+          // which clears the text if not empty or loses focus if empty.
+          // Otherwise, consume ESC to clear the grid selection.
+          if NSApp.keyWindow?.firstResponder is NSTextView {
+            return event  // let the search field handle ESC
+          } else {
+            selectionState.selectedItems.removeAll()
+            return nil
+          }
         default: return event
         }
       })
@@ -276,7 +283,11 @@ struct ContentView: View {
 class ToolbarSearchField: NSTextField {
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
     if event.keyCode == 53 {  // Escape
-      window?.makeFirstResponder(nil)
+      if !stringValue.isEmpty {
+        stringValue = ""  // Clear the text if not empty
+      } else {
+        NSApp.keyWindow?.makeFirstResponder(nil)  // Lose focus if empty
+      }
       return true
     }
     return super.performKeyEquivalent(with: event)
