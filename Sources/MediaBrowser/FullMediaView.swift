@@ -14,6 +14,7 @@ struct Triangle: Shape {
 }
 
 let animationDuration: TimeInterval = 0.1
+let swipeNavigationOffsetThreshold: CGFloat = 35
 
 struct SectionHeader: View {
   let title: String
@@ -424,9 +425,25 @@ struct FullMediaView: View {
   private var videoPlayerView: some View {
     Group {
       if let player = player {
-        AVPlayerViewRepresentable(player: player)
-          .id(item.id)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { outerGeo in
+          ScrollView([.horizontal, .vertical], showsIndicators: false) {
+            AVPlayerViewRepresentable(player: player)
+              .id(item.id)
+              .frame(
+                width: outerGeo.size.width,
+                height: outerGeo.size.height
+              )
+          }
+          .onScrollPhaseChange { oldPhase, newPhase, context in
+            guard currentScale <= 1.05 else { return }
+            let offsetX = context.geometry.contentOffset.x
+            if offsetX < (0 - swipeNavigationOffsetThreshold) {
+              showPreviousMedia()
+            } else if offsetX > swipeNavigationOffsetThreshold {
+              showNextMedia()
+            }
+          }
+        }
       } else {
         ProgressView()
       }
@@ -450,25 +467,13 @@ struct FullMediaView: View {
               )
               .gesture(magnifyGesture)
           }
-          .background(Color.black)
-          // 1. Force the bounce behavior even if the image fits perfectly
-          .scrollBounceBehavior(.always, axes: .horizontal)
-          // 2. Detect the phase of the scroll
           .onScrollPhaseChange { oldPhase, newPhase, context in
-            print("currentScale \(currentScale)")
             guard currentScale <= 1.05 else { return }
-
-            // 'idle' is the correct state for when the scroll/bounce has finished
-            print("newPhase \(newPhase)")
-            if newPhase == .idle || newPhase == .interacting {
-              let offsetX = context.geometry.contentOffset.x
-              print("offsetX \(offsetX)")
-
-              if offsetX < -60 {
-                showPreviousMedia()
-              } else if offsetX > 60 {
-                showNextMedia()
-              }
+            let offsetX = context.geometry.contentOffset.x
+            if offsetX < (0 - swipeNavigationOffsetThreshold) {
+              showPreviousMedia()
+            } else if offsetX > swipeNavigationOffsetThreshold {
+              showNextMedia()
             }
           }
         }

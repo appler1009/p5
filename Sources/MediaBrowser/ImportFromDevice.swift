@@ -550,7 +550,9 @@ actor ConcurrencyLimiter {
 }
 
 // MARK: - Device Delegate for ImageCaptureCore
-class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCameraDeviceDelegate, @unchecked Sendable {
+class DeviceDelegate: NSObject, ICDeviceBrowserDelegate, ICDeviceDelegate, ICCameraDeviceDelegate,
+  @unchecked Sendable
+{
   weak var thumbnailStateRef: AnyObject?
 
   let onDeviceFound: (ICDevice) -> Void
