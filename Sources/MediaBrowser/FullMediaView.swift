@@ -369,182 +369,237 @@ struct FullMediaView: View {
   @State private var currentScale: CGFloat = 1.0
   @State private var imageOffset: CGSize = .zero
 
+  // MARK: - Extracted Components
+
+  @ViewBuilder
+  private var sidebarView: some View {
+    if showSidebar {
+      VStack(spacing: 0) {
+        sidebarHeader
+        Divider()
+        MediaDetailsSidebar(item: item)
+        Spacer()
+      }
+      .frame(width: 350)
+      .background(Color(.windowBackgroundColor))
+      .shadow(radius: 10)
+      .transition(.move(edge: .leading))
+    }
+  }
+
+  private var sidebarHeader: some View {
+    HStack {
+      Spacer()
+      Button(action: { showSidebar = false }) {
+        Image(systemName: "sidebar.right")
+          .foregroundColor(.secondary)
+      }
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 8)
+    .background(Color(.controlBackgroundColor))
+  }
+
+  private var mainMediaView: some View {
+    ZStack {
+      Color.black.edgesIgnoringSafeArea(.all)
+      mediaContentView
+    }
+    .overlay(alignment: .bottom) { mediaTitleOverlay }
+    .overlay(alignment: .topTrailing) { closeButton }
+    .overlay(alignment: .topLeading) { livePhotoToggleButton }
+    .overlay(alignment: .leading) { previousButton }
+    .overlay(alignment: .trailing) { nextButton }
+    .overlay(keyCaptureView.opacity(0))
+    .onTapGesture { onClose() }
+  }
+
+  @ViewBuilder
+  private var mediaContentView: some View {
+    if item.type == .video || (item.type == .livePhoto && showVideo) {
+      videoPlayerView
+    } else {
+      imageView
+    }
+  }
+
+  private var videoPlayerView: some View {
+    Group {
+      if let player = player {
+        AVPlayerViewRepresentable(player: player)
+          .id(item.id)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else {
+        ProgressView()
+      }
+    }
+  }
+
+  private var imageView: some View {
+    Group {
+      if let image = fullImage {
+        GeometryReader { geometry in
+          ScrollView([.horizontal, .vertical], showsIndicators: false) {
+            Image(nsImage: image)
+              .resizable()
+              .interpolation(.high)
+              .aspectRatio(contentMode: .fit)
+              .id(item.id)
+              .scaleEffect(currentScale)
+              .frame(
+                width: geometry.size.width * currentScale,
+                height: geometry.size.height * currentScale
+              )
+              .gesture(magnifyGesture)
+          }
+          .highPriorityGesture(swipeNavigationGesture)
+        }
+      } else {
+        ProgressView()
+      }
+    }
+  }
+
+  // MARK: - Gesture Handlers
+
+  private var magnifyGesture: some Gesture {
+    MagnificationGesture()
+      .onChanged { value in
+        let targetScale = max(0.5, min(value, 5.0))
+        withAnimation(.spring(response: 0.15, dampingFraction: 0.85)) {
+          currentScale = targetScale
+        }
+      }
+  }
+
+  private var swipeNavigationGesture: some Gesture {
+    DragGesture(minimumDistance: 30)
+      .onEnded { value in
+        if currentScale == 1.0 {  // Only swipe if not zoomed
+          if value.translation.width > 0 {
+            showNextMedia()
+          } else if value.translation.width < 0 {
+            showPreviousMedia()
+          }
+        }
+      }
+  }
+
+  // MARK: - Overlay Components
+
+  private var mediaTitleOverlay: some View {
+    Text(item.displayName)
+      .padding(8)
+      .background(Color.black.opacity(0.7))
+      .foregroundColor(.white)
+      .cornerRadius(8)
+      .padding(.bottom, 20)
+  }
+
+  private var closeButton: some View {
+    Button(action: onClose) {
+      Image(systemName: "xmark")
+        .foregroundColor(.white)
+        .padding(10)
+        .background(Color.black.opacity(0.5))
+        .clipShape(Circle())
+    }
+    .padding()
+  }
+
+  @ViewBuilder
+  private var livePhotoToggleButton: some View {
+    if item.type == .livePhoto {
+      Button(action: toggleLivePhoto) {
+        Image(systemName: showVideo ? "photo" : "livephoto")
+          .foregroundColor(.white)
+          .padding(10)
+          .background(Color.black.opacity(0.5))
+          .clipShape(Circle())
+      }
+      .padding()
+    }
+  }
+
+  private var previousButton: some View {
+    VStack {
+      Spacer()
+      Button(action: showPreviousMedia) {
+        Image(systemName: "chevron.left")
+          .foregroundColor(.white)
+          .padding(10)
+          .background(Color.black.opacity(0.5))
+          .clipShape(Circle())
+      }
+      .padding(.leading)
+      Spacer()
+    }
+  }
+
+  private var nextButton: some View {
+    VStack {
+      Spacer()
+      Button(action: showNextMedia) {
+        Image(systemName: "chevron.right")
+          .foregroundColor(.white)
+          .padding(10)
+          .background(Color.black.opacity(0.5))
+          .clipShape(Circle())
+      }
+      .padding(.trailing)
+      Spacer()
+    }
+  }
+
+  private var keyCaptureView: some View {
+    KeyCaptureView(onKey: handleKeyPress)
+  }
+
+  // MARK: - Action Methods
+
+  private func toggleLivePhoto() {
+    showVideo.toggle()
+    if showVideo {
+      loadVideo()
+    } else {
+      player?.pause()
+      loadImage()
+    }
+  }
+
+  private func handleKeyPress(_ event: NSEvent) -> NSEvent? {
+    switch event.keyCode {
+    case 53:  // ESC
+      if currentScale < 0.99 || currentScale > 1.01 {
+        withAnimation(.easeInOut(duration: animationDuration)) {
+          currentScale = 1.0
+          imageOffset = .zero
+        }
+        return nil
+      } else {
+        onClose()
+        return nil
+      }
+    case 123:  // left arrow
+      showPreviousMedia()
+      return nil
+    case 124:  // right arrow
+      showNextMedia()
+      return nil
+    case 23, 33:  // CMD+I or [
+      withAnimation(.easeInOut(duration: animationDuration)) {
+        showSidebar.toggle()
+      }
+      return nil
+    default:
+      return event
+    }
+  }
+
   var body: some View {
     HStack(spacing: 0) {
-      // Sidebar (left side)
-      if showSidebar {
-        VStack(spacing: 0) {
-          // Sidebar header
-          HStack {
-            Spacer()
-            Button(action: { showSidebar = false }) {
-              Image(systemName: "sidebar.right")
-                .foregroundColor(.secondary)
-            }
-          }
-          .padding(.horizontal, 16)
-          .padding(.vertical, 8)
-          .background(Color(.controlBackgroundColor))
-
-          Divider()
-
-          MediaDetailsSidebar(item: item)
-
-          Spacer()
-        }
-        .frame(width: 350)
-        .background(Color(.windowBackgroundColor))
-        .shadow(radius: 10)
-        .transition(.move(edge: .leading))
-      }
-
-      // Main media view
-      ZStack {
-        Color.black.edgesIgnoringSafeArea(.all)
-
-        if item.type == .video || (item.type == .livePhoto && showVideo) {
-          if let player = player {
-            AVPlayerViewRepresentable(player: player)
-              .id(item.id)
-              .frame(maxWidth: .infinity, maxHeight: .infinity)
-          } else {
-            ProgressView()
-          }
-        } else {
-          if let image = fullImage {
-            GeometryReader { geometry in
-              ScrollView([.horizontal, .vertical]) {
-                Image(nsImage: image)
-                  .resizable()
-                  .interpolation(.high)
-                  .aspectRatio(contentMode: .fit)
-                  .id(item.id)
-                  .scaleEffect(currentScale)
-                  .frame(
-                    width: geometry.size.width * currentScale,
-                    height: geometry.size.height * currentScale
-                  )
-              }
-              .gesture(
-                MagnificationGesture()
-                  .onChanged { value in
-                    let logDelta = log(value) * 0.15
-                    let targetScale = max(0.5, min(currentScale * exp(logDelta), 5.0))
-                    withAnimation(.spring(response: 0.15, dampingFraction: 0.85)) {
-                      currentScale = targetScale
-                    }
-                  }
-              )
-            }
-          } else {
-            ProgressView()
-          }
-        }
-      }
-      .overlay(alignment: .bottom) {
-        Text(item.displayName)
-          .padding(8)
-          .background(Color.black.opacity(0.7))
-          .foregroundColor(.white)
-          .cornerRadius(8)
-          .padding(.bottom, 20)
-      }
-      .overlay(alignment: .topTrailing) {
-        Button(action: onClose) {
-          Image(systemName: "xmark")
-            .foregroundColor(.white)
-            .padding(10)
-            .background(Color.black.opacity(0.5))
-            .clipShape(Circle())
-        }
-        .padding()
-      }
-      .overlay(alignment: .topLeading) {
-        if item.type == .livePhoto {
-          Button(action: {
-            showVideo.toggle()
-            if showVideo {
-              loadVideo()
-            } else {
-              player?.pause()
-              loadImage()
-            }
-          }) {
-            Image(systemName: showVideo ? "photo" : "livephoto")
-              .foregroundColor(.white)
-              .padding(10)
-              .background(Color.black.opacity(0.5))
-              .clipShape(Circle())
-          }
-          .padding()
-        }
-      }
-      .overlay(alignment: .leading) {
-        VStack {
-          Spacer()
-          Button(action: showPreviousMedia) {
-            Image(systemName: "chevron.left")
-              .foregroundColor(.white)
-              .padding(10)
-              .background(Color.black.opacity(0.5))
-              .clipShape(Circle())
-          }
-          .padding(.leading)
-          Spacer()
-        }
-      }
-      .overlay(alignment: .trailing) {
-        VStack {
-          Spacer()
-          Button(action: showNextMedia) {
-            Image(systemName: "chevron.right")
-              .foregroundColor(.white)
-              .padding(10)
-              .background(Color.black.opacity(0.5))
-              .clipShape(Circle())
-          }
-          .padding(.trailing)
-          Spacer()
-        }
-      }
-      .overlay(
-        KeyCaptureView(onKey: { event in
-          switch event.keyCode {
-          case 53:
-            if currentScale < 0.99 || currentScale > 1.01 {
-              withAnimation(.easeInOut(duration: animationDuration)) {
-                currentScale = 1.0
-                imageOffset = .zero
-              }
-              return nil
-            } else {
-              onClose()
-              return nil  // ESC
-            }
-          case 123:
-            showPreviousMedia()
-            return nil  // left arrow
-          case 124:
-            showNextMedia()
-            return nil  // right arrow
-          case 23:
-            withAnimation(.easeInOut(duration: animationDuration)) {
-              showSidebar.toggle()
-            }
-            return nil  // CMD+I
-          case 33:
-            withAnimation(.easeInOut(duration: animationDuration)) {
-              showSidebar.toggle()
-            }
-            return nil  // [ key
-          default: return event
-          }
-        })
-        .opacity(0)
-      )
-      .onTapGesture {
-        onClose()
-      }
+      sidebarView
+      mainMediaView
     }
     .overlay(alignment: .bottomLeading) {
       // Sidebar toggle button
