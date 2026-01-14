@@ -369,6 +369,7 @@ struct FullMediaView: View {
   @State private var imageOffset: CGSize = .zero
   @State private var rotationAngle: Angle = .degrees(0)
   @State private var lastScale: CGFloat = 1.0
+  @State private var cursorLocation: CGPoint? = nil
 
   // MARK: - Extracted Components
 
@@ -470,7 +471,16 @@ struct FullMediaView: View {
                 width: imageSize.width * zoomedScale,
                 height: imageSize.height * zoomedScale
               )
+              .offset(imageOffset)
               .gesture(magnifyGesture)
+              .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                  cursorLocation = location
+                case .ended:
+                  cursorLocation = nil
+                }
+              }
           }
           .onScrollPhaseChange { oldPhase, newPhase, context in
             guard currentScale <= 1.05 else { return }
@@ -495,6 +505,19 @@ struct FullMediaView: View {
       .onChanged { value in
         let newScale = lastScale * value.magnitude
         let targetScale = max(0.5, min(newScale, 5.0))
+
+        // Adjust offset for cursor-centered zooming
+        if let cursor = cursorLocation, targetScale > 1.0 {
+          // For zoom > 1, center on cursor
+          let scaleRatio = targetScale / currentScale
+          let newOffsetX = cursor.x - (cursor.x - imageOffset.width) * scaleRatio
+          let newOffsetY = cursor.y - (cursor.y - imageOffset.height) * scaleRatio
+          imageOffset = CGSize(width: newOffsetX, height: newOffsetY)
+        } else if targetScale <= 1.0 {
+          // For zoom <= 1, center the image
+          imageOffset = .zero
+        }
+
         withAnimation(.easeInOut(duration: 0.1)) {
           currentScale = targetScale
         }
@@ -607,6 +630,7 @@ struct FullMediaView: View {
         withAnimation(.easeInOut(duration: animationDuration)) {
           currentScale = 1.0
           imageOffset = .zero
+          cursorLocation = nil
         }
         return nil
       } else {
@@ -677,6 +701,8 @@ struct FullMediaView: View {
       rotationAngle = .degrees(0)
       currentScale = 1.0
       lastScale = 1.0
+      imageOffset = .zero
+      cursorLocation = nil
       if item.type == .video || (item.type == .livePhoto && showVideo) {
         loadVideo()
       } else if item.type == .photo || (item.type == .livePhoto && !showVideo) {
@@ -701,6 +727,7 @@ struct FullMediaView: View {
     player?.pause()
     currentScale = 1.0
     imageOffset = .zero
+    cursorLocation = nil
     rotationAngle = .degrees(0)
     onPrev()
   }
@@ -782,6 +809,7 @@ struct FullMediaView: View {
     player?.pause()
     currentScale = 1.0
     imageOffset = .zero
+    cursorLocation = nil
     rotationAngle = .degrees(0)
     onNext()
   }
