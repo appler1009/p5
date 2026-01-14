@@ -103,6 +103,19 @@ class DatabaseManager {
     }
   }
 
+  func updateEditedUrl(for itemId: Int, editedUrl: URL) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "UPDATE local_media_items SET edited_url = ? WHERE id = ?",
+          arguments: [editedUrl.absoluteString, itemId]
+        )
+      }
+    } catch {
+      print("Update edited URL error: \(error)")
+    }
+  }
+
   private func createTable() throws {
     try dbQueue?.write { db in
       try db.create(table: "local_media_items", ifNotExists: true) { t in

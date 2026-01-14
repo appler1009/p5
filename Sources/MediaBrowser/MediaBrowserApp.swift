@@ -1,5 +1,10 @@
 import SwiftUI
 
+extension Notification.Name {
+  static let rotateClockwise = Notification.Name("rotateClockwise")
+  static let rotateCounterClockwise = Notification.Name("rotateCounterClockwise")
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
@@ -77,6 +82,23 @@ struct MediaBrowserApp: App {
           Label("Import", systemImage: "iphone.and.arrow.forward")
         }
         .keyboardShortcut("O", modifiers: .command)
+      }
+
+      // Edit menu commands for photo rotation
+      CommandGroup(after: .saveItem) {
+        Button(action: {
+          NotificationCenter.default.post(name: .rotateClockwise, object: nil)
+        }) {
+          Label("Rotate Clockwise", systemImage: "arrow.clockwise")
+        }
+        .keyboardShortcut("R", modifiers: .command)
+
+        Button(action: {
+          NotificationCenter.default.post(name: .rotateCounterClockwise, object: nil)
+        }) {
+          Label("Rotate Counter Clockwise", systemImage: "arrow.counterclockwise")
+        }
+        .keyboardShortcut("R", modifiers: [.command, .shift])
       }
     }
     WindowGroup(id: "settings") {

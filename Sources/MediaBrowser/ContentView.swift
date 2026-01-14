@@ -261,6 +261,63 @@ struct ContentView: View {
     mediaScanner.items[sourceIndex].s3SyncStatus = status
   }
 
+  private func handleRotateClockwise() async {
+    guard let selectedItem = selectionState.selectedItems.first as? LocalFileSystemMediaItem,
+      selectedItem.type == .photo
+    else { return }
+
+    await rotatePhoto(selectedItem, clockwise: true)
+  }
+
+  private func handleRotateCounterClockwise() async {
+    guard let selectedItem = selectionState.selectedItems.first as? LocalFileSystemMediaItem,
+      selectedItem.type == .photo
+    else { return }
+
+    await rotatePhoto(selectedItem, clockwise: false)
+  }
+
+  private func rotatePhoto(_ item: LocalFileSystemMediaItem, clockwise: Bool) async {
+    do {
+      // Load the current image
+      guard let image = NSImage(contentsOf: item.displayURL) else { return }
+
+      // Rotate the image
+      let rotatedImage =
+        clockwise
+        ? ImageProcessing.shared.rotateImageClockwise(image)
+        : ImageProcessing.shared.rotateImageCounterClockwise(image)
+
+      guard let rotatedImage = rotatedImage else { return }
+
+      // Create edited file URL
+      let editedURL = item.originalUrl.createEditedFileURL()
+
+      // Save rotated image with EXIF preservation
+      try await ImageProcessing.shared.saveRotatedImage(
+        rotatedImage,
+        to: editedURL,
+        preservingEXIF: true,
+        sourceURL: item.originalUrl
+      )
+
+      // Update the media item
+      item.editedUrl = editedURL
+
+      // Update database
+      DatabaseManager.shared.updateEditedUrl(for: item.id, editedUrl: editedURL)
+
+      // Regenerate thumbnail
+      _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: editedURL, mediaItem: item)
+
+      // Update UI
+      mediaScanner.objectWillChange.send()
+
+    } catch {
+      print("Error rotating photo: \(error)")
+    }
+  }
+
   /// Listen for S3 sync status updates
   private func setupS3SyncNotifications() {
     NotificationCenter.default.addObserver(
@@ -275,6 +332,27 @@ struct ContentView: View {
         Task { @MainActor in
           updateItem(itemId: itemId, statusRaw: statusRaw)
         }
+      }
+    }
+
+    // Add observers for rotation commands
+    NotificationCenter.default.addObserver(
+      forName: .rotateClockwise,
+      object: nil,
+      queue: .main
+    ) { _ in
+      Task { @MainActor in
+        await handleRotateClockwise()
+      }
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .rotateCounterClockwise,
+      object: nil,
+      queue: .main
+    ) { _ in
+      Task { @MainActor in
+        await handleRotateCounterClockwise()
       }
     }
   }

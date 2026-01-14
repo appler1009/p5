@@ -615,6 +615,16 @@ struct FullMediaView: View {
         showSidebar.toggle()
       }
       return nil
+    case 15:  // R key
+      if event.modifierFlags.contains(.command) {
+        if event.modifierFlags.contains(.shift) {
+          Task { await handleRotateCounterClockwise() }
+        } else {
+          Task { await handleRotateClockwise() }
+        }
+        return nil
+      }
+      return event
     default:
       return event
     }
@@ -680,6 +690,57 @@ struct FullMediaView: View {
     currentScale = 1.0
     imageOffset = .zero
     onPrev()
+  }
+
+  private func handleRotateClockwise() async {
+    await rotatePhoto(clockwise: true)
+  }
+
+  private func handleRotateCounterClockwise() async {
+    await rotatePhoto(clockwise: false)
+  }
+
+  private func rotatePhoto(clockwise: Bool) async {
+    do {
+      // Load the current image
+      guard let image = NSImage(contentsOf: item.displayURL) else { return }
+
+      // Rotate the image
+      let rotatedImage =
+        clockwise
+        ? ImageProcessing.shared.rotateImageClockwise(image)
+        : ImageProcessing.shared.rotateImageCounterClockwise(image)
+
+      guard let rotatedImage = rotatedImage else { return }
+
+      // Create edited file URL
+      let editedURL = item.originalUrl.createEditedFileURL()
+
+      // Save rotated image with EXIF preservation
+      try await ImageProcessing.shared.saveRotatedImage(
+        rotatedImage,
+        to: editedURL,
+        preservingEXIF: true,
+        sourceURL: item.originalUrl
+      )
+
+      // Update the media item
+      item.editedUrl = editedURL
+
+      // Update database
+      DatabaseManager.shared.updateEditedUrl(for: item.id, editedUrl: editedURL)
+
+      // Regenerate thumbnail
+      _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: editedURL, mediaItem: item)
+
+      // Reload the image in the view
+      if item.type == .photo || (item.type == .livePhoto && !showVideo) {
+        loadImage()
+      }
+
+    } catch {
+      print("Error rotating photo: \(error)")
+    }
   }
 
   private func showNextMedia() {

@@ -92,6 +92,19 @@ extension URL {
   func isMedia() -> Bool {
     return isImage() || isVideo()
   }
+
+  /// Creates the edited file URL for a given original URL
+  func createEditedFileURL() -> URL {
+    let originalPath = self.path
+    let baseName = self.extractBaseName()
+    let fileExtension = self.pathExtension
+
+    // Create the edited filename: OriginalBaseName_Edited.OriginalExtension
+    let editedFileName = "\(baseName)_Edited.\(fileExtension)"
+    let editedPath = (originalPath as NSString).deletingLastPathComponent + "/" + editedFileName
+
+    return URL(fileURLWithPath: editedPath)
+  }
 }
 
 extension String {

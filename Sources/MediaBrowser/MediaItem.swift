@@ -39,7 +39,7 @@ class LocalFileSystemMediaItem: MediaItem, @unchecked Sendable {
   private static let nextIdLock = NSLock()
 
   let originalUrl: URL
-  let editedUrl: URL?
+  var editedUrl: URL?
   let liveUrl: URL?
 
   override var displayName: String {

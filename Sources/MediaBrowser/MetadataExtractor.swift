@@ -341,4 +341,12 @@ struct MetadataExtractor {
 
     return metadata
   }
+
+  /// Extracts EXIF metadata properties from an image URL
+  static func extractEXIFProperties(from url: URL) -> [CFString: Any]? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+      return nil
+    }
+    return CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+  }
 }
