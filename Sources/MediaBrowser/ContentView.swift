@@ -194,6 +194,7 @@ struct ContentView: View {
     let nextItem = sortedItems[nextIndex]
     lightboxItem = nextItem
     selectionState.selectedItems = [nextItem]
+    selectionState.scrollToItem = nextItem
   }
 
   private func prevFullScreenItem() {
@@ -206,6 +207,7 @@ struct ContentView: View {
     let prevItem = sortedItems[prevIndex]
     lightboxItem = prevItem
     selectionState.selectedItems = [prevItem]
+    selectionState.scrollToItem = prevItem
   }
 
   private func selectItems(_ items: Set<MediaItem>) {

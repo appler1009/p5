@@ -3,6 +3,7 @@ import SwiftUI
 class GridSelectionState: ObservableObject {
   @Published var selectedItems: Set<MediaItem> = []
   @Published var lastSelectedByKeyboard: MediaItem?
+  @Published var scrollToItem: MediaItem?
 }
 
 struct SectionGridView: View {

@@ -97,6 +97,13 @@ struct MediaGridView: View {
             }
           }
         }
+        .onChange(of: selectionState.scrollToItem) { _, newValue in
+          if let item = newValue {
+            withAnimation(.easeInOut(duration: 0.1)) {
+              proxy.scrollTo("item-\(item.id)", anchor: .center)
+            }
+          }
+        }
       }
       .scrollPosition(id: $scrollTarget, anchor: scrollAnchor)
     }
