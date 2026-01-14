@@ -368,6 +368,7 @@ struct FullMediaView: View {
   @State private var currentScale: CGFloat = 1.0
   @State private var imageOffset: CGSize = .zero
   @State private var rotationAngle: Angle = .degrees(0)
+  @State private var lastScale: CGFloat = 1.0
 
   // MARK: - Extracted Components
 
@@ -456,16 +457,18 @@ struct FullMediaView: View {
       if let image = fullImage {
         GeometryReader { outerGeo in
           ScrollView([.horizontal, .vertical], showsIndicators: false) {
+            let imageSize = image.size
+            let fitScale = min(
+              outerGeo.size.width / imageSize.width, outerGeo.size.height / imageSize.height)
+            let zoomedScale = fitScale * currentScale
             Image(nsImage: image)
               .resizable()
               .interpolation(.high)
-              .aspectRatio(contentMode: .fit)
               .id(item.id)
-              .scaleEffect(currentScale)
               .rotationEffect(rotationAngle)
               .frame(
-                width: outerGeo.size.width * currentScale,
-                height: outerGeo.size.height * currentScale
+                width: imageSize.width * zoomedScale,
+                height: imageSize.height * zoomedScale
               )
               .gesture(magnifyGesture)
           }
@@ -490,10 +493,14 @@ struct FullMediaView: View {
   private var magnifyGesture: some Gesture {
     MagnificationGesture()
       .onChanged { value in
-        let targetScale = max(0.5, min(value, 5.0))
-        withAnimation(.spring(response: 0.15, dampingFraction: 0.85)) {
+        let newScale = lastScale * value.magnitude
+        let targetScale = max(0.5, min(newScale, 5.0))
+        withAnimation(.easeInOut(duration: 0.1)) {
           currentScale = targetScale
         }
+      }
+      .onEnded { _ in
+        lastScale = currentScale
       }
   }
 
@@ -668,6 +675,8 @@ struct FullMediaView: View {
       player = nil
       showVideo = false
       rotationAngle = .degrees(0)
+      currentScale = 1.0
+      lastScale = 1.0
       if item.type == .video || (item.type == .livePhoto && showVideo) {
         loadVideo()
       } else if item.type == .photo || (item.type == .livePhoto && !showVideo) {
