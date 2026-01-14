@@ -357,6 +357,14 @@ struct ContentView: View {
         await handleRotateCounterClockwise()
       }
     }
+
+    NotificationCenter.default.addObserver(
+      forName: .openSettings,
+      object: nil,
+      queue: .main
+    ) { _ in
+      openWindow(id: "settings")
+    }
   }
 }
 

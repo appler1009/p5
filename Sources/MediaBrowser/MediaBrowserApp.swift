@@ -3,6 +3,7 @@ import SwiftUI
 extension Notification.Name {
   static let rotateClockwise = Notification.Name("rotateClockwise")
   static let rotateCounterClockwise = Notification.Name("rotateCounterClockwise")
+  static let openSettings = Notification.Name("openSettings")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -79,9 +80,21 @@ struct MediaBrowserApp: App {
         Button(action: {
           // Try to open import window via window group
         }) {
-          Label("Import", systemImage: "iphone.and.arrow.forward")
+          Label("Import...", systemImage: "iphone.and.arrow.forward")
         }
         .keyboardShortcut("O", modifiers: .command)
+
+        Divider()
+      }
+
+      // Add Settings to app menu after About
+      CommandGroup(after: .appInfo) {
+        Button(action: {
+          NotificationCenter.default.post(name: .openSettings, object: nil)
+        }) {
+          Label("Settings...", systemImage: "gear")
+        }
+        .keyboardShortcut(",", modifiers: .command)
       }
 
       // Photos menu for photo operations
