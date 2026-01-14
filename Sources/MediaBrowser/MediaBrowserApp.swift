@@ -84,8 +84,8 @@ struct MediaBrowserApp: App {
         .keyboardShortcut("O", modifiers: .command)
       }
 
-      // Edit menu commands for photo rotation
-      CommandGroup(after: .saveItem) {
+      // Photos menu for photo operations
+      CommandMenu("Photos") {
         Button(action: {
           NotificationCenter.default.post(name: .rotateClockwise, object: nil)
         }) {
