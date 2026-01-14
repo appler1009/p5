@@ -129,7 +129,15 @@ struct ContentView: View {
     }
 
     .onAppear {
+
       setupS3SyncNotifications()
+
+      DispatchQueue.main.async {
+
+        NSApp.windows.first?.title = ""
+
+      }
+
     }
     .toolbar {
       ToolbarItem(placement: .navigation) {
@@ -181,8 +189,8 @@ struct ContentView: View {
       }
     }
 
+    .navigationTitle("")
   }
-
   private func nextFullScreenItem() {
     guard let currentLightboxItem = lightboxItem,
       let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id })
