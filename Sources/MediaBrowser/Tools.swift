@@ -8,9 +8,15 @@ extension String {
       return extractApplePhotosBaseName()
     }
 
-    var baseName = self
+    // First remove common extensions (remove all extensions)
+    var baseName = (self as NSString).deletingPathExtension
 
-    // Remove edit markers first (before extensions)
+    // Remove edit markers
+    // Remove "_Edited" suffix first
+    if let editedRange = baseName.range(of: "_Edited", options: .backwards) {
+      baseName = String(baseName[..<editedRange.lowerBound])
+    }
+
     // Remove edit markers (e.g., "IMG_1234" from "IMG_1234 (Edited)")
     if let editMarkerRange = baseName.range(of: " \\(Edited\\)", options: .regularExpression) {
       baseName = String(baseName[..<editMarkerRange.lowerBound])
@@ -27,8 +33,7 @@ extension String {
       }
     }
 
-    // Then remove common extensions (remove all extensions)
-    return (baseName as NSString).deletingPathExtension
+    return baseName
   }
 
   func extractApplePhotosBaseName() -> String {

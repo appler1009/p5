@@ -3,7 +3,7 @@ import XCTest
 @testable import MediaBrowser
 
 final class ThumbnailCacheTests: XCTestCase {
-  func testThumbnailCache() async throws {
+  @MainActor func testThumbnailCache() async throws {
     let cache = ThumbnailCache.shared
     let testItem = LocalFileSystemMediaItem(
       id: 1, original: URL(fileURLWithPath: "/nonexistent.jpg"))

@@ -2,7 +2,7 @@ import XCTest
 
 @testable import MediaBrowser
 
-final class DatabaseManagerTests: XCTestCase {
+@MainActor final class DatabaseManagerTests: XCTestCase {
   func testDatabaseInsertAndRetrieve() throws {
     // Test database operations
     let db = DatabaseManager.shared

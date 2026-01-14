@@ -35,6 +35,12 @@ final class ToolsTests: XCTestCase {
 
     // Test case 10: iOS edited photo with E suffix at end
     XCTAssertEqual("ABCDE1234.JPG".extractBaseName(), "ABCD1234")
+
+    // Test case 11: New "_Edited" suffix
+    XCTAssertEqual("IMG_1234_Edited.JPG".extractBaseName(), "IMG_1234")
+
+    // Test case 12: "_Edited" with "(Edited)"
+    XCTAssertEqual("IMG_1234_Edited (Edited).JPG".extractBaseName(), "IMG_1234")
   }
 
   func testExtractApplePhotosBaseName() throws {

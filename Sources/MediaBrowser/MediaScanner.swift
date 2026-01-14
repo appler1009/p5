@@ -132,7 +132,10 @@ class MediaScanner: ObservableObject {
   func isEdited(base: String) -> Bool {
     // Check for "_Edited" suffix (new rotation naming)
     if base.hasSuffix("_Edited") {
-      return true
+      let prefix = base.dropLast(7)  // remove "_Edited"
+      if prefix.last?.isNumber == true {
+        return true
+      }
     }
 
     // Check for separators with E first (original naming)
@@ -140,7 +143,9 @@ class MediaScanner: ObservableObject {
     for sep in separators {
       if let range = base.range(of: sep, options: .backwards) {
         let after = base[range.upperBound...]
-        if after.hasPrefix("E") {
+        if after.hasPrefix("E") && after.count > 1
+          && after[after.index(after.startIndex, offsetBy: 1)].isNumber
+        {
           return true
         }
       }

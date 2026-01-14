@@ -3,7 +3,7 @@ import XCTest
 @testable import MediaBrowser
 
 final class MediaScannerTests: XCTestCase {
-  func testMediaScannerIsEdited() throws {
+  @MainActor func testMediaScannerIsEdited() throws {
     let scanner = MediaScanner.shared
 
     // Test original "E" naming scheme
@@ -18,7 +18,7 @@ final class MediaScannerTests: XCTestCase {
     XCTAssertFalse(scanner.isEdited(base: "IMG_Edited"))
   }
 
-  func testMediaScannerScan() async throws {
+  @MainActor func testMediaScannerScan() async throws {
     let scanner = MediaScanner.shared
     // Mock import directory to a non-existent path
     let originalCustom = DirectoryManager.shared.customImportDirectory
@@ -30,14 +30,14 @@ final class MediaScannerTests: XCTestCase {
     XCTAssertEqual(scanner.items.count, 0)
   }
 
-  func testMediaScannerCountItems() async throws {
+  @MainActor func testMediaScannerCountItems() async throws {
     let scanner = MediaScanner.shared
     let nonExistentURL = URL(fileURLWithPath: "/nonexistent")
     let count = await scanner.countItems(in: nonExistentURL)
     XCTAssertEqual(count, 0)
   }
 
-  func testMediaScannerScanDirectory() async throws {
+  @MainActor func testMediaScannerScanDirectory() async throws {
     let scanner = MediaScanner.shared
     let nonExistentURL = URL(fileURLWithPath: "/nonexistent")
     // Before

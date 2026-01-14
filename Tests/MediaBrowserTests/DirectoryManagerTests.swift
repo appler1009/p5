@@ -2,7 +2,7 @@ import XCTest
 
 @testable import MediaBrowser
 
-final class DirectoryManagerTests: XCTestCase {
+@MainActor final class DirectoryManagerTests: XCTestCase {
   func testDirectoryManager() throws {
     let manager = DirectoryManager.shared
     // Test remove
