@@ -505,6 +505,7 @@ struct FullMediaView: View {
       .onChanged { value in
         let newScale = lastScale * value.magnitude
         let targetScale = max(0.5, min(newScale, 5.0))
+        var targetOffset: CGSize = .zero
 
         // Adjust offset for cursor-centered zooming
         if let cursor = cursorLocation, targetScale > 1.0 {
@@ -512,13 +513,11 @@ struct FullMediaView: View {
           let scaleRatio = targetScale / currentScale
           let newOffsetX = cursor.x - (cursor.x - imageOffset.width) * scaleRatio
           let newOffsetY = cursor.y - (cursor.y - imageOffset.height) * scaleRatio
-          imageOffset = CGSize(width: newOffsetX, height: newOffsetY)
-        } else if targetScale <= 1.0 {
-          // For zoom <= 1, center the image
-          imageOffset = .zero
+          targetOffset = CGSize(width: newOffsetX, height: newOffsetY)
         }
 
         withAnimation(.easeInOut(duration: 0.1)) {
+          imageOffset = targetOffset
           currentScale = targetScale
         }
       }
