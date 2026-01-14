@@ -5,9 +5,17 @@ import XCTest
 final class MediaScannerTests: XCTestCase {
   func testMediaScannerIsEdited() throws {
     let scanner = MediaScanner.shared
+
+    // Test original "E" naming scheme
     XCTAssertTrue(scanner.isEdited(base: "IMG_E1234"))
     XCTAssertFalse(scanner.isEdited(base: "IMG_1234"))
     XCTAssertFalse(scanner.isEdited(base: "IMG_1234E"))
+
+    // Test new "_Edited" naming scheme
+    XCTAssertTrue(scanner.isEdited(base: "IMG_1234_Edited"))
+    XCTAssertTrue(scanner.isEdited(base: "DSC_0001_Edited"))
+    XCTAssertFalse(scanner.isEdited(base: "IMG_1234"))
+    XCTAssertFalse(scanner.isEdited(base: "IMG_Edited"))
   }
 
   func testMediaScannerScan() async throws {

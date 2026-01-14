@@ -130,7 +130,12 @@ class MediaScanner: ObservableObject {
   }
 
   func isEdited(base: String) -> Bool {
-    // Check for separators first
+    // Check for "_Edited" suffix (new rotation naming)
+    if base.hasSuffix("_Edited") {
+      return true
+    }
+
+    // Check for separators with E first (original naming)
     let separators = ["_", "-"]
     for sep in separators {
       if let range = base.range(of: sep, options: .backwards) {
@@ -151,6 +156,12 @@ class MediaScanner: ObservableObject {
   }
 
   private func getEditedBase(base: String) -> String? {
+    // For new "_Edited" naming scheme, just append "_Edited" if not already present
+    if !base.hasSuffix("_Edited") {
+      return "\(base)_Edited"
+    }
+
+    // For backward compatibility with original "E" naming scheme
     // Check for separators first
     let separators = ["_", "-"]
     for sep in separators {
@@ -170,6 +181,12 @@ class MediaScanner: ObservableObject {
   }
 
   private func getOriginalBase(base: String) -> String {
+    // Handle new "_Edited" suffix naming scheme
+    if base.hasSuffix("_Edited") {
+      return String(base.dropLast(7))  // Remove "_Edited" (7 characters)
+    }
+
+    // Handle original "E" naming scheme for backward compatibility
     // Check for separators first
     let separators = ["_", "-"]
     for sep in separators {
