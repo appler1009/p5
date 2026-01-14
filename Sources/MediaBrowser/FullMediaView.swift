@@ -162,7 +162,7 @@ struct MediaDetailsSidebar: View {
           let coordinate = CLLocationCoordinate2D(latitude: gps.latitude, longitude: gps.longitude)
           let region = MKCoordinateRegion(
             center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
           )
 
           Map(position: .constant(.region(region))) {
