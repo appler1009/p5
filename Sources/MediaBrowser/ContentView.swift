@@ -363,7 +363,19 @@ struct ContentView: View {
       object: nil,
       queue: .main
     ) { _ in
-      openWindow(id: "settings")
+      Task { @MainActor in
+        openWindow(id: "settings")
+      }
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .openImport,
+      object: nil,
+      queue: .main
+    ) { _ in
+      Task { @MainActor in
+        openWindow(id: "import")
+      }
     }
   }
 }

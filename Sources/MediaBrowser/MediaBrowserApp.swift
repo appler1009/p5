@@ -4,6 +4,7 @@ extension Notification.Name {
   static let rotateClockwise = Notification.Name("rotateClockwise")
   static let rotateCounterClockwise = Notification.Name("rotateCounterClockwise")
   static let openSettings = Notification.Name("openSettings")
+  static let openImport = Notification.Name("openImport")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -78,7 +79,7 @@ struct MediaBrowserApp: App {
         Divider()
 
         Button(action: {
-          // Try to open import window via window group
+          NotificationCenter.default.post(name: .openImport, object: nil)
         }) {
           Label("Import...", systemImage: "iphone.and.arrow.forward")
         }
@@ -114,13 +115,13 @@ struct MediaBrowserApp: App {
         .keyboardShortcut("R", modifiers: [.command, .shift])
       }
     }
-    WindowGroup(id: "settings") {
+    Window("Settings", id: "settings") {
       SettingsView()
     }
     .windowStyle(.hiddenTitleBar)
     .defaultSize(width: 600, height: 300)
 
-    WindowGroup(id: "import") {
+    Window("Import", id: "import") {
       ImportView()
     }
     .defaultSize(width: 900, height: 700)
