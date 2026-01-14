@@ -57,24 +57,37 @@ struct SettingsView: View {
             .padding(.bottom, 8)
 
             // Directory List
-            if !directoryManager.directories.isEmpty {
+            if !directoryManager.directoryStates.isEmpty {
               VStack(alignment: .leading, spacing: 1) {
-                ForEach(directoryManager.directories.indices, id: \.self) { index in
+                ForEach(directoryManager.directoryStates.indices, id: \.self) { index in
+                  let (url, isStale) = directoryManager.directoryStates[index]
                   HStack {
                     Image(systemName: "folder")
                       .foregroundColor(.secondary)
                       .frame(width: 16)
-                    Text(directoryManager.directories[index].path)
+                    Text(url.path)
                       .font(.callout)
                       .lineLimit(1)
-                    Spacer()
-                    Button(action: {
-                      directoryManager.removeDirectory(at: index)
-                    }) {
-                      Image(systemName: "trash")
-                        .foregroundColor(.red)
+                    if isStale {
+                      Image(systemName: "exclamationmark.triangle")
+                        .foregroundColor(.orange)
+                        .help("Bookmark is stale, renew access")
                     }
-                    .buttonStyle(.plain)
+                    Spacer()
+                    if isStale {
+                      Button("Renew") {
+                        directoryManager.renewDirectory(at: index)
+                      }
+                      .buttonStyle(.bordered)
+                    } else {
+                      Button(action: {
+                        directoryManager.removeDirectory(at: index)
+                      }) {
+                        Image(systemName: "trash")
+                          .foregroundColor(.red)
+                      }
+                      .buttonStyle(.plain)
+                    }
                   }
                   .padding(.vertical, 1)
                   .padding(.horizontal, 4)

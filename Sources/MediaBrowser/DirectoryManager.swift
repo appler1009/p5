@@ -4,7 +4,9 @@ import Foundation
 @MainActor
 class DirectoryManager: ObservableObject {
   @MainActor static let shared = DirectoryManager()
-  @Published var directories: [URL] = []
+  @Published var directoryStates: [(URL, Bool)] = []
+
+  var directories: [URL] { directoryStates.map { $0.0 } }
 
   // Import directory configuration
   @Published var customImportDirectory: URL? {
@@ -22,7 +24,7 @@ class DirectoryManager: ObservableObject {
   }
 
   private init() {
-    loadBookmarks()
+    loadDirectories()
     loadCustomImportDirectory()
   }
 
@@ -32,64 +34,68 @@ class DirectoryManager: ObservableObject {
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = false
     if panel.runModal() == .OK, let url = panel.url {
-      directories.append(url)
-      if url.startAccessingSecurityScopedResource() {
-        accessedURLs.insert(url)
+      if !directoryStates.contains(where: { $0.0 == url }) {
+        directoryStates.append((url, false))
+        if url.startAccessingSecurityScopedResource() {
+          accessedURLs.insert(url)
+        }
+        saveDirectories()
       }
-      saveBookmarks()
     }
   }
 
   func removeDirectory(at index: Int) {
-    let url = directories[index]
+    let (url, _) = directoryStates[index]
     url.stopAccessingSecurityScopedResource()
     accessedURLs.remove(url)
-    directories.remove(at: index)
-    saveBookmarks()
+    directoryStates.remove(at: index)
+    saveDirectories()
   }
 
-  private func saveBookmarks() {
-    let dirs = directories.compactMap { url -> [String: String]? in
-      do {
-        let bookmarkData = try url.bookmarkData(
-          options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-        let bookmarkBase64 = bookmarkData.base64EncodedString()
-        return ["path": url.path, "bookmark": bookmarkBase64]
-      } catch {
-        print("Error creating bookmark for \(url.path): \(error)")
-        return nil
+  func renewDirectory(at index: Int) {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = false
+    if panel.runModal() == .OK, let url = panel.url {
+      // Check if already exists elsewhere
+      if let existingIndex = directoryStates.firstIndex(where: { $0.0 == url }),
+        existingIndex != index
+      {
+        // Already exists, don't duplicate
+        return
+      }
+      // Stop old
+      let (oldUrl, _) = directoryStates[index]
+      oldUrl.stopAccessingSecurityScopedResource()
+      accessedURLs.remove(oldUrl)
+      // Set new
+      directoryStates[index] = (url, false)
+      if url.startAccessingSecurityScopedResource() {
+        accessedURLs.insert(url)
+      }
+      saveDirectories()
+    }
+  }
+
+  private func saveDirectories() {
+    // Remove duplicates by URL
+    var uniqueStates: [(URL, Bool)] = []
+    for state in directoryStates {
+      if !uniqueStates.contains(where: { $0.0 == state.0 }) {
+        uniqueStates.append(state)
       }
     }
-    do {
-      try FileManager.default.createDirectory(
-        atPath: (bookmarksFile as NSString).deletingLastPathComponent,
-        withIntermediateDirectories: true)
-      let data = try JSONSerialization.data(withJSONObject: dirs, options: [])
-      try data.write(to: URL(fileURLWithPath: bookmarksFile))
-    } catch {
-      print("Error saving bookmarks: \(error)")
-    }
+    directoryStates = uniqueStates
+    DatabaseManager.shared.saveDirectories(directoryStates)
   }
 
-  private func loadBookmarks() {
-    if let data = try? Data(contentsOf: URL(fileURLWithPath: bookmarksFile)),
-      let dirs = try? JSONSerialization.jsonObject(with: data) as? [[String: String]]
-    {
-      for dir in dirs {
-        if let bookmarkBase64 = dir["bookmark"],
-          let bookmarkData = Data(base64Encoded: bookmarkBase64)
-        {
-          var isStale = false
-          if let url = try? URL(
-            resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil,
-            bookmarkDataIsStale: &isStale), !isStale
-          {
-            directories.append(url)
-            if url.startAccessingSecurityScopedResource() {
-              accessedURLs.insert(url)
-            }
-          }
-        }
+  private func loadDirectories() {
+    directoryStates = DatabaseManager.shared.loadDirectories()
+    // Start accessing security scoped resources for non-stale
+    for (url, isStale) in directoryStates {
+      if !isStale && url.startAccessingSecurityScopedResource() {
+        accessedURLs.insert(url)
       }
     }
   }

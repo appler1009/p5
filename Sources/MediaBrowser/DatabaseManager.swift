@@ -37,11 +37,11 @@ class DatabaseManager {
     }
   }
 
-  func saveDirectories(_ directories: [URL]) {
+  func saveDirectories(_ directoryStates: [(URL, Bool)]) {
     do {
       try dbQueue?.write { db in
         try db.execute(sql: "DELETE FROM directories")
-        for url in directories {
+        for (url, _) in directoryStates {
           let bookmarkData = try url.bookmarkData(
             options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
           let bookmarkBase64 = bookmarkData.base64EncodedString()
@@ -55,29 +55,35 @@ class DatabaseManager {
     }
   }
 
-  func loadDirectories() -> [URL] {
-    var directories: [URL] = []
+  func loadDirectories() -> [(URL, Bool)] {
+    var directoryStates: [(URL, Bool)] = []
     do {
       try dbQueue?.read { db in
         let rows = try Row.fetchAll(db, sql: "SELECT * FROM directories")
         for row in rows {
-          if let bookmarkBase64 = row["bookmark"] as String?,
-            let bookmarkData = Data(base64Encoded: bookmarkBase64)
-          {
-            var isStale = false
-            if let url = try? URL(
-              resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil,
-              bookmarkDataIsStale: &isStale), !isStale
+          if let path = row["path"] as String? {
+            let url = URL(fileURLWithPath: path)
+            var isStale = true
+            if let bookmarkBase64 = row["bookmark"] as String?,
+              let bookmarkData = Data(base64Encoded: bookmarkBase64)
             {
-              directories.append(url)
+              if let resolvedUrl = try? URL(
+                resolvingBookmarkData: bookmarkData, options: .withSecurityScope, relativeTo: nil,
+                bookmarkDataIsStale: &isStale), !isStale
+              {
+                directoryStates.append((resolvedUrl, false))
+                continue
+              }
             }
+            // If no bookmark or stale, show path with stale
+            directoryStates.append((url, true))
           }
         }
       }
     } catch {
       print("Load directories error: \(error)")
     }
-    return directories
+    return directoryStates
   }
 
   func clearAll() {

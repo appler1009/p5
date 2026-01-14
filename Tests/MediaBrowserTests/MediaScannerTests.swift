@@ -24,7 +24,7 @@ final class MediaScannerTests: XCTestCase {
     let originalCustom = DirectoryManager.shared.customImportDirectory
     defer { DirectoryManager.shared.customImportDirectory = originalCustom }
     DirectoryManager.shared.customImportDirectory = URL(fileURLWithPath: "/nonexistent_import")
-    DirectoryManager.shared.directories = []
+    DirectoryManager.shared.directoryStates = []
     // Test scan with empty directories (no file system access)
     await scanner.scan(directories: [])
     XCTAssertEqual(scanner.items.count, 0)

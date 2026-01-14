@@ -27,7 +27,8 @@ class MediaScanner: ObservableObject {
   }
 
   func scan(directories: [URL]) async {
-    var dirs = directories
+    let validDirectories = DirectoryManager.shared.directoryStates.filter { !$0.1 }.map { $0.0 }
+    var dirs = validDirectories
     dirs.append(DirectoryManager.shared.importDirectory)
 
     await MainActor.run {

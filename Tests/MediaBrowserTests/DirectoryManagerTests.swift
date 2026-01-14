@@ -8,7 +8,7 @@ import XCTest
     // Test remove
     let testURL1 = URL(fileURLWithPath: "/tmp/testdir1")
     let testURL2 = URL(fileURLWithPath: "/tmp/testdir2")
-    manager.directories = [testURL1, testURL2]
+    manager.directoryStates = [(testURL1, false), (testURL2, false)]
 
     XCTAssertEqual(manager.directories.count, 2)
 
