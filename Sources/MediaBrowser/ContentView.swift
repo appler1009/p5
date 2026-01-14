@@ -128,7 +128,6 @@ struct ContentView: View {
       }
     }
 
-    .navigationTitle("Media Browser")
     .onAppear {
       setupS3SyncNotifications()
     }
