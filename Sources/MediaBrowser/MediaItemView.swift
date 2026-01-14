@@ -49,25 +49,27 @@ struct MediaItemView: View {
         RoundedRectangle(cornerRadius: cornerRadius)
           .fill(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
 
-        if let externalThumbnail = externalThumbnail {
-          // Use pre-loaded thumbnail (for import view)
-          externalThumbnail
-            .resizable()
-            .interpolation(.medium)
-            .aspectRatio(contentMode: .fill)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .clipped()
-        } else if let thumbnail = thumbnail {
-          // Use loaded thumbnail (for main gallery)
-          Image(nsImage: thumbnail)
-            .resizable()
-            .interpolation(.medium)
-            .aspectRatio(contentMode: .fill)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .clipped()
-        } else {
+         if let externalThumbnail = externalThumbnail {
+           // Use pre-loaded thumbnail (for import view)
+           externalThumbnail
+             .resizable()
+             .interpolation(.medium)
+             .aspectRatio(contentMode: .fill)
+             .frame(maxWidth: .infinity, maxHeight: .infinity)
+             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+             .clipped()
+             .transition(.opacity)
+         } else if let thumbnail = thumbnail {
+           // Use loaded thumbnail (for main gallery)
+           Image(nsImage: thumbnail)
+             .resizable()
+             .interpolation(.medium)
+             .aspectRatio(contentMode: .fill)
+             .frame(maxWidth: .infinity, maxHeight: .infinity)
+             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+             .clipped()
+             .transition(.opacity)
+         } else {
           Rectangle()
             .fill(Color.gray.opacity(0.3))
             .frame(maxWidth: .infinity, maxHeight: .infinity)

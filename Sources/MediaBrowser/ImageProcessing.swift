@@ -8,12 +8,12 @@ struct ImageProcessing {
 
   /// Rotates an image 90 degrees clockwise
   func rotateImageClockwise(_ image: NSImage) -> NSImage? {
-    return rotateImage(image, by: .pi / 2)  // 90 degrees clockwise
+    return rotateImage(image, by: -.pi / 2)  // -90 degrees (clockwise in CG coordinates)
   }
 
   /// Rotates an image 90 degrees counter-clockwise
   func rotateImageCounterClockwise(_ image: NSImage) -> NSImage? {
-    return rotateImage(image, by: -.pi / 2)  // 90 degrees counter-clockwise
+    return rotateImage(image, by: .pi / 2)  // 90 degrees (counter-clockwise in CG coordinates)
   }
 
   private func rotateImage(_ image: NSImage, by angle: CGFloat) -> NSImage? {

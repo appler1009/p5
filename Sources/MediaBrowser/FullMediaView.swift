@@ -367,6 +367,11 @@ struct FullMediaView: View {
 
   @State private var currentScale: CGFloat = 1.0
   @State private var imageOffset: CGSize = .zero
+  @State private var rotationAngle: Angle = .degrees(0) {
+    didSet {
+      print("📐 Rotation angle changed: \(oldValue.degrees)° → \(rotationAngle.degrees)°")
+    }
+  }
 
   // MARK: - Extracted Components
 
@@ -455,16 +460,17 @@ struct FullMediaView: View {
       if let image = fullImage {
         GeometryReader { outerGeo in
           ScrollView([.horizontal, .vertical], showsIndicators: false) {
-            Image(nsImage: image)
-              .resizable()
-              .interpolation(.high)
-              .aspectRatio(contentMode: .fit)
-              .id(item.id)
-              .scaleEffect(currentScale)
-              .frame(
-                width: outerGeo.size.width * currentScale,
-                height: outerGeo.size.height * currentScale
-              )
+             Image(nsImage: image)
+               .resizable()
+               .interpolation(.high)
+               .aspectRatio(contentMode: .fit)
+               .id(item.id)
+               .scaleEffect(currentScale)
+               .rotationEffect(rotationAngle)
+               .frame(
+                 width: outerGeo.size.width * currentScale,
+                 height: outerGeo.size.height * currentScale
+               )
               .gesture(magnifyGesture)
           }
           .onScrollPhaseChange { oldPhase, newPhase, context in
@@ -662,9 +668,11 @@ struct FullMediaView: View {
       .keyboardShortcut("i", modifiers: .command)
     }
     .onChange(of: item.id) {
+      print("🔄 Item changed (ID: \(item.id)) - resetting rotation to 0°")
       fullImage = nil
       player = nil
       showVideo = false
+      rotationAngle = .degrees(0)
       if item.type == .video || (item.type == .livePhoto && showVideo) {
         loadVideo()
       } else if item.type == .photo || (item.type == .livePhoto && !showVideo) {
@@ -689,57 +697,112 @@ struct FullMediaView: View {
     player?.pause()
     currentScale = 1.0
     imageOffset = .zero
+    print("⬅️ Navigating to previous - resetting rotation to 0°")
+    rotationAngle = .degrees(0)
     onPrev()
   }
 
   private func handleRotateClockwise() async {
+    print("↻ Handle rotate clockwise triggered")
     await rotatePhoto(clockwise: true)
   }
 
   private func handleRotateCounterClockwise() async {
+    print("↺ Handle rotate counter-clockwise triggered")
     await rotatePhoto(clockwise: false)
   }
 
   private func rotatePhoto(clockwise: Bool) async {
+    print("🔄 Starting rotation - clockwise: \(clockwise), current angle: \(rotationAngle.degrees)°")
+
+    // Start rotation animation
+    let targetAngle = clockwise ? Angle.degrees(90) : Angle.degrees(-90)
+    print("🎯 Target angle: \(targetAngle.degrees)°")
+
+    withAnimation(.easeInOut(duration: 0.3)) {
+      rotationAngle = targetAngle
+      print("🎬 Animation started - rotating to: \(rotationAngle.degrees)°")
+    }
+
+    // Wait a bit for animation to be visible
+    print("⏳ Waiting for animation visibility...")
+    try? await Task.sleep(nanoseconds: 150_000_000) // 0.15 seconds
+    print("✅ Animation wait complete, angle should be: \(rotationAngle.degrees)°")
+
     do {
       // Load the current image
-      guard let image = NSImage(contentsOf: item.displayURL) else { return }
+      print("📷 Loading current image...")
+      guard let image = NSImage(contentsOf: item.displayURL) else {
+        print("❌ Failed to load image")
+        // Reset rotation instantly if failed
+        rotationAngle = .degrees(0)
+        print("✅ Rotation reset to 0° (load failed)")
+        return
+      }
+      print("✅ Image loaded successfully")
 
       // Rotate the image
+      print("🔄 Processing image rotation...")
       let rotatedImage =
         clockwise
         ? ImageProcessing.shared.rotateImageClockwise(image)
         : ImageProcessing.shared.rotateImageCounterClockwise(image)
 
-      guard let rotatedImage = rotatedImage else { return }
+      guard let rotatedImage = rotatedImage else {
+        print("❌ Image rotation processing failed")
+        // Reset rotation instantly if failed
+        rotationAngle = .degrees(0)
+        print("✅ Rotation reset to 0° (rotation failed)")
+        return
+      }
+      print("✅ Image rotated successfully")
 
       // Create edited file URL
       let editedURL = item.originalUrl.createEditedFileURL()
+      print("📄 Created edited file URL: \(editedURL.lastPathComponent)")
 
       // Save rotated image with EXIF preservation
+      print("💾 Saving rotated image with EXIF...")
       try await ImageProcessing.shared.saveRotatedImage(
         rotatedImage,
         to: editedURL,
         preservingEXIF: true,
         sourceURL: item.originalUrl
       )
+      print("✅ Image saved successfully")
 
       // Update the media item
       item.editedUrl = editedURL
+      print("📝 Updated media item editedUrl")
 
       // Update database
       DatabaseManager.shared.updateEditedUrl(for: item.id, editedUrl: editedURL)
+      print("💾 Updated database")
 
       // Regenerate thumbnail
+      print("🖼️ Regenerating thumbnail...")
       _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: editedURL, mediaItem: item)
+      print("✅ Thumbnail regenerated")
 
-      // Reload the image in the view
+      // Snap back to 0 rotation instantly (no animation)
+      print("🔄 Instantly resetting rotation to 0°...")
+      rotationAngle = .degrees(0)
+      print("✅ Rotation reset to: \(rotationAngle.degrees)°")
+
+      // Reload the image in the view (this will show the new rotated image)
       if item.type == .photo || (item.type == .livePhoto && !showVideo) {
+        print("🔄 Reloading image in view...")
         loadImage()
+        print("✅ Image reloaded in view")
       }
 
+      print("🎉 Rotation completed successfully!")
+
     } catch {
-      print("Error rotating photo: \(error)")
+      print("❌ Error rotating photo: \(error)")
+      // Reset rotation instantly on error
+      rotationAngle = .degrees(0)
+      print("✅ Rotation reset to 0° (error)")
     }
   }
 
@@ -747,6 +810,8 @@ struct FullMediaView: View {
     player?.pause()
     currentScale = 1.0
     imageOffset = .zero
+    print("➡️ Navigating to next - resetting rotation to 0°")
+    rotationAngle = .degrees(0)
     onNext()
   }
 
