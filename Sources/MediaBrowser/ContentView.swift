@@ -284,7 +284,9 @@ class ToolbarSearchField: NSTextField {
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
     if event.keyCode == 53 {  // Escape
       if !stringValue.isEmpty {
-        stringValue = ""  // Clear the text if not empty
+        stringValue = ""  // Clear the text
+        // Update the SwiftUI binding since programmatic changes don't trigger delegate
+        (delegate as? FocusableTextField.Coordinator)?.parent.text = ""
       } else {
         NSApp.keyWindow?.makeFirstResponder(nil)  // Lose focus if empty
       }
