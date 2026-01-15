@@ -116,9 +116,7 @@ struct ContentView: View {
         FullMediaView(
           item: selectedLightboxItem as! LocalFileSystemMediaItem,
           onClose: {
-            withAnimation(.easeInOut(duration: 0.1)) {
-              lightboxItem = nil
-            }
+            lightboxItem = nil
           },
           onNext: nextFullScreenItem,
           onPrev: prevFullScreenItem
