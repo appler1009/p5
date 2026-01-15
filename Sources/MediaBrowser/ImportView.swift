@@ -31,8 +31,6 @@ struct ImportView: View {
   @State private var progressCounter: ImportProgressCounter? = nil
   @State private var progressUpdateTrigger = UUID()
 
-  @Environment(\.dismiss) private var dismiss
-
   // MARK: - Apple Photo Contents
   var applePhotosContent: some View {
     VStack(spacing: 16) {

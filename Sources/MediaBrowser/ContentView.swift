@@ -15,6 +15,7 @@ struct ContentView: View {
   @State private var searchTextField: NSTextField?
   @State private var scrollTarget: Int? = nil
   @State private var showSettingsSidebar = false
+  @State private var showImportSidebar = false
 
   private var sortedItems: [LocalFileSystemMediaItem] {
     let filteredItems =
@@ -122,6 +123,13 @@ struct ContentView: View {
             .frame(width: 350)
             .frame(maxHeight: .infinity)
             .background(Color(.windowBackgroundColor))
+        } else if showImportSidebar {
+          Divider()
+
+          ImportView()
+            .frame(width: 600)
+            .frame(maxHeight: .infinity)
+            .background(Color(.windowBackgroundColor))
         }
       }
 
@@ -161,6 +169,7 @@ struct ContentView: View {
       ToolbarItem {
         Button(action: {
           withAnimation(.easeInOut(duration: 0.2)) {
+            showImportSidebar = false
             showSettingsSidebar.toggle()
           }
         }) {
@@ -171,7 +180,10 @@ struct ContentView: View {
       }
       ToolbarItem {
         Button(action: {
-          openWindow(id: "import")
+          withAnimation(.easeInOut(duration: 0.2)) {
+            showSettingsSidebar = false
+            showImportSidebar.toggle()
+          }
         }) {
           Image(systemName: "iphone.and.arrow.forward")
         }
@@ -385,6 +397,7 @@ struct ContentView: View {
     ) { _ in
       Task { @MainActor in
         withAnimation(.easeInOut(duration: 0.2)) {
+          showImportSidebar = false
           showSettingsSidebar.toggle()
         }
       }
@@ -396,7 +409,10 @@ struct ContentView: View {
       queue: .main
     ) { _ in
       Task { @MainActor in
-        openWindow(id: "import")
+        withAnimation(.easeInOut(duration: 0.2)) {
+          showSettingsSidebar = false
+          showImportSidebar.toggle()
+        }
       }
     }
 

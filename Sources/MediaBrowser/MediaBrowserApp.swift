@@ -160,9 +160,5 @@ struct MediaBrowserApp: App {
       }
     }
 
-    Window("Import", id: "import") {
-      ImportView()
-    }
-    .defaultSize(width: 900, height: 700)
   }
 }
