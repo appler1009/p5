@@ -50,6 +50,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 }
 
+// Global function to check lightbox state
+private let lightboxStateKey = "isLightboxOpen"
+
+func isLightboxCurrentlyOpen() -> Bool {
+  UserDefaults.standard.bool(forKey: lightboxStateKey)
+}
+
 @main
 struct MediaBrowserApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -141,11 +148,23 @@ struct MediaBrowserApp: App {
       // Photos menu for photo operations
       CommandMenu("Photos") {
         Button(action: {
+          // Post notification to open media details sidebar
+          NotificationCenter.default.post(name: Notification.Name("openMediaDetails"), object: nil)
+        }) {
+          Label("Details...", systemImage: "info.circle")
+        }
+        .keyboardShortcut("I", modifiers: .command)
+        .disabled(!isLightboxCurrentlyOpen())
+
+        Divider()
+
+        Button(action: {
           NotificationCenter.default.post(name: .rotateClockwise, object: nil)
         }) {
           Label("Rotate Clockwise", systemImage: "arrow.clockwise")
         }
         .keyboardShortcut("R", modifiers: .command)
+        .disabled(!isLightboxCurrentlyOpen())
 
         Button(action: {
           NotificationCenter.default.post(name: .rotateCounterClockwise, object: nil)
@@ -153,6 +172,7 @@ struct MediaBrowserApp: App {
           Label("Rotate Counter Clockwise", systemImage: "arrow.counterclockwise")
         }
         .keyboardShortcut("R", modifiers: [.command, .shift])
+        .disabled(!isLightboxCurrentlyOpen())
       }
     }
 

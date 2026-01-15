@@ -16,9 +16,18 @@ struct ConditionalKeyboardShortcut: ViewModifier {
   }
 }
 
+// Observable object for lightbox state
+@MainActor
+class LightboxStateManager: ObservableObject {
+  static let shared = LightboxStateManager()
+
+  @Published var isLightboxOpen = false
+}
+
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
+  @ObservedObject private var lightboxStateManager = LightboxStateManager.shared
   @Environment(\.openWindow) private var openWindow
   @State private var lightboxItem: MediaItem?
   @AppStorage("viewMode") private var viewMode = "Grid"
@@ -152,12 +161,19 @@ struct ContentView: View {
           item: selectedLightboxItem as! LocalFileSystemMediaItem,
           onClose: {
             lightboxItem = nil
+            lightboxStateManager.isLightboxOpen = false
           },
           onNext: nextFullScreenItem,
           onPrev: prevFullScreenItem
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
+        .onAppear {
+          lightboxStateManager.isLightboxOpen = true
+        }
+        .onDisappear {
+          lightboxStateManager.isLightboxOpen = false
+        }
       }
     }
 
@@ -304,6 +320,7 @@ struct ContentView: View {
 
   private func goFullScreen(_ item: MediaItem) {
     self.lightboxItem = item
+    lightboxStateManager.isLightboxOpen = true
   }
 
   /// Update a media item

@@ -363,7 +363,7 @@ struct FullMediaView: View {
   @State private var fullImage: NSImage?
   @State private var player: AVPlayer?
   @State private var showVideo = false
-  @AppStorage("fullMediaShowSidebar") private var showSidebar = false
+  @State private var showSidebar = false
 
   @State private var currentScale: CGFloat = 1.0
   @State private var imageOffset: CGSize = .zero
@@ -669,6 +669,21 @@ struct FullMediaView: View {
     HStack(spacing: 0) {
       sidebarView
       mainMediaView
+    }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("openMediaDetails"))) {
+      _ in
+      showSidebar.toggle()
+    }
+    .onAppear {
+      // Load sidebar state from database
+      if let savedState = DatabaseManager.shared.getSetting("fullMediaShowSidebar"),
+         let isOpen = Bool(savedState) {
+        showSidebar = isOpen
+      }
+    }
+    .onChange(of: showSidebar) { newValue in
+      // Save sidebar state to database
+      DatabaseManager.shared.setSetting("fullMediaShowSidebar", value: newValue ? "true" : "false")
     }
     .overlay(alignment: .bottomLeading) {
       // Sidebar toggle button
