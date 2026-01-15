@@ -117,7 +117,7 @@ struct ImportView: View {
           .buttonStyle(.borderedProminent)
           .disabled(appleMediaItems.count <= duplicateCount || self.progressCounter != nil)
         }
-        .padding(.trailing, 8)
+        .padding(.trailing, 16)
       }
 
       if appleMediaItems.isEmpty {
@@ -156,6 +156,7 @@ struct ImportView: View {
             onDuplicateCountChange: { duplicateCount = $0 }
           )
           .padding(.horizontal, 8)
+          .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -181,7 +182,7 @@ struct ImportView: View {
           .buttonStyle(.borderedProminent)
           .disabled(deviceMediaItems.count <= duplicateCount || self.progressCounter != nil)
         }
-        .padding(.trailing, 8)
+        .padding(.trailing, 16)
       }
 
       // Status messages
@@ -214,6 +215,7 @@ struct ImportView: View {
             )
           }
           .padding(.horizontal, 8)
+          .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if importFromDevice.isLoadingDeviceContents {
@@ -297,7 +299,7 @@ struct ImportView: View {
           .buttonStyle(.borderedProminent)
           .disabled(localFilesItems.count <= duplicateCount || self.progressCounter != nil)
         }
-        .padding(.trailing, 8)
+        .padding(.trailing, 16)
       }
 
       if localFilesItems.isEmpty {
@@ -330,6 +332,7 @@ struct ImportView: View {
             onDuplicateCountChange: { duplicateCount = $0 }
           )
           .padding(.horizontal, 8)
+          .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
