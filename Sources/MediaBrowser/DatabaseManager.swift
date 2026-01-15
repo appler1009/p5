@@ -151,6 +151,7 @@ class DatabaseManager: ObservableObject {
         t.column("edited_url", .text)
         t.column("live_video_url", .text)
         t.column("display_name", .text)
+
         t.column("creation_date", .datetime)
         t.column("modification_date", .datetime)
         t.column("exif_date", .datetime)
@@ -166,6 +167,10 @@ class DatabaseManager: ObservableObject {
         t.column("id", .integer).primaryKey(autoincrement: true)
         t.column("path", .text).unique()
         t.column("bookmark", .text)
+      }
+      try db.create(table: "settings", ifNotExists: true) { t in
+        t.column("key", .text).primaryKey()
+        t.column("value", .text)
       }
     }
   }
@@ -364,5 +369,47 @@ class DatabaseManager: ObservableObject {
         arguments: [startOfDay, endOfDay, startOfDay, endOfDay, "\(baseName).%"]) ?? 0
     }
     return (count ?? 0) > 0
+  }
+
+  // MARK: - Settings Management
+
+  func getSetting(_ key: String) -> String? {
+    do {
+      return try dbQueue?.read { db in
+        try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = ?", arguments: [key])
+      }
+    } catch {
+      print("Error getting setting \(key): \(error)")
+      return nil
+    }
+  }
+
+  func setSetting(_ key: String, value: String) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+          arguments: [key, value])
+      }
+    } catch {
+      print("Error setting \(key): \(error)")
+    }
+  }
+
+  func getAllSettings() -> [String: String] {
+    var settings: [String: String] = [:]
+    do {
+      try dbQueue?.read { db in
+        let rows = try Row.fetchAll(db, sql: "SELECT key, value FROM settings")
+        for row in rows {
+          if let key = row["key"] as String?, let value = row["value"] as String? {
+            settings[key] = value
+          }
+        }
+      }
+    } catch {
+      print("Error getting all settings: \(error)")
+    }
+    return settings
   }
 }

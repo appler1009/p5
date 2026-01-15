@@ -10,9 +10,10 @@ class S3Service: ObservableObject {
 
   @Published var uploadProgress: [String: Double] = [:]
   @Published var isUploading = false
-  @Published var autoSyncEnabled: Bool = UserDefaults.standard.bool(forKey: "autoSyncEnabled") {
+  @Published var autoSyncEnabled: Bool = false {
     didSet {
-      UserDefaults.standard.set(autoSyncEnabled, forKey: "autoSyncEnabled")
+      DatabaseManager.shared.setSetting(
+        "autoSyncEnabled", value: autoSyncEnabled ? "true" : "false")
     }
   }
   @Published var config = S3Config() {
@@ -24,7 +25,6 @@ class S3Service: ObservableObject {
   }
 
   private var s3Client: S3Client?
-  private let configKey = "s3Config"
   private var pendingTasks = Set<Task<Void, Never>>()
   private let uploadQueue = DispatchQueue(label: "com.mediabrowser.s3upload")
 
@@ -50,16 +50,24 @@ class S3Service: ObservableObject {
   }
 
   private func loadConfig() {
-    if let data = UserDefaults.standard.data(forKey: configKey),
+    if let configJson = DatabaseManager.shared.getSetting("s3Config"),
+      let data = configJson.data(using: .utf8),
       let decodedConfig = try? JSONDecoder().decode(S3Config.self, from: data)
     {
       config = decodedConfig
     }
+
+    // Load auto sync setting
+    if let autoSyncValue = DatabaseManager.shared.getSetting("autoSyncEnabled") {
+      autoSyncEnabled = autoSyncValue == "true"
+    }
   }
 
   private func saveConfig() {
-    if let data = try? JSONEncoder().encode(config) {
-      UserDefaults.standard.set(data, forKey: configKey)
+    if let data = try? JSONEncoder().encode(config),
+      let configJson = String(data: data, encoding: .utf8)
+    {
+      DatabaseManager.shared.setSetting("s3Config", value: configJson)
     }
   }
 
