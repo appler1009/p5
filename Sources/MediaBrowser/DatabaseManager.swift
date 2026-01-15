@@ -5,19 +5,32 @@ import GRDB
 class DatabaseManager {
   static let shared = DatabaseManager()
   private var dbQueue: DatabaseQueue?
+  private var currentDbPath: String?
 
   private init() {
+    let defaultPath = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path + "/MediaBrowser/media.db"
+    let dbPath = UserDefaults.standard.string(forKey: "databasePath") ?? defaultPath
+    openDatabase(at: dbPath)
+  }
+
+  func switchToDatabase(at path: String) {
+    UserDefaults.standard.set(path, forKey: "databasePath")
+    openDatabase(at: path)
+  }
+
+  private func openDatabase(at path: String) {
     do {
-      let path =
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path
-        + "/MediaBrowser"
-      try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
-      let dbPath = "\(path)/media.db"
-      print(dbPath)
+      dbQueue = nil // Close previous if any
+      currentDbPath = path
+
+      let directory = (path as NSString).deletingLastPathComponent
+      try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+
+      print("Opening database at: \(path)")
 
       // If DB exists and local_media_items table lacks s3_sync_status column, add it
-      if FileManager.default.fileExists(atPath: dbPath) {
-        let tempQueue = try DatabaseQueue(path: dbPath)
+      if FileManager.default.fileExists(atPath: path) {
+        let tempQueue = try DatabaseQueue(path: path)
         try tempQueue.write { db in
           if try db.tableExists("local_media_items") {
             let columns = try db.columns(in: "local_media_items").map { $0.name }
@@ -30,10 +43,10 @@ class DatabaseManager {
         }
       }
 
-      dbQueue = try DatabaseQueue(path: dbPath)
+      dbQueue = try DatabaseQueue(path: path)
       try createTable()
     } catch {
-      print("Database init error: \(error)")
+      print("Database open error: \(error)")
     }
   }
 
@@ -87,6 +100,7 @@ class DatabaseManager {
   }
 
   func clearAll() {
+    print("DELETE FROM local_media_items")
     do {
       try dbQueue?.write { db in
         try db.execute(sql: "DELETE FROM local_media_items")

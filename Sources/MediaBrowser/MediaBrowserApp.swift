@@ -1,10 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension Notification.Name {
   static let rotateClockwise = Notification.Name("rotateClockwise")
   static let rotateCounterClockwise = Notification.Name("rotateCounterClockwise")
   static let openSettings = Notification.Name("openSettings")
   static let openImport = Notification.Name("openImport")
+  static let databaseSwitched = Notification.Name("databaseSwitched")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -113,6 +115,29 @@ struct MediaBrowserApp: App {
           Label("Rotate Counter Clockwise", systemImage: "arrow.counterclockwise")
         }
         .keyboardShortcut("R", modifiers: [.command, .shift])
+      }
+
+      // File menu
+      CommandMenu("File") {
+        Button(action: {
+          let openPanel = NSOpenPanel()
+          openPanel.canChooseFiles = true
+          openPanel.canChooseDirectories = false
+          openPanel.allowsMultipleSelection = false
+          if #available(macOS 12.0, *) {
+            openPanel.allowedContentTypes = [UTType(filenameExtension: "db")! ]
+          } else {
+            openPanel.allowedFileTypes = ["db"]
+          }
+          openPanel.title = "Open Database"
+          if openPanel.runModal() == .OK, let url = openPanel.url {
+            DatabaseManager.shared.switchToDatabase(at: url.path)
+            NotificationCenter.default.post(name: .databaseSwitched, object: nil)
+          }
+        }) {
+          Label("Open Database...", systemImage: "folder")
+        }
+        .keyboardShortcut("O", modifiers: [.command, .shift])
       }
     }
     Window("Settings", id: "settings") {

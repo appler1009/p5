@@ -382,6 +382,16 @@ struct ContentView: View {
         openWindow(id: "import")
       }
     }
+
+    NotificationCenter.default.addObserver(
+      forName: .databaseSwitched,
+      object: nil,
+      queue: .main
+    ) { _ in
+      Task { @MainActor in
+        await mediaScanner.loadFromDB()
+      }
+    }
   }
 }
 
