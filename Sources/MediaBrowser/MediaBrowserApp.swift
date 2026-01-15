@@ -59,18 +59,32 @@ struct MediaBrowserApp: App {
       ContentView()
     }
     .commands {
-      // Disable New Window menu
-      CommandGroup(replacing: .newItem) {}
+      CommandGroup(replacing: .newItem) {
+        Button("New...") {
+          let savePanel = NSSavePanel()
+          savePanel.canCreateDirectories = true
+          savePanel.showsTagField = false
+          savePanel.nameFieldStringValue = "database.db"
+          if #available(macOS 12.0, *) {
+            savePanel.allowedContentTypes = [UTType(filenameExtension: "db")!]
+          } else {
+            savePanel.allowedFileTypes = ["db"]
+          }
+          savePanel.title = "New Database"
+          if savePanel.runModal() == .OK, let url = savePanel.url {
+            DatabaseManager.shared.switchToDatabase(at: url.path)
+            NotificationCenter.default.post(name: .databaseSwitched, object: nil)
+          }
+        }
+        .keyboardShortcut("n", modifiers: .command)
 
-      // Add Open Database to File menu
-      CommandGroup(replacing: .importExport) {
-        Button(action: {
+        Button("Open...") {
           let openPanel = NSOpenPanel()
           openPanel.canChooseFiles = true
           openPanel.canChooseDirectories = false
           openPanel.allowsMultipleSelection = false
           if #available(macOS 12.0, *) {
-            openPanel.allowedContentTypes = [UTType(filenameExtension: "db")! ]
+            openPanel.allowedContentTypes = [UTType(filenameExtension: "db")!]
           } else {
             openPanel.allowedFileTypes = ["db"]
           }
@@ -79,10 +93,10 @@ struct MediaBrowserApp: App {
             DatabaseManager.shared.switchToDatabase(at: url.path)
             NotificationCenter.default.post(name: .databaseSwitched, object: nil)
           }
-        }) {
-          Label("Open Database...", systemImage: "folder")
         }
-        .keyboardShortcut("O", modifiers: .command)
+        .keyboardShortcut("o", modifiers: .command)
+
+        Divider()
       }
 
       // Add items after standard View options

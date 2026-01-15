@@ -8,7 +8,9 @@ class DatabaseManager {
   private var currentDbPath: String?
 
   private init() {
-    let defaultPath = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path + "/MediaBrowser/media.db"
+    let defaultPath =
+      FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path
+      + "/MediaBrowser/media.db"
     let dbPath = UserDefaults.standard.string(forKey: "databasePath") ?? defaultPath
     openDatabase(at: dbPath)
   }
@@ -20,7 +22,7 @@ class DatabaseManager {
 
   private func openDatabase(at path: String) {
     do {
-      dbQueue = nil // Close previous if any
+      dbQueue = nil  // Close previous if any
       currentDbPath = path
 
       let directory = (path as NSString).deletingLastPathComponent
