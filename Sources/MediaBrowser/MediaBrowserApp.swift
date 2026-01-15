@@ -64,11 +64,13 @@ struct MediaBrowserApp: App {
           let savePanel = NSSavePanel()
           savePanel.canCreateDirectories = true
           savePanel.showsTagField = false
-          savePanel.nameFieldStringValue = "database.db"
+          savePanel.nameFieldStringValue = "database.\(DatabaseManager.databaseFileExtension)"
           if #available(macOS 12.0, *) {
-            savePanel.allowedContentTypes = [UTType(filenameExtension: "db")!]
+            savePanel.allowedContentTypes = [
+              UTType(filenameExtension: DatabaseManager.databaseFileExtension)!
+            ]
           } else {
-            savePanel.allowedFileTypes = ["db"]
+            savePanel.allowedFileTypes = [DatabaseManager.databaseFileExtension]
           }
           savePanel.title = "New Database"
           if savePanel.runModal() == .OK, let url = savePanel.url {
@@ -84,9 +86,11 @@ struct MediaBrowserApp: App {
           openPanel.canChooseDirectories = false
           openPanel.allowsMultipleSelection = false
           if #available(macOS 12.0, *) {
-            openPanel.allowedContentTypes = [UTType(filenameExtension: "db")!]
+            openPanel.allowedContentTypes = [
+              UTType(filenameExtension: DatabaseManager.databaseFileExtension)!
+            ]
           } else {
-            openPanel.allowedFileTypes = ["db"]
+            openPanel.allowedFileTypes = [DatabaseManager.databaseFileExtension]
           }
           openPanel.title = "Open Database"
           if openPanel.runModal() == .OK, let url = openPanel.url {

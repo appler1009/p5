@@ -4,13 +4,14 @@ import GRDB
 @MainActor
 class DatabaseManager {
   static let shared = DatabaseManager()
+  static let databaseFileExtension = "photos"
   private var dbQueue: DatabaseQueue?
   private var currentDbPath: String?
 
   private init() {
     let defaultPath =
       FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path
-      + "/MediaBrowser/media.db"
+      + "/MediaBrowser/media.\(Self.databaseFileExtension)"
     let dbPath = UserDefaults.standard.string(forKey: "databasePath") ?? defaultPath
     openDatabase(at: dbPath)
   }
