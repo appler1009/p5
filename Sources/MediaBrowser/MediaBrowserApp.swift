@@ -62,6 +62,29 @@ struct MediaBrowserApp: App {
       // Disable New Window menu
       CommandGroup(replacing: .newItem) {}
 
+      // Add Open Database to File menu
+      CommandGroup(replacing: .importExport) {
+        Button(action: {
+          let openPanel = NSOpenPanel()
+          openPanel.canChooseFiles = true
+          openPanel.canChooseDirectories = false
+          openPanel.allowsMultipleSelection = false
+          if #available(macOS 12.0, *) {
+            openPanel.allowedContentTypes = [UTType(filenameExtension: "db")! ]
+          } else {
+            openPanel.allowedFileTypes = ["db"]
+          }
+          openPanel.title = "Open Database"
+          if openPanel.runModal() == .OK, let url = openPanel.url {
+            DatabaseManager.shared.switchToDatabase(at: url.path)
+            NotificationCenter.default.post(name: .databaseSwitched, object: nil)
+          }
+        }) {
+          Label("Open Database...", systemImage: "folder")
+        }
+        .keyboardShortcut("O", modifiers: .command)
+      }
+
       // Add items after standard View options
       CommandGroup(after: .sidebar) {
         Button(action: {
