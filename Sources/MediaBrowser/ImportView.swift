@@ -2,6 +2,35 @@ import CryptoKit
 import ImageCaptureCore
 import SwiftUI
 
+// MARK: - Custom Disclosure Group Style
+
+struct CustomDisclosureGroupStyle: DisclosureGroupStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button(action: {
+        withAnimation(.easeInOut(duration: 0.2)) {
+          configuration.isExpanded.toggle()
+        }
+      }) {
+        configuration.label
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+
+      if configuration.isExpanded {
+        configuration.content
+          .transition(.opacity.combined(with: .move(edge: .top)))
+      }
+    }
+    .background(Color(NSColor.windowBackgroundColor))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+    )
+  }
+}
+
 // MARK: - Import View
 
 struct ImportView: View {
@@ -336,97 +365,110 @@ struct ImportView: View {
 
   // MARK: - Main Body
   var body: some View {
-    NavigationSplitView(columnVisibility: .constant(.all)) {
-      // Sidebar
-      VStack(alignment: .leading, spacing: 16) {
-        Text("Sources")
-          .font(.headline)
-          .padding(.bottom, 8)
+    VStack(spacing: 0) {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          Text("Import Photos")
+            .font(.title2)
+            .fontWeight(.semibold)
+            .padding(.horizontal)
 
-        VStack(spacing: 12) {
-          Button(action: {
-            Task {
-              isLocalFilesSelected = false
-              isApplePhotosSelected = false
-              isImportFromDeviceSelected = true
+          // Collapsible Source Sections
+          VStack(spacing: 8) {
+            // Devices Section
+            DisclosureGroup(
+              isExpanded: $isImportFromDeviceSelected,
+              content: {
+                deviceContent
+                  .padding(.vertical, 8)
+              },
+              label: {
+                HStack {
+                  Image(systemName: "iphone.and.arrow.forward")
+                    .foregroundColor(.green)
+                  Text("Devices")
+                    .font(.headline)
+                  Spacer()
+                  if !importFromDevice.detectedDevices.isEmpty {
+                    Text("\(importFromDevice.detectedDevices.count) connected")
+                      .font(.caption)
+                      .foregroundColor(.secondary)
+                  }
+                }
+                .padding(.vertical, 4)
+              }
+            )
+            .disclosureGroupStyle(CustomDisclosureGroupStyle())
+            .onChange(of: isImportFromDeviceSelected) {
+              if $0 {
+                isLocalFilesSelected = false
+                isApplePhotosSelected = false
+              }
             }
-          }) {
-            HStack {
-              Image(systemName: "iphone.and.arrow.forward")
-                .frame(width: 20)
-              Text("Devices")
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Local Files Section
+            DisclosureGroup(
+              isExpanded: $isLocalFilesSelected,
+              content: {
+                localFilesContent
+                  .padding(.vertical, 8)
+              },
+              label: {
+                HStack {
+                  Image(systemName: "folder")
+                    .foregroundColor(.blue)
+                  Text("Local Files")
+                    .font(.headline)
+                  Spacer()
+                }
+                .padding(.vertical, 4)
+              }
+            )
+            .disclosureGroupStyle(CustomDisclosureGroupStyle())
+            .onChange(of: isLocalFilesSelected) {
+              if $0 {
+                isImportFromDeviceSelected = false
+                isApplePhotosSelected = false
+              }
+            }
+
+            // Apple Photos Section
+            DisclosureGroup(
+              isExpanded: $isApplePhotosSelected,
+              content: {
+                applePhotosContent
+                  .padding(.vertical, 8)
+              },
+              label: {
+                HStack {
+                  Image(systemName: "photo.on.rectangle.angled")
+                    .foregroundColor(.orange)
+                  Text("Apple Photos")
+                    .font(.headline)
+                  Spacer()
+                }
+                .padding(.vertical, 4)
+              }
+            )
+            .disclosureGroupStyle(CustomDisclosureGroupStyle())
+            .onChange(of: isApplePhotosSelected) {
+              if $0 {
+                isImportFromDeviceSelected = false
+                isLocalFilesSelected = false
+              }
             }
           }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
-
-          Button(action: {
-            Task {
-              isApplePhotosSelected = false
-              isImportFromDeviceSelected = false
-              isLocalFilesSelected = true
-            }
-          }) {
-            HStack {
-              Image(systemName: "folder")
-                .frame(width: 20)
-              Text("Local Files")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
-
-          Button(action: {
-            Task {
-              isImportFromDeviceSelected = false
-              isLocalFilesSelected = false
-              isApplePhotosSelected = true
-            }
-          }) {
-            HStack {
-              Image(systemName: "folder")
-                .frame(width: 20)
-              Text("Apple Photos")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.large)
+          .padding(.horizontal)
         }
-
-        if !importFromDevice.detectedDevices.isEmpty {
-          connectedDevicesList
-        }
-
-        Spacer()
+        .padding(.vertical)
       }
-      .padding()
-      .frame(minWidth: 280)
-    } detail: {
-      // Main content area
-      VStack(spacing: 24) {
-        if isApplePhotosSelected {
-          applePhotosContent
-            .padding()
-        } else if isImportFromDeviceSelected {
-          deviceContent
-            .padding()
-        } else if isLocalFilesSelected {
-          localFilesContent
-            .padding()
-        }
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(Color(NSColor.controlBackgroundColor))
 
-      // Import directory section at the bottom
+      // Import directory section at the bottom (fixed)
       ImportDirectorySection()
         .padding(.horizontal)
         .background(Color(NSColor.controlBackgroundColor))
     }
-    .navigationTitle("Import Photos")
+    .background(Color(NSColor.controlBackgroundColor))
     .onDisappear {
       Task {
         await importFromDevice.cancelAllThumbnails()
@@ -434,7 +476,6 @@ struct ImportView: View {
       }
       importFromDevice.stopScanning()
     }
-    .frame(minWidth: 700, minHeight: 500)
   }
 
   // MARK: - Supporting Functions
