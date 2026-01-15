@@ -83,9 +83,10 @@ struct MediaBrowserApp: App {
         Button(action: {
           NotificationCenter.default.post(name: .openImport, object: nil)
         }) {
-          Label("Import...", systemImage: "iphone.and.arrow.forward")
+          Image(systemName: "iphone.and.arrow.forward")
         }
-        .keyboardShortcut("O", modifiers: .command)
+        .help("Import (⌘I)")
+        .keyboardShortcut("I", modifiers: .command)
 
         Divider()
       }
@@ -93,11 +94,11 @@ struct MediaBrowserApp: App {
       // Add Settings to app menu after About
       CommandGroup(after: .appInfo) {
         Button(action: {
-          NotificationCenter.default.post(name: .openSettings, object: nil)
+          NotificationCenter.default.post(name: .openImport, object: nil)
         }) {
-          Label("Settings...", systemImage: "gear")
+          Label("Import...", systemImage: "iphone.and.arrow.forward")
         }
-        .keyboardShortcut(",", modifiers: .command)
+        .keyboardShortcut("I", modifiers: .command)
       }
 
       // Photos menu for photo operations
@@ -115,29 +116,6 @@ struct MediaBrowserApp: App {
           Label("Rotate Counter Clockwise", systemImage: "arrow.counterclockwise")
         }
         .keyboardShortcut("R", modifiers: [.command, .shift])
-      }
-
-      // File menu
-      CommandMenu("File") {
-        Button(action: {
-          let openPanel = NSOpenPanel()
-          openPanel.canChooseFiles = true
-          openPanel.canChooseDirectories = false
-          openPanel.allowsMultipleSelection = false
-          if #available(macOS 12.0, *) {
-            openPanel.allowedContentTypes = [UTType(filenameExtension: "db")! ]
-          } else {
-            openPanel.allowedFileTypes = ["db"]
-          }
-          openPanel.title = "Open Database"
-          if openPanel.runModal() == .OK, let url = openPanel.url {
-            DatabaseManager.shared.switchToDatabase(at: url.path)
-            NotificationCenter.default.post(name: .databaseSwitched, object: nil)
-          }
-        }) {
-          Label("Open Database...", systemImage: "folder")
-        }
-        .keyboardShortcut("O", modifiers: [.command, .shift])
       }
     }
     Window("Settings", id: "settings") {

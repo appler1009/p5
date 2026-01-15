@@ -160,8 +160,8 @@ struct ContentView: View {
         }) {
           Image(systemName: "iphone.and.arrow.forward")
         }
-        .help("Import (⌘O)")
-        .keyboardShortcut("O", modifiers: .command)
+        .help("Import (⌘I)")
+        .keyboardShortcut("I", modifiers: .command)
       }
 
       ToolbarItemGroup(placement: .principal) {
