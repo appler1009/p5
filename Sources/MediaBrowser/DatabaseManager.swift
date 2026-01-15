@@ -2,11 +2,15 @@ import Foundation
 import GRDB
 
 @MainActor
-class DatabaseManager {
+class DatabaseManager: ObservableObject {
   static let shared = DatabaseManager()
   static let databaseFileExtension = "photos"
   private var dbQueue: DatabaseQueue?
   private var currentDbPath: String?
+
+  var databasePath: String? {
+    currentDbPath
+  }
 
   private init() {
     let defaultPath =

@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var s3Service = S3Service.shared
+  @ObservedObject private var databaseManager = DatabaseManager.shared
   @AppStorage("lastThumbnailCleanupCount") private var lastCleanupCount = 0
 
   @State private var currentUploadItem: String?
@@ -28,6 +29,38 @@ struct SettingsView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 48) {
+        // Database Path Section
+        VStack(alignment: .leading, spacing: 12) {
+          Text("Database")
+            .font(.title2)
+            .fontWeight(.semibold)
+
+          HStack {
+            Image(systemName: "externaldrive")
+              .foregroundColor(.accentColor)
+              .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+              Text("Database File")
+                .font(.body)
+                .fontWeight(.medium)
+              Text(databaseManager.databasePath ?? "Not set")
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .monospaced()
+            }
+            Spacer()
+            Button("Open in Finder") {
+              if let dbPath = databaseManager.databasePath {
+                let url = URL(fileURLWithPath: dbPath)
+                let directoryURL = url.deletingLastPathComponent()
+                NSWorkspace.shared.open(directoryURL)
+              }
+            }
+            .buttonStyle(.bordered)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+
         // Media Management Section
         VStack(alignment: .leading, spacing: 12) {
           Text("Media Management")
