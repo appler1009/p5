@@ -406,8 +406,8 @@ struct ImportView: View {
               }
             )
             .disclosureGroupStyle(CustomDisclosureGroupStyle())
-            .onChange(of: isImportFromDeviceSelected) {
-              if $0 {
+            .onChange(of: isImportFromDeviceSelected) { oldValue, newValue in
+              if newValue {
                 isLocalFilesSelected = false
                 isApplePhotosSelected = false
               }
@@ -431,8 +431,8 @@ struct ImportView: View {
               }
             )
             .disclosureGroupStyle(CustomDisclosureGroupStyle())
-            .onChange(of: isLocalFilesSelected) {
-              if $0 {
+            .onChange(of: isLocalFilesSelected) { oldValue, newValue in
+              if newValue {
                 isImportFromDeviceSelected = false
                 isApplePhotosSelected = false
               }
@@ -456,8 +456,8 @@ struct ImportView: View {
               }
             )
             .disclosureGroupStyle(CustomDisclosureGroupStyle())
-            .onChange(of: isApplePhotosSelected) {
-              if $0 {
+            .onChange(of: isApplePhotosSelected) { oldValue, newValue in
+              if newValue {
                 isImportFromDeviceSelected = false
                 isLocalFilesSelected = false
               }

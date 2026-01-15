@@ -677,13 +677,15 @@ struct FullMediaView: View {
     .onAppear {
       // Load sidebar state from database
       if let savedState = DatabaseManager.shared.getSetting("fullMediaShowSidebar"),
-         let isOpen = Bool(savedState) {
+        let isOpen = Bool(savedState)
+      {
         showSidebar = isOpen
       }
     }
-    .onChange(of: showSidebar) { newValue in
+    .onChange(of: showSidebar) {
       // Save sidebar state to database
-      DatabaseManager.shared.setSetting("fullMediaShowSidebar", value: newValue ? "true" : "false")
+      DatabaseManager.shared.setSetting(
+        "fullMediaShowSidebar", value: showSidebar ? "true" : "false")
     }
     .overlay(alignment: .bottomLeading) {
       // Sidebar toggle button

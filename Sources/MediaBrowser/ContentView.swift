@@ -143,7 +143,7 @@ struct ContentView: View {
           Divider()
 
           SettingsView()
-            .frame(width: 350)
+            .frame(width: 455)
             .frame(maxHeight: .infinity)
             .background(Color(.windowBackgroundColor))
         } else if showImportSidebar {
