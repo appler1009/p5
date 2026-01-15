@@ -35,20 +35,21 @@ struct SettingsView: View {
             .font(.title2)
             .fontWeight(.semibold)
 
-          HStack {
-            Image(systemName: "externaldrive")
-              .foregroundColor(.accentColor)
-              .frame(width: 24)
-            VStack(alignment: .leading, spacing: 2) {
-              Text("Database File")
-                .font(.body)
-                .fontWeight(.medium)
-              Text(databaseManager.databasePath ?? "Not set")
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .monospaced()
+          VStack(alignment: .leading, spacing: 8) {
+            HStack {
+              Image(systemName: "externaldrive")
+                .foregroundColor(.accentColor)
+                .frame(width: 24)
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Database File")
+                  .font(.body)
+                  .fontWeight(.medium)
+                Text(databaseManager.databasePath ?? "Not set")
+                  .font(.callout)
+                  .foregroundColor(.secondary)
+                  .monospaced()
+              }
             }
-            Spacer()
             Button("Open in Finder") {
               if let dbPath = databaseManager.databasePath {
                 let url = URL(fileURLWithPath: dbPath)
@@ -253,26 +254,24 @@ struct SettingsView: View {
               // S3 Configuration Group
               GroupBox("S3 Configuration") {
                 VStack(alignment: .leading, spacing: 12) {
-                  HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 4) {
-                      Text("Region:")
-                        .font(.callout)
-                        .foregroundColor(.primary)
-                        .fontWeight(.medium)
-                      TextField("", text: $s3Service.config.region)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 140)
-                    }
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text("Region:")
+                      .font(.callout)
+                      .foregroundColor(.primary)
+                      .fontWeight(.medium)
+                    TextField("", text: $s3Service.config.region)
+                      .textFieldStyle(.roundedBorder)
+                      .frame(minWidth: 300)
+                  }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                      Text("Bucket Name:")
-                        .font(.callout)
-                        .foregroundColor(.primary)
-                        .fontWeight(.medium)
-                      TextField("", text: $s3Service.config.bucketName)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 160)
-                    }
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text("Bucket Name:")
+                      .font(.callout)
+                      .foregroundColor(.primary)
+                      .fontWeight(.medium)
+                    TextField("", text: $s3Service.config.bucketName)
+                      .textFieldStyle(.roundedBorder)
+                      .frame(minWidth: 300)
                   }
 
                   VStack(alignment: .leading, spacing: 4) {

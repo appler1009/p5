@@ -159,11 +159,6 @@ struct MediaBrowserApp: App {
         .keyboardShortcut("R", modifiers: [.command, .shift])
       }
     }
-    Window("Settings", id: "settings") {
-      SettingsView()
-    }
-    .windowStyle(.hiddenTitleBar)
-    .defaultSize(width: 600, height: 300)
 
     Window("Import", id: "import") {
       ImportView()
