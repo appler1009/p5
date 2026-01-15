@@ -2,46 +2,6 @@ import AppKit
 import MapKit
 import SwiftUI
 
-struct ResizableDivider: View {
-  @Binding var width: CGFloat
-  let minWidth: CGFloat
-  let maxWidth: CGFloat
-
-  @State private var isDragging = false
-
-  var body: some View {
-    ZStack {
-      Rectangle()
-        .fill(Color.gray.opacity(0.3))
-        .frame(width: 1)
-        .frame(maxHeight: .infinity)
-
-      Rectangle()
-        .fill(Color.clear)
-        .frame(width: 8)
-        .contentShape(Rectangle())
-        .gesture(
-          DragGesture()
-            .onChanged { value in
-              isDragging = true
-              let newWidth = width + value.translation.width
-              width = min(maxWidth, max(minWidth, newWidth))
-            }
-            .onEnded { _ in
-              isDragging = false
-            }
-        )
-        .onHover { hovering in
-          if hovering {
-            NSCursor.resizeLeftRight.set()
-          } else if !isDragging {
-            NSCursor.arrow.set()
-          }
-        }
-    }
-  }
-}
-
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
@@ -55,7 +15,6 @@ struct ContentView: View {
   @State private var searchTextField: NSTextField?
   @State private var scrollTarget: Int? = nil
   @State private var showSettingsSidebar = false
-  @State private var settingsSidebarWidth: CGFloat = 350
 
   private var sortedItems: [LocalFileSystemMediaItem] {
     let filteredItems =
@@ -157,10 +116,10 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         if showSettingsSidebar {
-          ResizableDivider(width: $settingsSidebarWidth, minWidth: 250, maxWidth: 600)
+          Divider()
 
           SettingsView()
-            .frame(width: settingsSidebarWidth)
+            .frame(width: 350)
             .frame(maxHeight: .infinity)
             .background(Color(.windowBackgroundColor))
         }
