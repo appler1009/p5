@@ -2,6 +2,20 @@ import AppKit
 import MapKit
 import SwiftUI
 
+struct ConditionalKeyboardShortcut: ViewModifier {
+  let key: KeyEquivalent
+  let modifiers: EventModifiers
+  let condition: Bool
+
+  func body(content: Content) -> some View {
+    if condition {
+      content.keyboardShortcut(key, modifiers: modifiers)
+    } else {
+      content
+    }
+  }
+}
+
 struct ContentView: View {
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
@@ -187,8 +201,14 @@ struct ContentView: View {
         }) {
           Image(systemName: "iphone.and.arrow.forward")
         }
-        .help("Import (⌘I)")
-        .keyboardShortcut("I", modifiers: .command)
+        .help("Import (⌘M)")
+        .modifier(
+          ConditionalKeyboardShortcut(
+            key: KeyEquivalent("m"),
+            modifiers: .command,
+            condition: lightboxItem == nil
+          )
+        )
       }
 
       ToolbarItemGroup(placement: .principal) {
@@ -409,6 +429,8 @@ struct ContentView: View {
       queue: .main
     ) { _ in
       Task { @MainActor in
+        // Only respond to import notification when not viewing full-screen media
+        guard lightboxItem == nil else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
           showSettingsSidebar = false
           showImportSidebar.toggle()

@@ -124,22 +124,18 @@ struct MediaBrowserApp: App {
         Button(action: {
           NotificationCenter.default.post(name: .openImport, object: nil)
         }) {
-          Image(systemName: "iphone.and.arrow.forward")
-        }
-        .help("Import (⌘I)")
-        .keyboardShortcut("I", modifiers: .command)
-
-        Divider()
-      }
-
-      // Add Settings to app menu after About
-      CommandGroup(after: .appInfo) {
-        Button(action: {
-          NotificationCenter.default.post(name: .openImport, object: nil)
-        }) {
           Label("Import...", systemImage: "iphone.and.arrow.forward")
         }
-        .keyboardShortcut("I", modifiers: .command)
+        .keyboardShortcut(KeyEquivalent("m"), modifiers: .command)
+
+        Button(action: {
+          NotificationCenter.default.post(name: .openSettings, object: nil)
+        }) {
+          Label("Settings...", systemImage: "gear")
+        }
+        .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
+
+        Divider()
       }
 
       // Photos menu for photo operations

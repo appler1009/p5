@@ -642,11 +642,14 @@ struct FullMediaView: View {
     case 124:  // right arrow
       showNextMedia()
       return nil
-    case 23, 33:  // CMD+I or [
-      withAnimation(.easeInOut(duration: animationDuration)) {
-        showSidebar.toggle()
+    case 34:  // I key
+      if event.modifierFlags.contains(.command) {
+        withAnimation(.easeInOut(duration: animationDuration)) {
+          showSidebar.toggle()
+        }
+        return nil
       }
-      return nil
+      return event
     case 15:  // R key
       if event.modifierFlags.contains(.command) {
         if event.modifierFlags.contains(.shift) {
