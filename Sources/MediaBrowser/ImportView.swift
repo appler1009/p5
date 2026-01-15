@@ -12,8 +12,16 @@ struct CustomDisclosureGroupStyle: DisclosureGroupStyle {
           configuration.isExpanded.toggle()
         }
       }) {
-        configuration.label
-          .contentShape(Rectangle())
+        HStack {
+          configuration.label
+          Spacer()
+          Image(systemName: configuration.isExpanded ? "chevron.up" : "chevron.down")
+            .foregroundColor(.secondary)
+            .font(.system(size: 12))
+        }
+        .contentShape(Rectangle())
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
       }
       .buttonStyle(.plain)
 
@@ -62,57 +70,54 @@ struct ImportView: View {
 
   // MARK: - Apple Photo Contents
   var applePhotosContent: some View {
-    VStack(spacing: 16) {
-      HStack {
-        Image(systemName: "photo.on.rectangle.angled")
-          .foregroundColor(.green)
-        Text("Photos from Apple Photos library")
-          .font(.title2)
-          .fontWeight(.semibold)
-
-        Spacer()
-
-        if let importProgress = self.progressCounter {
-          HStack {
-            Text("\(importProgress.doneItemsCount) / \(importProgress.totalItemsCount)")
-            ProgressView(
-              value: Double(importProgress.doneItemsCount),
-              total: Double(importProgress.totalItemsCount)
-            )
-            .frame(width: 120)
-            .id(progressUpdateTrigger)
+    VStack(spacing: 8) {
+      // Import All button - only visible when there are items that can be imported
+      if appleMediaItems.count > duplicateCount {
+        HStack {
+          Spacer()
+          if let importProgress = self.progressCounter {
+            HStack {
+              Text("\(importProgress.doneItemsCount) / \(importProgress.totalItemsCount)")
+              ProgressView(
+                value: Double(importProgress.doneItemsCount),
+                total: Double(importProgress.totalItemsCount)
+              )
+              .frame(width: 120)
+              .id(progressUpdateTrigger)
+            }
+          } else if appleMediaItems.count > 0 {
+            Text(availabilityLabelText(regarding: appleMediaItems))
           }
-        } else if appleMediaItems.count > 0 {
-          Text(availabilityLabelText(regarding: appleMediaItems))
-        }
 
-        Button(importButtonText(forSelection: selectedAppleMediaItems)) {
-          Task {
-            self.showStatus("Import started")
+          Button(importButtonText(forSelection: selectedAppleMediaItems)) {
+            Task {
+              self.showStatus("Import started")
 
-            let importProgress = URLImportProgressCounter()
-            self.progressCounter = importProgress
+              let importProgress = URLImportProgressCounter()
+              self.progressCounter = importProgress
 
-            let importCallbacks = ImportCallbacks(
-              onMediaImported: { mediaItem in
-                self.progressUpdateTrigger = UUID()
-              },
-              onMediaSkipped: { mediaItem in },
-              onComplete: {
-                print("Done importing \(importProgress.doneItemsCount) items")
-                self.showStatus("Done importing \(importProgress.doneItemsCount) items")
-                self.progressCounter = nil
-              },
-              onError: { error in
-                showError("Failed to import: \(error.localizedDescription)")
-              }
-            )
-            await self.doImportApplePhotos(
-              importCallbacks: importCallbacks, progressCounter: importProgress)
+              let importCallbacks = ImportCallbacks(
+                onMediaImported: { mediaItem in
+                  self.progressUpdateTrigger = UUID()
+                },
+                onMediaSkipped: { mediaItem in },
+                onComplete: {
+                  print("Done importing \(importProgress.doneItemsCount) items")
+                  self.showStatus("Done importing \(importProgress.doneItemsCount) items")
+                  self.progressCounter = nil
+                },
+                onError: { error in
+                  showError("Failed to import: \(error.localizedDescription)")
+                }
+              )
+              await self.doImportApplePhotos(
+                importCallbacks: importCallbacks, progressCounter: importProgress)
+            }
           }
+          .buttonStyle(.borderedProminent)
+          .disabled(appleMediaItems.count <= duplicateCount || self.progressCounter != nil)
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(appleMediaItems.count <= duplicateCount || self.progressCounter != nil)
+        .padding(.trailing, 8)
       }
 
       if appleMediaItems.isEmpty {
@@ -133,6 +138,7 @@ struct ImportView: View {
               }
             }
             .buttonStyle(.borderedProminent)
+            .padding(.bottom, 20)
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -149,7 +155,7 @@ struct ImportView: View {
             disableDuplicates: true,
             onDuplicateCountChange: { duplicateCount = $0 }
           )
-          .padding()
+          .padding(.horizontal, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -158,25 +164,24 @@ struct ImportView: View {
 
   // MARK: - USB Device Contents
   var deviceContent: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      HStack {
-        Image(systemName: "iphone")
-          .foregroundColor(.green)
-        Text("Photos from \(importFromDevice.selectedDevice?.name ?? "Connected Device")")
-          .font(.title2)
-          .fontWeight(.semibold)
-        Spacer()
-        if deviceMediaItems.count > 0 {
-          Text(availabilityLabelText(regarding: deviceMediaItems))
-        }
-        Button(importButtonText(forSelection: selectedDeviceMediaItems)) {
-          Task {
-            self.showStatus("Download started")
-            await self.doImportMediaFromDevice()
+    VStack(alignment: .leading, spacing: 8) {
+      // Import All button - only visible when there are items that can be imported
+      if deviceMediaItems.count > duplicateCount {
+        HStack {
+          Spacer()
+          if deviceMediaItems.count > 0 {
+            Text(availabilityLabelText(regarding: deviceMediaItems))
           }
+          Button(importButtonText(forSelection: selectedDeviceMediaItems)) {
+            Task {
+              self.showStatus("Download started")
+              await self.doImportMediaFromDevice()
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(deviceMediaItems.count <= duplicateCount || self.progressCounter != nil)
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(deviceMediaItems.count <= duplicateCount || self.progressCounter != nil)
+        .padding(.trailing, 8)
       }
 
       // Status messages
@@ -208,8 +213,9 @@ struct ImportView: View {
               onDuplicateCountChange: { duplicateCount = $0 }
             )
           }
-          .padding()
+          .padding(.horizontal, 8)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if importFromDevice.isLoadingDeviceContents {
         VStack(spacing: 16) {
           ProgressView()
@@ -242,6 +248,7 @@ struct ImportView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.large)
+            .padding(.bottom, 20)
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -263,6 +270,7 @@ struct ImportView: View {
               self.scanForDevices()
             }
             .buttonStyle(.borderedProminent)
+            .padding(.bottom, 20)
           }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -272,28 +280,24 @@ struct ImportView: View {
 
   // MARK: - Local Files Contents
   var localFilesContent: some View {
-    VStack(spacing: 16) {
-      HStack {
-        Image(systemName: "photo.on.rectangle.angled")
-          .foregroundColor(.green)
-        Text("Photos from Local Files")
-          .font(.title2)
-          .fontWeight(.semibold)
-
-        Spacer()
-
-        if localFilesItems.count > 0 {
-          Text(availabilityLabelText(regarding: localFilesItems))
-        }
-
-        Button(importButtonText(forSelection: selectedLocalFilesItems)) {
-          Task {
-            self.showStatus("Import started")
-            await self.doImportLocalFiles()
+    VStack(spacing: 8) {
+      // Import All button - only visible when there are items that can be imported
+      if localFilesItems.count > duplicateCount {
+        HStack {
+          Spacer()
+          if localFilesItems.count > 0 {
+            Text(availabilityLabelText(regarding: localFilesItems))
           }
+          Button(importButtonText(forSelection: selectedLocalFilesItems)) {
+            Task {
+              self.showStatus("Import started")
+              await self.doImportLocalFiles()
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .disabled(localFilesItems.count <= duplicateCount || self.progressCounter != nil)
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(localFilesItems.count <= duplicateCount || self.progressCounter != nil)
+        .padding(.trailing, 8)
       }
 
       if localFilesItems.isEmpty {
@@ -309,6 +313,7 @@ struct ImportView: View {
             }
           }
           .buttonStyle(.borderedProminent)
+          .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
@@ -324,7 +329,7 @@ struct ImportView: View {
             disableDuplicates: true,
             onDuplicateCountChange: { duplicateCount = $0 }
           )
-          .padding()
+          .padding(.horizontal, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
@@ -395,7 +400,6 @@ struct ImportView: View {
                       .foregroundColor(.secondary)
                   }
                 }
-                .padding(.vertical, 4)
               }
             )
             .disclosureGroupStyle(CustomDisclosureGroupStyle())
@@ -421,7 +425,6 @@ struct ImportView: View {
                     .font(.headline)
                   Spacer()
                 }
-                .padding(.vertical, 4)
               }
             )
             .disclosureGroupStyle(CustomDisclosureGroupStyle())
@@ -447,7 +450,6 @@ struct ImportView: View {
                     .font(.headline)
                   Spacer()
                 }
-                .padding(.vertical, 4)
               }
             )
             .disclosureGroupStyle(CustomDisclosureGroupStyle())

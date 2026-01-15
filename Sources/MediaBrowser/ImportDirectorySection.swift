@@ -53,7 +53,7 @@ struct ImportDirectorySection: View {
               directoryManager.customImportDirectory ?? directoryManager.importDirectory
             NSWorkspace.shared.open(urlToOpen)
           }
-          .buttonStyle(.borderedProminent)
+          .buttonStyle(.bordered)
         }
       }
     }
