@@ -161,6 +161,19 @@ final class SearchTests: XCTestCase {
       XCTAssertEqual(placemark.subThoroughfare, "3060")
       XCTAssertEqual(placemark.geocodeString, "West Point Grey, Vancouver, BC, Canada")
     }
+
+    let placemark3 = try await runGeocodeHelper(latitude: 37.568813, longitude: 126.986283)
+    XCTAssertNotNil(placemark3)
+    if let placemark = placemark3 {
+      XCTAssertEqual(placemark.country, "South Korea")
+      XCTAssertEqual(placemark.administrativeArea, "Seoul")
+      XCTAssertNil(placemark.subAdministrativeArea)
+      XCTAssertEqual(placemark.locality, "Seoul")
+      XCTAssertNil(placemark.subLocality)
+      XCTAssertEqual(placemark.thoroughfare, "Samil-daero 15-gil")
+      XCTAssertNil(placemark.subThoroughfare)
+      XCTAssertEqual(placemark.geocodeString, "Seoul, South Korea")
+    }
   }
 
   private func runGeocodeHelper(latitude: CLLocationDegrees, longitude: CLLocationDegrees)

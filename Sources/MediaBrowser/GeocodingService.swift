@@ -13,10 +13,14 @@ extension CLPlacemark {
     if let administrativeArea = self.administrativeArea { geocodeParts.append(administrativeArea) }
     if let country = self.country { geocodeParts.append(country) }
 
-    // Only return a string if we have at least one component
-    guard !geocodeParts.isEmpty else { return nil }
+    // Remove duplicates while preserving order
+    var seen = Set<String>()
+    let uniqueParts = geocodeParts.filter { seen.insert($0).inserted }
 
-    return geocodeParts.joined(separator: ", ")
+    // Only return a string if we have at least one component
+    guard !uniqueParts.isEmpty else { return nil }
+
+    return uniqueParts.joined(separator: ", ")
   }
 }
 
@@ -53,8 +57,8 @@ class GeocodingService {
     var geocodedCount = 0
 
     do {
-      // Get up to 45 items that have GPS but no geocode (throttled to stay under Apple's 50/minute limit)
-      let itemsToGeocode = DatabaseManager.shared.getItemsNeedingGeocode(limit: 45)
+      // Get up to 30 items that have GPS but no geocode (throttled to stay under Apple's 400/10min limit)
+      let itemsToGeocode = DatabaseManager.shared.getItemsNeedingGeocode(limit: 30)
 
       for item in itemsToGeocode {
         guard let gps = item.metadata?.gps else { continue }
@@ -90,6 +94,11 @@ class GeocodingService {
     }
 
     isProcessing = false
+
+    // Print completion summary only if items were actually geocoded
+    if geocodedCount > 0 {
+      print("Geocoding cycle completed: \(geocodedCount) items geocoded")
+    }
   }
 
 }
