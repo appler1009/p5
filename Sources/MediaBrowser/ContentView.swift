@@ -25,6 +25,8 @@ class LightboxStateManager: ObservableObject {
 }
 
 struct ContentView: View {
+  let databasePath: String?
+
   @ObservedObject private var directoryManager = DirectoryManager.shared
   @ObservedObject private var mediaScanner = MediaScanner.shared
   @ObservedObject private var lightboxStateManager = LightboxStateManager.shared
@@ -39,6 +41,14 @@ struct ContentView: View {
   @State private var scrollTarget: Int? = nil
   @State private var showSettingsSidebar = false
   @State private var showImportSidebar = false
+
+  init(databasePath: String? = nil) {
+    self.databasePath = databasePath
+    if let databasePath = databasePath {
+      // Switch to the specified database
+      DatabaseManager.shared.switchToDatabase(at: databasePath)
+    }
+  }
 
   private var sortedItems: [LocalFileSystemMediaItem] {
     let allItems = mediaScanner.items
@@ -461,6 +471,26 @@ struct ContentView: View {
     ) { _ in
       Task { @MainActor in
         await mediaScanner.loadFromDB()
+      }
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .openNewDatabase,
+      object: nil,
+      queue: .main
+    ) { notification in
+      if let userInfo = notification.userInfo, let path = userInfo["path"] as? String {
+        openWindow(id: "database", value: path)
+      }
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .openDatabase,
+      object: nil,
+      queue: .main
+    ) { notification in
+      if let userInfo = notification.userInfo, let path = userInfo["path"] as? String {
+        openWindow(id: "database", value: path)
       }
     }
   }

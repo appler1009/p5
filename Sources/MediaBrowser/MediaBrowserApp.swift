@@ -7,6 +7,8 @@ extension Notification.Name {
   static let openSettings = Notification.Name("openSettings")
   static let openImport = Notification.Name("openImport")
   static let databaseSwitched = Notification.Name("databaseSwitched")
+  static let openNewDatabase = Notification.Name("openNewDatabase")
+  static let openDatabase = Notification.Name("openDatabase")
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -78,6 +80,121 @@ struct MediaBrowserApp: App {
           }
           savePanel.title = "New Database"
           if savePanel.runModal() == .OK, let url = savePanel.url {
+            NotificationCenter.default.post(
+              name: .openNewDatabase, object: nil, userInfo: ["path": url.path])
+          }
+        }
+        .keyboardShortcut("n", modifiers: .command)
+
+        Button("Open...") {
+          let openPanel = NSOpenPanel()
+          openPanel.canChooseFiles = true
+          openPanel.canChooseDirectories = false
+          openPanel.allowsMultipleSelection = false
+          if #available(macOS 12.0, *) {
+            openPanel.allowedContentTypes = [
+              UTType(filenameExtension: DatabaseManager.databaseFileExtension)!
+            ]
+          } else {
+            openPanel.allowedFileTypes = [DatabaseManager.databaseFileExtension]
+          }
+          openPanel.title = "Open Database"
+          if openPanel.runModal() == .OK, let url = openPanel.url {
+            NotificationCenter.default.post(
+              name: .openDatabase, object: nil, userInfo: ["path": url.path])
+          }
+        }
+        .keyboardShortcut("o", modifiers: .command)
+
+        Divider()
+      }
+
+      // Add items after standard View options
+      CommandGroup(after: .sidebar) {
+        Button(action: {
+          UserDefaults.standard.set("Grid", forKey: "viewMode")
+        }) {
+          Label("Grid View", systemImage: "square.grid.2x2")
+        }
+        .keyboardShortcut("1", modifiers: .command)
+
+        Button(action: {
+          UserDefaults.standard.set("Map", forKey: "viewMode")
+        }) {
+          Label("Map View", systemImage: "map")
+        }
+        .keyboardShortcut("2", modifiers: .command)
+
+        Divider()
+
+        Button(action: {
+          NotificationCenter.default.post(name: .openImport, object: nil)
+        }) {
+          Label("Import...", systemImage: "iphone.and.arrow.forward")
+        }
+        .keyboardShortcut(KeyEquivalent("m"), modifiers: .command)
+
+        Button(action: {
+          NotificationCenter.default.post(name: .openSettings, object: nil)
+        }) {
+          Label("Settings...", systemImage: "gear")
+        }
+        .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
+
+        Divider()
+      }
+
+      // Photos menu for photo operations
+      CommandMenu("Photos") {
+        Button(action: {
+          // Post notification to open media details sidebar
+          NotificationCenter.default.post(name: Notification.Name("openMediaDetails"), object: nil)
+        }) {
+          Label("Details...", systemImage: "info.circle")
+        }
+        .keyboardShortcut("I", modifiers: .command)
+        .disabled(!LightboxStateManager.shared.isLightboxOpen)
+
+        Divider()
+
+        Button(action: {
+          NotificationCenter.default.post(name: .rotateClockwise, object: nil)
+        }) {
+          Label("Rotate Clockwise", systemImage: "arrow.clockwise")
+        }
+        .keyboardShortcut("R", modifiers: .command)
+        .disabled(!LightboxStateManager.shared.isLightboxOpen)
+
+        Button(action: {
+          NotificationCenter.default.post(name: .rotateCounterClockwise, object: nil)
+        }) {
+          Label("Rotate Counter Clockwise", systemImage: "arrow.counterclockwise")
+        }
+        .keyboardShortcut("R", modifiers: [.command, .shift])
+        .disabled(!LightboxStateManager.shared.isLightboxOpen)
+      }
+    }
+
+    WindowGroup(id: "database", for: String.self) { $databasePath in
+      ContentView(databasePath: databasePath)
+    }
+    .commands {
+      CommandGroup(replacing: .newItem) {
+        Button("New...") {
+          let savePanel = NSSavePanel()
+          savePanel.canCreateDirectories = true
+          savePanel.showsTagField = false
+          savePanel.nameFieldStringValue = "database.\(DatabaseManager.databaseFileExtension)"
+          if #available(macOS 12.0, *) {
+            savePanel.allowedContentTypes = [
+              UTType(filenameExtension: DatabaseManager.databaseFileExtension)!
+            ]
+          } else {
+            savePanel.allowedFileTypes = [DatabaseManager.databaseFileExtension]
+          }
+          savePanel.title = "New Database"
+          if savePanel.runModal() == .OK, let url = savePanel.url {
+            // For now, switch in current window (will change later)
             DatabaseManager.shared.switchToDatabase(at: url.path)
             NotificationCenter.default.post(name: .databaseSwitched, object: nil)
           }
@@ -172,6 +289,5 @@ struct MediaBrowserApp: App {
         .disabled(!LightboxStateManager.shared.isLightboxOpen)
       }
     }
-
   }
 }
