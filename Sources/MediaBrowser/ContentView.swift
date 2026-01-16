@@ -45,34 +45,7 @@ struct ContentView: View {
     let filteredItems =
       searchQuery.isEmpty
       ? allItems
-      : allItems.filter { item in
-        // Search in filename
-        if item.displayName.localizedCaseInsensitiveContains(searchQuery) {
-          return true
-        }
-
-        // Search in file extension (without dot)
-        let fileExtension = (item.displayName as NSString).pathExtension.lowercased()
-        if fileExtension.localizedCaseInsensitiveContains(searchQuery) {
-          return true
-        }
-
-        // Search in camera make
-        if let make = item.metadata?.make,
-          make.localizedCaseInsensitiveContains(searchQuery)
-        {
-          return true
-        }
-
-        // Search in camera model
-        if let model = item.metadata?.model,
-          model.localizedCaseInsensitiveContains(searchQuery)
-        {
-          return true
-        }
-
-        return false
-      }
+      : allItems.filter { $0.matchesSearchQuery(searchQuery) }
 
     return filteredItems.sorted { item1, item2 in
       let date1 = item1.metadata?.creationDate ?? Date.distantPast
