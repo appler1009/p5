@@ -201,7 +201,6 @@ struct ContentView: View {
         }
       }
     }
-
     .onAppear {
 
       print("ContentView appeared with databasePath: \(databasePath ?? "nil")")
@@ -210,6 +209,8 @@ struct ContentView: View {
       if let databasePath = databasePath {
         print("Saving lastOpenedDatabasePath: \(databasePath)")
         UserDefaults.standard.set(databasePath, forKey: "lastOpenedDatabasePath")
+        // Add to recent databases
+        UserDefaults.addRecentDatabase(databasePath)
       } else {
         print("Not saving lastOpenedDatabasePath because databasePath is nil")
       }
@@ -221,12 +222,6 @@ struct ContentView: View {
         Task {
           await s3Service.uploadNextItem()
         }
-      }
-
-      DispatchQueue.main.async {
-
-        NSApp.windows.first?.title = ""
-
       }
 
     }
@@ -290,9 +285,10 @@ struct ContentView: View {
           }
         }
       }
+
     }
 
-    .navigationTitle("")
+    .navigationTitle(databasePath.map { ($0 as NSString).lastPathComponent } ?? "")
   }
   private func nextFullScreenItem() {
     guard let currentLightboxItem = lightboxItem,

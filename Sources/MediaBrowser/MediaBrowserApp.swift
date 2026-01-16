@@ -11,6 +11,28 @@ extension Notification.Name {
   static let openDatabase = Notification.Name("openDatabase")
 }
 
+extension UserDefaults {
+  private static let recentDatabasesKey = "recentDatabases"
+  private static let maxRecentDatabases = 5
+
+  static func addRecentDatabase(_ path: String) {
+    var recent = recentDatabases()
+    // Remove if already exists (to move to front)
+    recent.removeAll { $0 == path }
+    // Add to front
+    recent.insert(path, at: 0)
+    // Keep only the last 5
+    if recent.count > maxRecentDatabases {
+      recent = Array(recent.prefix(maxRecentDatabases))
+    }
+    UserDefaults.standard.set(recent, forKey: recentDatabasesKey)
+  }
+
+  static func recentDatabases() -> [String] {
+    return UserDefaults.standard.stringArray(forKey: recentDatabasesKey) ?? []
+  }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
@@ -107,6 +129,26 @@ struct MediaBrowserApp: App {
         .keyboardShortcut("o", modifiers: .command)
 
         Divider()
+      }
+
+      CommandGroup(after: .newItem) {
+        Menu("Open Recent") {
+          if UserDefaults.recentDatabases().isEmpty {
+            Text("No Recent Databases").foregroundColor(.secondary)
+          } else {
+            ForEach(UserDefaults.recentDatabases(), id: \.self) { path in
+              Button(action: {
+                WindowManager.openWindow?(path)
+              }) {
+                Text((path as NSString).lastPathComponent)
+              }
+            }
+            Divider()
+            Button("Clear Menu") {
+              UserDefaults.standard.removeObject(forKey: "recentDatabases")
+            }
+          }
+        }
       }
 
       // Add items after standard View options
