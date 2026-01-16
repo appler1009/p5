@@ -33,6 +33,8 @@ struct SectionHeader: View {
 
 struct MediaDetailsSidebar: View {
   let item: LocalFileSystemMediaItem
+  let metadata: MediaMetadata?
+  let isGeocodingInProgress: Bool
 
   var body: some View {
     ScrollView(.vertical) {
@@ -49,7 +51,7 @@ struct MediaDetailsSidebar: View {
           detailRow("Path", item.originalUrl.path)  // TODO show original, edited, live, all three.
         }
 
-        if let metadata = item.metadata {
+        if let metadata = metadata {
           // Date Information
           if let creationDate = metadata.creationDate {
             detailRow("Created", formatDate(creationDate))
@@ -151,7 +153,7 @@ struct MediaDetailsSidebar: View {
           .padding(.top, 16)
 
         // Mini Map
-        if let metadata = item.metadata,
+        if let metadata = metadata,
           let gps = metadata.gps
         {
           // Location header with icon
@@ -189,6 +191,17 @@ struct MediaDetailsSidebar: View {
             }
             if let geocode = metadata.geocode, !geocode.isEmpty {
               detailRow("Location", geocode)
+                .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
+            } else if isGeocodingInProgress {
+              HStack {
+                Text("Location")
+                Spacer()
+                ProgressView()
+                  .scaleEffect(0.5)
+                  .frame(width: 16, height: 16)
+              }
+              .padding(.vertical, 4)
+              .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
             }
           }
           .padding(.top, 8)
@@ -389,7 +402,7 @@ struct MediaDetailsSidebar: View {
 }
 
 struct FullMediaView: View {
-  let item: LocalFileSystemMediaItem
+  @ObservedObject var item: LocalFileSystemMediaItem
   let onClose: () -> Void
   let onNext: () -> Void
   let onPrev: () -> Void
@@ -404,6 +417,8 @@ struct FullMediaView: View {
   @State private var rotationAngle: Angle = .degrees(0)
   @State private var lastScale: CGFloat = 1.0
   @State private var cursorLocation: CGPoint? = nil
+  @State private var currentMetadata: MediaMetadata?
+  @State private var isGeocodingInProgress = false
 
   // MARK: - Extracted Components
 
@@ -413,7 +428,8 @@ struct FullMediaView: View {
       VStack(spacing: 0) {
         sidebarHeader
         Divider()
-        MediaDetailsSidebar(item: item)
+        MediaDetailsSidebar(
+          item: item, metadata: currentMetadata, isGeocodingInProgress: isGeocodingInProgress)
         Spacer()
       }
       .frame(width: 350)
@@ -748,6 +764,8 @@ struct FullMediaView: View {
       .keyboardShortcut("i", modifiers: .command)
     }
     .onChange(of: item.id) {
+      // Update currentMetadata when item changes
+      currentMetadata = item.metadata
       fullImage = nil
       player = nil
       showVideo = false
@@ -761,14 +779,20 @@ struct FullMediaView: View {
       } else if item.type == .photo || (item.type == .livePhoto && !showVideo) {
         loadImage()
       }
+      // Geocode if needed when opening item in lightbox
+      Task { await geocodeIfNeeded() }
     }
     .onAppear {
+      // Initialize currentMetadata with item's metadata
+      currentMetadata = item.metadata
       showVideo = false
       if item.type == .video || (item.type == .livePhoto && showVideo) {
         loadVideo()
       } else if item.type == .photo || (item.type == .livePhoto && !showVideo) {
         loadImage()
       }
+      // Geocode if needed when opening item in lightbox
+      Task { await geocodeIfNeeded() }
     }
     .onDisappear {
       player?.pause()
@@ -878,6 +902,56 @@ struct FullMediaView: View {
     if let videoURL = videoURL {
       player = AVPlayer(url: videoURL)
       player?.play()
+    }
+  }
+
+  private func geocodeIfNeeded() async {
+    // Check if item has GPS coordinates and no geocode string
+    guard let gps = item.metadata?.gps,
+      item.metadata?.geocode == nil || item.metadata?.geocode?.isEmpty == true
+    else {
+      return
+    }
+
+    await MainActor.run {
+      isGeocodingInProgress = true
+    }
+
+    let location = CLLocation(latitude: gps.latitude, longitude: gps.longitude)
+    let geocoder = CLGeocoder()
+
+    // TODO: Future upgrade to MapKit geocoding (macOS 26.0+)
+    // When targeting macOS 26+, replace CLGeocoder with:
+    // let request = MKReverseGeocodingRequest(coordinate: coordinate)
+    // let response = try await request.response()
+    // if let mapItem = response.mapItems.first {
+    //     let address = mapItem.address.addressRepresentations.first?.localizedString
+    // }
+
+    do {
+      let placemarks = try await geocoder.reverseGeocodeLocation(location)
+      if let placemark = placemarks.first, let geocodeString = placemark.geocodeString {
+        // Update the item metadata with geocode
+        if var updatedMetadata = item.metadata {
+          updatedMetadata.geocode = geocodeString
+          item.metadata = updatedMetadata
+          currentMetadata = updatedMetadata  // Update the state variable for UI refresh
+
+          // Update database with geocode
+          DatabaseManager.shared.updateGeocode(for: item.id, geocode: geocodeString)
+
+          // Update in-memory MediaItem for immediate keyword lookup availability
+          await MediaScanner.shared.updateGeocode(for: item.id, geocode: geocodeString)
+
+          await MainActor.run {
+            isGeocodingInProgress = false
+          }
+        }
+      }
+    } catch {
+      await MainActor.run {
+        isGeocodingInProgress = false
+      }
     }
   }
 }
