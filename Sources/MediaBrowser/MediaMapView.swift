@@ -2,26 +2,26 @@ import MapKit
 import SwiftUI
 
 struct MediaMapView: View {
-  @ObservedObject private var mediaScanner = MediaScanner.shared
+  @ObservedObject var mediaScanner: MediaScanner
   let lightboxItem: MediaItem?
   let searchQuery: String
   let onFullScreen: (MediaItem) -> Void
+
+  init(
+    mediaScanner: MediaScanner, lightboxItem: MediaItem?, searchQuery: String,
+    onFullScreen: @escaping (MediaItem) -> Void
+  ) {
+    self.mediaScanner = mediaScanner
+    self.lightboxItem = lightboxItem
+    self.searchQuery = searchQuery
+    self.onFullScreen = onFullScreen
+  }
 
   @State private var region = MKCoordinateRegion(
     center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
     span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)
   )
   @State private var clusters: [Cluster] = []
-
-  init(
-    lightboxItem: MediaItem?,
-    searchQuery: String,
-    onFullScreen: @escaping (MediaItem) -> Void
-  ) {
-    self.lightboxItem = lightboxItem
-    self.searchQuery = searchQuery
-    self.onFullScreen = onFullScreen
-  }
 
   private var itemsWithGPS: [LocalFileSystemMediaItem] {
     let allGPSItems = mediaScanner.items.filter { $0.metadata?.gps != nil }

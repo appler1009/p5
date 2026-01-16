@@ -7,18 +7,20 @@ extension Notification.Name {
 
 @MainActor
 class MediaScanner: ObservableObject {
-  @MainActor static let shared = MediaScanner()
+  static var shared: MediaScanner!
+  let databaseManager: DatabaseManager
 
   @Published var items: [LocalFileSystemMediaItem] = []
   @Published var isScanning = false
   @Published var scanProgress: (current: Int, total: Int)? = nil
 
-  private init() {
+  init(databaseManager: DatabaseManager) {
+    self.databaseManager = databaseManager
     Task { await loadFromDB() }
   }
 
   func loadFromDB() async {
-    items = DatabaseManager.shared.getAllItems()
+    items = databaseManager.getAllItems()
   }
 
   func updateGeocode(for itemId: Int, geocode: String) async {
@@ -50,7 +52,7 @@ class MediaScanner: ObservableObject {
 
   func reset() async {
     items.removeAll()
-    DatabaseManager.shared.clearAll()
+    databaseManager.clearAll()
   }
 
   func scan(directories: [URL]) async {
@@ -62,7 +64,7 @@ class MediaScanner: ObservableObject {
       isScanning = true
     }
     items.removeAll()
-    DatabaseManager.shared.clearAll()
+    databaseManager.clearAll()
 
     // First pass: calculate total items
     var total = 0
@@ -81,7 +83,7 @@ class MediaScanner: ObservableObject {
 
     // Save to DB
     for item in items {
-      DatabaseManager.shared.insertItem(item)
+      databaseManager.insertItem(item)
     }
     // Cleanup dangling thumbnails
     let deleted = ThumbnailCache.shared.cleanupDanglingThumbnails()

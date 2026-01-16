@@ -35,6 +35,7 @@ struct MediaDetailsSidebar: View {
   let item: LocalFileSystemMediaItem
   let metadata: MediaMetadata?
   let isGeocodingInProgress: Bool
+  let databaseManager: DatabaseManager
 
   var body: some View {
     ScrollView(.vertical) {
@@ -246,7 +247,7 @@ struct MediaDetailsSidebar: View {
               item.metadata = updatedMetadata
 
               // Update database with geocode
-              DatabaseManager.shared.updateGeocode(for: item.id, geocode: geocodeString)
+              databaseManager.updateGeocode(for: item.id, geocode: geocodeString)
             }
           }
         } catch {
@@ -406,6 +407,20 @@ struct FullMediaView: View {
   let onClose: () -> Void
   let onNext: () -> Void
   let onPrev: () -> Void
+  let databaseManager: DatabaseManager
+  let mediaScanner: MediaScanner
+
+  init(
+    item: LocalFileSystemMediaItem, onClose: @escaping () -> Void, onNext: @escaping () -> Void,
+    onPrev: @escaping () -> Void, databaseManager: DatabaseManager, mediaScanner: MediaScanner
+  ) {
+    self.item = item
+    self.onClose = onClose
+    self.onNext = onNext
+    self.onPrev = onPrev
+    self.databaseManager = databaseManager
+    self.mediaScanner = mediaScanner
+  }
 
   @State private var fullImage: NSImage?
   @State private var player: AVPlayer?
@@ -429,7 +444,8 @@ struct FullMediaView: View {
         sidebarHeader
         Divider()
         MediaDetailsSidebar(
-          item: item, metadata: currentMetadata, isGeocodingInProgress: isGeocodingInProgress)
+          item: item, metadata: currentMetadata, isGeocodingInProgress: isGeocodingInProgress,
+          databaseManager: databaseManager)
         Spacer()
       }
       .frame(width: 350)
@@ -726,7 +742,7 @@ struct FullMediaView: View {
     }
     .onAppear {
       // Load sidebar state from database
-      if let savedState = DatabaseManager.shared.getSetting("fullMediaShowSidebar"),
+      if let savedState = databaseManager.getSetting("fullMediaShowSidebar"),
         let isOpen = Bool(savedState)
       {
         showSidebar = isOpen
@@ -734,7 +750,7 @@ struct FullMediaView: View {
     }
     .onChange(of: showSidebar) {
       // Save sidebar state to database
-      DatabaseManager.shared.setSetting(
+      databaseManager.setSetting(
         "fullMediaShowSidebar", value: showSidebar ? "true" : "false")
     }
     .overlay(alignment: .bottomLeading) {
@@ -863,7 +879,7 @@ struct FullMediaView: View {
       item.editedUrl = editedURL
 
       // Update database
-      DatabaseManager.shared.updateEditedUrl(for: item.id, editedUrl: editedURL)
+      databaseManager.updateEditedUrl(for: item.id, editedUrl: editedURL)
 
       // Regenerate thumbnail
       _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: editedURL, mediaItem: item)
@@ -938,10 +954,10 @@ struct FullMediaView: View {
           currentMetadata = updatedMetadata  // Update the state variable for UI refresh
 
           // Update database with geocode
-          DatabaseManager.shared.updateGeocode(for: item.id, geocode: geocodeString)
+          databaseManager.updateGeocode(for: item.id, geocode: geocodeString)
 
           // Update in-memory MediaItem for immediate keyword lookup availability
-          await MediaScanner.shared.updateGeocode(for: item.id, geocode: geocodeString)
+          await mediaScanner.updateGeocode(for: item.id, geocode: geocodeString)
 
           await MainActor.run {
             isGeocodingInProgress = false

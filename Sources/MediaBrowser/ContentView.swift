@@ -27,8 +27,10 @@ class LightboxStateManager: ObservableObject {
 struct ContentView: View {
   let databasePath: String?
 
-  @ObservedObject private var directoryManager = DirectoryManager.shared
-  @ObservedObject private var mediaScanner = MediaScanner.shared
+  let databaseManager: DatabaseManager
+  @ObservedObject private var directoryManager: DirectoryManager
+  @ObservedObject private var mediaScanner: MediaScanner
+  @ObservedObject private var s3Service: S3Service
   @ObservedObject private var lightboxStateManager = LightboxStateManager.shared
   @Environment(\.openWindow) private var openWindow
   @State private var lightboxItem: MediaItem?
@@ -44,10 +46,16 @@ struct ContentView: View {
 
   init(databasePath: String? = nil) {
     self.databasePath = databasePath
-    if let databasePath = databasePath {
-      // Switch to the specified database
-      DatabaseManager.shared.switchToDatabase(at: databasePath)
-    }
+    let dbPath = databasePath ?? DatabaseManager.defaultPath
+    self.databaseManager = DatabaseManager(path: dbPath)
+    self.directoryManager = DirectoryManager(databaseManager: databaseManager)
+    self.mediaScanner = MediaScanner(databaseManager: databaseManager)
+    self.s3Service = S3Service(databaseManager: databaseManager)
+    DatabaseManager.shared = databaseManager
+    MediaScanner.shared = mediaScanner
+    DirectoryManager.shared = directoryManager
+    S3Service.shared = s3Service
+    GeocodingService.shared = GeocodingService(databaseManager: databaseManager)
   }
 
   private var sortedItems: [LocalFileSystemMediaItem] {
@@ -132,14 +140,17 @@ struct ContentView: View {
         VStack(spacing: 0) {
           if viewMode == "Grid" {
             MediaGridView(
+              mediaScanner: mediaScanner,
+              databaseManager: databaseManager,
               searchQuery: searchQuery,
               onSelected: selectItems,
               onFullScreen: goFullScreen,
-              selectionState: selectionState,
-              onScrollToItem: nil
+              onScrollToItem: nil,
+              selectionState: selectionState
             )
           } else if viewMode == "Map" {
             MediaMapView(
+              mediaScanner: mediaScanner,
               lightboxItem: lightboxItem,
               searchQuery: searchQuery,
               onFullScreen: goFullScreen
@@ -151,14 +162,17 @@ struct ContentView: View {
         if showSettingsSidebar {
           Divider()
 
-          SettingsView()
-            .frame(width: 455)
-            .frame(maxHeight: .infinity)
-            .background(Color(.windowBackgroundColor))
+          SettingsView(
+            directoryManager: directoryManager, s3Service: s3Service,
+            databaseManager: databaseManager, mediaScanner: mediaScanner
+          )
+          .frame(width: 455)
+          .frame(maxHeight: .infinity)
+          .background(Color(.windowBackgroundColor))
         } else if showImportSidebar {
           Divider()
 
-          ImportView()
+          ImportView(directoryManager: directoryManager)
             .frame(width: 600)
             .frame(maxHeight: .infinity)
             .background(Color(.windowBackgroundColor))
@@ -173,7 +187,9 @@ struct ContentView: View {
             lightboxStateManager.isLightboxOpen = false
           },
           onNext: nextFullScreenItem,
-          onPrev: prevFullScreenItem
+          onPrev: prevFullScreenItem,
+          databaseManager: databaseManager,
+          mediaScanner: mediaScanner
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
@@ -189,6 +205,13 @@ struct ContentView: View {
     .onAppear {
 
       setupS3SyncNotifications()
+
+      // Start auto-sync if enabled
+      if s3Service.autoSyncEnabled && s3Service.config.isValid {
+        Task {
+          await s3Service.uploadNextItem()
+        }
+      }
 
       DispatchQueue.main.async {
 
@@ -385,7 +408,7 @@ struct ContentView: View {
       item.editedUrl = editedURL
 
       // Update database
-      DatabaseManager.shared.updateEditedUrl(for: item.id, editedUrl: editedURL)
+      databaseManager.updateEditedUrl(for: item.id, editedUrl: editedURL)
 
       // Regenerate thumbnail
       _ = await ThumbnailCache.shared.generateAndCacheThumbnail(for: editedURL, mediaItem: item)
@@ -480,7 +503,9 @@ struct ContentView: View {
       queue: .main
     ) { notification in
       if let userInfo = notification.userInfo, let path = userInfo["path"] as? String {
-        openWindow(id: "database", value: path)
+        Task { @MainActor in
+          openWindow(id: "database", value: path)
+        }
       }
     }
 
@@ -490,7 +515,9 @@ struct ContentView: View {
       queue: .main
     ) { notification in
       if let userInfo = notification.userInfo, let path = userInfo["path"] as? String {
-        openWindow(id: "database", value: path)
+        Task { @MainActor in
+          openWindow(id: "database", value: path)
+        }
       }
     }
   }

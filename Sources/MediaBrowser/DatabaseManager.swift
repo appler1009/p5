@@ -3,8 +3,11 @@ import GRDB
 
 @MainActor
 class DatabaseManager: ObservableObject {
-  static let shared = DatabaseManager()
+  static var shared: DatabaseManager!
   static let databaseFileExtension = "photos"
+  static let defaultPath =
+    FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path
+    + "/MediaBrowser/media.\(databaseFileExtension)"
   private var dbQueue: DatabaseQueue?
   private var currentDbPath: String?
 
@@ -12,12 +15,8 @@ class DatabaseManager: ObservableObject {
     currentDbPath
   }
 
-  private init() {
-    let defaultPath =
-      FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.path
-      + "/MediaBrowser/media.\(Self.databaseFileExtension)"
-    let dbPath = UserDefaults.standard.string(forKey: "databasePath") ?? defaultPath
-    openDatabase(at: dbPath)
+  init(path: String) {
+    openDatabase(at: path)
   }
 
   func switchToDatabase(at path: String) {

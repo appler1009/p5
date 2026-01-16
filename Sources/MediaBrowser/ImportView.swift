@@ -42,6 +42,11 @@ struct CustomDisclosureGroupStyle: DisclosureGroupStyle {
 // MARK: - Import View
 
 struct ImportView: View {
+  @ObservedObject private var directoryManager: DirectoryManager
+
+  init(directoryManager: DirectoryManager) {
+    self.directoryManager = directoryManager
+  }
   @State private var importFromDevice = ImportFromDevice()
   @State private var isScanningDevices = false
   @State private var importStatus: String?
@@ -657,7 +662,7 @@ struct ImportView: View {
       try await importApplePhotos.importItems(
         items: items,
         from: photosLib,
-        to: DirectoryManager.shared.importDirectory,
+        to: directoryManager.importDirectory,
         with: importCallbacks,
         progress: progressCounter
       )
@@ -680,7 +685,7 @@ struct ImportView: View {
       try await importLocalFiles.importPhotos(
         items: items,
         from: sourceDir,
-        to: DirectoryManager.shared.importDirectory,
+        to: directoryManager.importDirectory,
         callbacks: ImportCallbacks(
           onMediaImported: { mediaItem in },
           onMediaSkipped: { mediaItem in },

@@ -6,15 +6,21 @@ import Foundation
 
 @MainActor
 class S3Service: ObservableObject {
-  static let shared = S3Service()
+  static var shared: S3Service!
+  let databaseManager: DatabaseManager
 
   @Published var uploadProgress: [String: Double] = [:]
   @Published var isUploading = false
   @Published var autoSyncEnabled: Bool = false {
     didSet {
-      DatabaseManager.shared.setSetting(
+      databaseManager.setSetting(
         "autoSyncEnabled", value: autoSyncEnabled ? "true" : "false")
     }
+  }
+
+  init(databaseManager: DatabaseManager) {
+    self.databaseManager = databaseManager
+    loadSettings()
   }
   @Published var config = S3Config() {
     didSet {
@@ -44,30 +50,24 @@ class S3Service: ObservableObject {
     return nil
   }
 
-  private init() {
-    loadConfig()
-    setupS3Client()
-  }
-
-  private func loadConfig() {
-    if let configJson = DatabaseManager.shared.getSetting("s3Config"),
-      let data = configJson.data(using: .utf8),
+  private func loadSettings() {
+    if let configJson = databaseManager.getSetting("s3Config"),
+      let data = Data(base64Encoded: configJson),
       let decodedConfig = try? JSONDecoder().decode(S3Config.self, from: data)
     {
       config = decodedConfig
     }
 
     // Load auto sync setting
-    if let autoSyncValue = DatabaseManager.shared.getSetting("autoSyncEnabled") {
+    if let autoSyncValue = databaseManager.getSetting("autoSyncEnabled") {
       autoSyncEnabled = autoSyncValue == "true"
     }
   }
 
   private func saveConfig() {
-    if let data = try? JSONEncoder().encode(config),
-      let configJson = String(data: data, encoding: .utf8)
-    {
-      DatabaseManager.shared.setSetting("s3Config", value: configJson)
+    if let data = try? JSONEncoder().encode(config) {
+      let configJson = data.base64EncodedString()
+      databaseManager.setSetting("s3Config", value: configJson)
     }
   }
 
@@ -256,7 +256,7 @@ class S3Service: ObservableObject {
     while autoSyncEnabled {
       // Find the first item that hasn't been synced yet
       guard
-        let itemToUpload = DatabaseManager.shared.getAllItems().first(where: {
+        let itemToUpload = databaseManager.getAllItems().first(where: {
           $0.s3SyncStatus != .synced
         })
       else {
@@ -286,7 +286,7 @@ class S3Service: ObservableObject {
 
         // Update the item's sync status in database
         itemToUpload.s3SyncStatus = .synced
-        DatabaseManager.shared.updateS3SyncStatus(for: itemToUpload)
+        databaseManager.updateS3SyncStatus(for: itemToUpload)
 
         // Update UI to show cloud icon immediately after successful upload
         let itemId = itemToUpload.id
@@ -307,7 +307,7 @@ class S3Service: ObservableObject {
 
         // Update the item's sync status to failed
         itemToUpload.s3SyncStatus = .failed
-        DatabaseManager.shared.updateS3SyncStatus(for: itemToUpload)
+        databaseManager.updateS3SyncStatus(for: itemToUpload)
 
         print("💾 [STATUS] Marked \(filename) as failed - will retry later")
 

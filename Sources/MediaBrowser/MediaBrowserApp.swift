@@ -19,15 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Suppress MapKit debug output
     UserDefaults.standard.set(false, forKey: "MKDefaultLogLevel")
 
-    // Start background geocoding service
-    _ = GeocodingService.shared
-
-    // Start auto-sync if enabled
-    if S3Service.shared.autoSyncEnabled && S3Service.shared.config.isValid {
-      Task {
-        await S3Service.shared.uploadNextItem()
-      }
-    }
+    // GeocodingService is started in ContentView
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
@@ -194,9 +186,8 @@ struct MediaBrowserApp: App {
           }
           savePanel.title = "New Database"
           if savePanel.runModal() == .OK, let url = savePanel.url {
-            // For now, switch in current window (will change later)
-            DatabaseManager.shared.switchToDatabase(at: url.path)
-            NotificationCenter.default.post(name: .databaseSwitched, object: nil)
+            NotificationCenter.default.post(
+              name: .openNewDatabase, object: nil, userInfo: ["path": url.path])
           }
         }
         .keyboardShortcut("n", modifiers: .command)
@@ -215,8 +206,8 @@ struct MediaBrowserApp: App {
           }
           openPanel.title = "Open Database"
           if openPanel.runModal() == .OK, let url = openPanel.url {
-            DatabaseManager.shared.switchToDatabase(at: url.path)
-            NotificationCenter.default.post(name: .databaseSwitched, object: nil)
+            NotificationCenter.default.post(
+              name: .openDatabase, object: nil, userInfo: ["path": url.path])
           }
         }
         .keyboardShortcut("o", modifiers: .command)

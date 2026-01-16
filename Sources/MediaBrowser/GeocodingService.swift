@@ -26,12 +26,14 @@ extension CLPlacemark {
 
 @MainActor
 class GeocodingService {
-  static let shared = GeocodingService()
+  let databaseManager: DatabaseManager
+  static var shared: GeocodingService!
 
   private var timer: Timer?
   private var isProcessing = false
 
-  private init() {
+  init(databaseManager: DatabaseManager) {
+    self.databaseManager = databaseManager
     // Start the periodic geocoding timer
     startPeriodicGeocoding()
   }
@@ -58,7 +60,7 @@ class GeocodingService {
 
     do {
       // Get up to 30 items that have GPS but no geocode (throttled to stay under Apple's 400/10min limit)
-      let itemsToGeocode = DatabaseManager.shared.getItemsNeedingGeocode(limit: 30)
+      let itemsToGeocode = databaseManager.getItemsNeedingGeocode(limit: 30)
 
       for item in itemsToGeocode {
         guard let gps = item.metadata?.gps else { continue }
@@ -78,7 +80,7 @@ class GeocodingService {
           let placemarks = try await geocoder.reverseGeocodeLocation(location)
           if let placemark = placemarks.first, let geocodeString = placemark.geocodeString {
             // Update database with geocode
-            DatabaseManager.shared.updateGeocode(for: item.id, geocode: geocodeString)
+            databaseManager.updateGeocode(for: item.id, geocode: geocodeString)
 
             // Update in-memory MediaItem for immediate keyword lookup availability
             await MediaScanner.shared.updateGeocode(for: item.id, geocode: geocodeString)

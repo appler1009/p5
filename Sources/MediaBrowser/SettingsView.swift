@@ -2,9 +2,20 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
-  @ObservedObject private var directoryManager = DirectoryManager.shared
-  @ObservedObject private var s3Service = S3Service.shared
-  @ObservedObject private var databaseManager = DatabaseManager.shared
+  @ObservedObject private var directoryManager: DirectoryManager
+  @ObservedObject private var s3Service: S3Service
+  @ObservedObject private var databaseManager: DatabaseManager
+  @ObservedObject private var mediaScanner: MediaScanner
+
+  init(
+    directoryManager: DirectoryManager, s3Service: S3Service, databaseManager: DatabaseManager,
+    mediaScanner: MediaScanner
+  ) {
+    self.directoryManager = directoryManager
+    self.s3Service = s3Service
+    self.databaseManager = databaseManager
+    self.mediaScanner = mediaScanner
+  }
   @AppStorage("lastThumbnailCleanupCount") private var lastCleanupCount = 0
 
   @State private var currentUploadItem: String?
@@ -144,10 +155,10 @@ struct SettingsView: View {
               Spacer()
               Button("Scan") {
                 Task {
-                  await MediaScanner.shared.scan(directories: directoryManager.directories)
+                  await mediaScanner.scan(directories: directoryManager.directories)
                 }
               }
-              .disabled(MediaScanner.shared.isScanning)
+              .disabled(mediaScanner.isScanning)
               .buttonStyle(.borderedProminent)
             }
             .padding(.top)
@@ -186,7 +197,7 @@ struct SettingsView: View {
             }
             Spacer()
             Button("Reset") {
-              Task { await MediaScanner.shared.reset() }
+              Task { await mediaScanner.reset() }
             }
             .buttonStyle(.bordered)
             .foregroundColor(.red)

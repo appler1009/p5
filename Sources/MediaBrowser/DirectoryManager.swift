@@ -3,8 +3,15 @@ import Foundation
 
 @MainActor
 class DirectoryManager: ObservableObject {
-  @MainActor static let shared = DirectoryManager()
+  static var shared: DirectoryManager!
+  let databaseManager: DatabaseManager
   @Published var directoryStates: [(URL, Bool)] = []
+
+  init(databaseManager: DatabaseManager) {
+    self.databaseManager = databaseManager
+    directoryStates = databaseManager.loadDirectories()
+    loadCustomImportDirectory()
+  }
 
   var directories: [URL] { directoryStates.map { $0.0 } }
 
@@ -21,11 +28,6 @@ class DirectoryManager: ObservableObject {
   private var bookmarksFile: String {
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     return home + "/Library/MediaBrowser/directories.json"
-  }
-
-  private init() {
-    loadDirectories()
-    loadCustomImportDirectory()
   }
 
   func addDirectory() {
@@ -79,19 +81,11 @@ class DirectoryManager: ObservableObject {
   }
 
   private func saveDirectories() {
-    // Remove duplicates by URL
-    var uniqueStates: [(URL, Bool)] = []
-    for state in directoryStates {
-      if !uniqueStates.contains(where: { $0.0 == state.0 }) {
-        uniqueStates.append(state)
-      }
-    }
-    directoryStates = uniqueStates
-    DatabaseManager.shared.saveDirectories(directoryStates)
+    databaseManager.saveDirectories(directoryStates)
   }
 
   private func loadDirectories() {
-    directoryStates = DatabaseManager.shared.loadDirectories()
+    directoryStates = databaseManager.loadDirectories()
     // Start accessing security scoped resources for non-stale
     for (url, isStale) in directoryStates {
       if !isStale && url.startAccessingSecurityScopedResource() {

@@ -1,33 +1,19 @@
 import SwiftUI
 
 struct MediaGridView: View {
-  @ObservedObject private var mediaScanner = MediaScanner.shared
+  @ObservedObject var mediaScanner: MediaScanner
+  let databaseManager: DatabaseManager
   let searchQuery: String
   let onSelected: (Set<MediaItem>) -> Void
   let onFullScreen: (MediaItem) -> Void
   let onScrollToItem: ((Int) -> Void)?
   @ObservedObject var selectionState: GridSelectionState
 
-  @State private var scrollTarget: Int? = nil
-  @State private var scrollAnchor: UnitPoint = .center
-  @State private var sectionUpdateClosures: [String: (Set<MediaItem>) -> Void] = [:]
-  @State private var visibleItemIds: Set<Int> = Set()
-
   private let lightboxOpeningDelay = 0.1
 
-  init(
-    searchQuery: String,
-    onSelected: @escaping (Set<MediaItem>) -> Void,
-    onFullScreen: @escaping (MediaItem) -> Void,
-    selectionState: GridSelectionState,
-    onScrollToItem: ((Int) -> Void)? = nil
-  ) {
-    self.searchQuery = searchQuery
-    self.onSelected = onSelected
-    self.onFullScreen = onFullScreen
-    self.onScrollToItem = onScrollToItem
-    self.selectionState = selectionState
-  }
+  @State private var sectionUpdateClosures: [String: (Set<MediaItem>) -> Void] = [:]
+  @State private var visibleItemIds: Set<Int> = []
+  @State private var itemsWithGPS: [LocalFileSystemMediaItem] = []
 
   private var sortedItems: [MediaItem] {
     let allItems = mediaScanner.items
@@ -66,24 +52,24 @@ struct MediaGridView: View {
     ScrollView {
       ScrollViewReader { proxy in
         VStack(alignment: .leading, spacing: 16) {
-          ForEach(monthlyGroups, id: \.month) { group in
+          ForEach(self.monthlyGroups, id: \.month) { group in
             SectionGridView(
               title: group.month,
               items: group.items,
-              selectedItems: selectionState.selectedItems,
+              selectedItems: self.selectionState.selectedItems,
               onSelectionChange: { newSelectedItems in
-                selectionState.selectedItems = newSelectedItems
-                onSelected(newSelectedItems)
-                handleSelectionScroll(newSelectedItems, proxy: proxy)
+                self.selectionState.selectedItems = newSelectedItems
+                self.onSelected(newSelectedItems)
+                self.handleSelectionScroll(newSelectedItems, proxy: proxy)
               },
               onItemDoubleTap: { item in
-                withAnimation(.easeInOut(duration: lightboxOpeningDelay)) {
-                  onFullScreen(item)
+                withAnimation(.easeInOut(duration: 0.1)) {
+                  self.onFullScreen(item)
                 }
               },
               minCellWidth: 80,
-              selectionState: selectionState,
-              onItemAppearanceChange: changedItemAppearance
+              selectionState: self.selectionState,
+              onItemAppearanceChange: self.changedItemAppearance
             )
             .id(group.month)
           }
@@ -104,7 +90,6 @@ struct MediaGridView: View {
           }
         }
       }
-      .scrollPosition(id: $scrollTarget, anchor: scrollAnchor)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
