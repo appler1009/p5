@@ -289,6 +289,7 @@ struct ContentView: View {
     }
 
     .navigationTitle(databasePath.map { ($0 as NSString).lastPathComponent } ?? "")
+    .background(WindowStateRestorer(databasePath: databasePath))
   }
   private func nextFullScreenItem() {
     guard let currentLightboxItem = lightboxItem,
@@ -584,6 +585,95 @@ struct FocusableTextField: NSViewRepresentable {
       if let textField = obj.object as? NSTextField {
         parent.text = textField.stringValue
       }
+    }
+  }
+}
+
+struct WindowStateRestorer: NSViewRepresentable {
+  let databasePath: String?
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(databasePath: databasePath)
+  }
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {
+    guard let databasePath = databasePath else { return }
+
+    if let window = nsView.window {
+      let state = UserDefaults.windowState(for: databasePath)
+      if let frame = state.frame {
+        // Restore frame
+        window.setFrame(frame, display: true)
+
+        // Restore fullscreen if needed
+        if state.isFullscreen && !window.styleMask.contains(.fullScreen) {
+          window.toggleFullScreen(nil)
+        } else if !state.isFullscreen && window.styleMask.contains(.fullScreen) {
+          window.toggleFullScreen(nil)
+        }
+      }
+
+      // Set delegate to save on changes
+      window.delegate = context.coordinator
+    } else {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        if let window = nsView.window {
+          let state = UserDefaults.windowState(for: databasePath)
+          if let frame = state.frame {
+            // Restore frame
+            window.setFrame(frame, display: true)
+
+            // Restore fullscreen if needed
+            if state.isFullscreen && !window.styleMask.contains(.fullScreen) {
+              window.toggleFullScreen(nil)
+            } else if !state.isFullscreen && window.styleMask.contains(.fullScreen) {
+              window.toggleFullScreen(nil)
+            }
+          }
+
+          // Set delegate to save on changes
+          window.delegate = context.coordinator
+        }
+      }
+    }
+  }
+
+  class Coordinator: NSObject, NSWindowDelegate {
+    let databasePath: String
+
+    init(databasePath: String?) {
+      self.databasePath = databasePath ?? ""
+    }
+
+    func windowDidResize(_ notification: Notification) {
+      guard let window = notification.object as? NSWindow else { return }
+      let frame = window.frame
+      let isFullscreen = window.styleMask.contains(.fullScreen)
+      UserDefaults.saveWindowState(for: databasePath, frame: frame, isFullscreen: isFullscreen)
+    }
+
+    func windowDidMove(_ notification: Notification) {
+      guard let window = notification.object as? NSWindow else { return }
+      let frame = window.frame
+      let isFullscreen = window.styleMask.contains(.fullScreen)
+      UserDefaults.saveWindowState(for: databasePath, frame: frame, isFullscreen: isFullscreen)
+    }
+
+    func windowDidEnterFullScreen(_ notification: Notification) {
+      guard let window = notification.object as? NSWindow else { return }
+      let frame = window.frame
+      UserDefaults.saveWindowState(for: databasePath, frame: frame, isFullscreen: true)
+    }
+
+    func windowDidExitFullScreen(_ notification: Notification) {
+      guard let window = notification.object as? NSWindow else { return }
+      let frame = window.frame
+      UserDefaults.saveWindowState(for: databasePath, frame: frame, isFullscreen: false)
     }
   }
 }

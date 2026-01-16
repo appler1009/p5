@@ -31,6 +31,19 @@ extension UserDefaults {
   static func recentDatabases() -> [String] {
     return UserDefaults.standard.stringArray(forKey: recentDatabasesKey) ?? []
   }
+
+  static func saveWindowState(for databasePath: String, frame: NSRect, isFullscreen: Bool) {
+    let frameString = NSStringFromRect(frame)
+    UserDefaults.standard.set(frameString, forKey: databasePath + "_windowFrame")
+    UserDefaults.standard.set(isFullscreen, forKey: databasePath + "_windowFullscreen")
+  }
+
+  static func windowState(for databasePath: String) -> (frame: NSRect?, isFullscreen: Bool) {
+    let frameString = UserDefaults.standard.string(forKey: databasePath + "_windowFrame")
+    let frame = frameString.map { NSRectFromString($0) }
+    let isFullscreen = UserDefaults.standard.bool(forKey: databasePath + "_windowFullscreen")
+    return (frame: frame, isFullscreen: isFullscreen)
+  }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
