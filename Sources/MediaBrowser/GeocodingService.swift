@@ -34,8 +34,8 @@ class GeocodingService {
     var geocodedCount = 0
 
     do {
-      // Get up to 50 items that have GPS but no geocode
-      let itemsToGeocode = DatabaseManager.shared.getItemsNeedingGeocode(limit: 50)
+      // Get up to 45 items that have GPS but no geocode (throttled to stay under Apple's 50/minute limit)
+      let itemsToGeocode = DatabaseManager.shared.getItemsNeedingGeocode(limit: 45)
 
       for item in itemsToGeocode {
         guard let gps = item.metadata?.gps else { continue }
@@ -43,15 +43,23 @@ class GeocodingService {
         let location = CLLocation(latitude: gps.latitude, longitude: gps.longitude)
         let geocoder = CLGeocoder()
 
+        // TODO: Future upgrade to MapKit geocoding (macOS 26.0+)
+        // When targeting macOS 26+, replace CLGeocoder with:
+        // let request = MKReverseGeocodingRequest(coordinate: coordinate)
+        // let response = try await request.response()
+        // if let mapItem = response.mapItems.first {
+        //     let address = mapItem.address.addressRepresentations.first?.localizedString
+        // }
+
         do {
           let placemarks = try await geocoder.reverseGeocodeLocation(location)
           if let placemark = placemarks.first {
-            // Create deduplicated geocode string
+            // Create deduplicated geocode string (most specific to most general)
             var geocodeParts: [String] = []
-            if let country = placemark.country { geocodeParts.append(country) }
-            if let adminArea = placemark.administrativeArea { geocodeParts.append(adminArea) }
-            if let locality = placemark.locality { geocodeParts.append(locality) }
             if let subLocality = placemark.subLocality { geocodeParts.append(subLocality) }
+            if let locality = placemark.locality { geocodeParts.append(locality) }
+            if let adminArea = placemark.administrativeArea { geocodeParts.append(adminArea) }
+            if let country = placemark.country { geocodeParts.append(country) }
 
             let geocodeString = geocodeParts.joined(separator: ", ")
 
@@ -72,9 +80,6 @@ class GeocodingService {
     }
 
     isProcessing = false
-
-    // Print completion summary
-    print("Geocoding cycle completed: \(geocodedCount) items geocoded")
   }
 
 }

@@ -161,7 +161,7 @@ class DatabaseManager: ObservableObject {
     }
   }
 
-  func getItemsNeedingGeocode(limit: Int = 50) -> [LocalFileSystemMediaItem] {
+  func getItemsNeedingGeocode(limit: Int = 45) -> [LocalFileSystemMediaItem] {
     var items: [LocalFileSystemMediaItem] = []
     do {
       try dbQueue?.read { db in

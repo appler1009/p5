@@ -187,6 +187,9 @@ struct MediaDetailsSidebar: View {
             if let altitude = gps.altitude {
               detailRow("Altitude", String(format: "%.1f m", altitude))
             }
+            if let geocode = metadata.geocode, !geocode.isEmpty {
+              detailRow("Location", geocode)
+            }
           }
           .padding(.top, 8)
 
@@ -213,15 +216,23 @@ struct MediaDetailsSidebar: View {
         let location = CLLocation(latitude: gps.latitude, longitude: gps.longitude)
         let geocoder = CLGeocoder()
 
+        // TODO: Future upgrade to MapKit geocoding (macOS 26.0+)
+        // When targeting macOS 26+, replace CLGeocoder with:
+        // let request = MKReverseGeocodingRequest(coordinate: coordinate)
+        // let response = try await request.response()
+        // if let mapItem = response.mapItems.first {
+        //     let address = mapItem.address.addressRepresentations.first?.localizedString
+        // }
+
         do {
           let placemarks = try await geocoder.reverseGeocodeLocation(location)
           if let placemark = placemarks.first {
-            // Create deduplicated geocode string
+            // Create deduplicated geocode string (most specific to most general)
             var geocodeParts: [String] = []
-            if let country = placemark.country { geocodeParts.append(country) }
-            if let adminArea = placemark.administrativeArea { geocodeParts.append(adminArea) }
-            if let locality = placemark.locality { geocodeParts.append(locality) }
             if let subLocality = placemark.subLocality { geocodeParts.append(subLocality) }
+            if let locality = placemark.locality { geocodeParts.append(locality) }
+            if let adminArea = placemark.administrativeArea { geocodeParts.append(adminArea) }
+            if let country = placemark.country { geocodeParts.append(country) }
 
             let geocodeString = geocodeParts.joined(separator: ", ")
 
