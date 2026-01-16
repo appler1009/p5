@@ -50,16 +50,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 }
 
-// Global function to check lightbox state
-private let lightboxStateKey = "isLightboxOpen"
-
-func isLightboxCurrentlyOpen() -> Bool {
-  UserDefaults.standard.bool(forKey: lightboxStateKey)
-}
-
 @main
 struct MediaBrowserApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+  @ObservedObject private var lightboxStateManager = LightboxStateManager.shared
 
   var body: some Scene {
     WindowGroup {
@@ -154,7 +148,7 @@ struct MediaBrowserApp: App {
           Label("Details...", systemImage: "info.circle")
         }
         .keyboardShortcut("I", modifiers: .command)
-        .disabled(!isLightboxCurrentlyOpen())
+        .disabled(!LightboxStateManager.shared.isLightboxOpen)
 
         Divider()
 
@@ -164,7 +158,7 @@ struct MediaBrowserApp: App {
           Label("Rotate Clockwise", systemImage: "arrow.clockwise")
         }
         .keyboardShortcut("R", modifiers: .command)
-        .disabled(!isLightboxCurrentlyOpen())
+        .disabled(!LightboxStateManager.shared.isLightboxOpen)
 
         Button(action: {
           NotificationCenter.default.post(name: .rotateCounterClockwise, object: nil)
@@ -172,7 +166,7 @@ struct MediaBrowserApp: App {
           Label("Rotate Counter Clockwise", systemImage: "arrow.counterclockwise")
         }
         .keyboardShortcut("R", modifiers: [.command, .shift])
-        .disabled(!isLightboxCurrentlyOpen())
+        .disabled(!LightboxStateManager.shared.isLightboxOpen)
       }
     }
 

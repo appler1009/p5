@@ -30,11 +30,37 @@ struct MediaGridView: View {
   }
 
   private var sortedItems: [MediaItem] {
+    let allItems = mediaScanner.items
     let filteredItems =
       searchQuery.isEmpty
-      ? mediaScanner.items
-      : mediaScanner.items.filter { item in
-        return item.displayName.localizedCaseInsensitiveContains(searchQuery)
+      ? allItems
+      : allItems.filter { item in
+        // Search in filename
+        if item.displayName.localizedCaseInsensitiveContains(searchQuery) {
+          return true
+        }
+
+        // Search in file extension (without dot)
+        let fileExtension = (item.displayName as NSString).pathExtension.lowercased()
+        if fileExtension.localizedCaseInsensitiveContains(searchQuery) {
+          return true
+        }
+
+        // Search in camera make
+        if let make = item.metadata?.make,
+          make.localizedCaseInsensitiveContains(searchQuery)
+        {
+          return true
+        }
+
+        // Search in camera model
+        if let model = item.metadata?.model,
+          model.localizedCaseInsensitiveContains(searchQuery)
+        {
+          return true
+        }
+
+        return false
       }
 
     return filteredItems.sorted { item1, item2 in
