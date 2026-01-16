@@ -79,6 +79,10 @@ class GeocodingService {
           if let placemark = placemarks.first, let geocodeString = placemark.geocodeString {
             // Update database with geocode
             DatabaseManager.shared.updateGeocode(for: item.id, geocode: geocodeString)
+
+            // Update in-memory MediaItem for immediate keyword lookup availability
+            await MediaScanner.shared.updateGeocode(for: item.id, geocode: geocodeString)
+
             geocodedCount += 1
           }
         } catch {

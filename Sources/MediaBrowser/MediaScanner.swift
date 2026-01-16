@@ -21,6 +21,33 @@ class MediaScanner: ObservableObject {
     items = DatabaseManager.shared.getAllItems()
   }
 
+  func updateGeocode(for itemId: Int, geocode: String) async {
+    await MainActor.run {
+      if let index = items.firstIndex(where: { $0.id == itemId }) {
+        var updatedMetadata =
+          items[index].metadata
+          ?? MediaMetadata(
+            creationDate: nil,
+            modificationDate: nil,
+            dimensions: nil,
+            exifDate: nil,
+            gps: nil,
+            duration: nil,
+            make: nil,
+            model: nil,
+            lens: nil,
+            iso: nil,
+            aperture: nil,
+            shutterSpeed: nil,
+            geocode: nil,
+            extraEXIF: [:]
+          )
+        updatedMetadata.geocode = geocode
+        items[index].metadata = updatedMetadata
+      }
+    }
+  }
+
   func reset() async {
     items.removeAll()
     DatabaseManager.shared.clearAll()
