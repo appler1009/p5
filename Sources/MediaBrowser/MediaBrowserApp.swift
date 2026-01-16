@@ -17,6 +17,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Suppress MapKit debug output
     UserDefaults.standard.set(false, forKey: "MKDefaultLogLevel")
 
+    // Start background geocoding service
+    _ = GeocodingService.shared
+
     // Start auto-sync if enabled
     if S3Service.shared.autoSyncEnabled && S3Service.shared.config.isValid {
       Task {

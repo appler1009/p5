@@ -46,6 +46,11 @@ class DatabaseManager: ObservableObject {
                 t.add(column: "s3_sync_status", .text).defaults(to: S3SyncStatus.notSynced.rawValue)
               }
             }
+            if !columns.contains("geocode") {
+              try db.alter(table: "local_media_items") { t in
+                t.add(column: "geocode", .text)
+              }
+            }
           }
         }
       }
@@ -143,6 +148,94 @@ class DatabaseManager: ObservableObject {
     }
   }
 
+  func updateGeocode(for itemId: Int, geocode: String) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "UPDATE local_media_items SET geocode = ? WHERE id = ?",
+          arguments: [geocode, itemId]
+        )
+      }
+    } catch {
+      print("Update geocode error: \(error)")
+    }
+  }
+
+  func getItemsNeedingGeocode(limit: Int = 50) -> [LocalFileSystemMediaItem] {
+    var items: [LocalFileSystemMediaItem] = []
+    do {
+      try dbQueue?.read { db in
+        let rows = try Row.fetchAll(
+          db,
+          sql:
+            "SELECT * FROM local_media_items WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND (geocode IS NULL OR geocode = '') LIMIT ?",
+          arguments: [limit])
+
+        for row in rows {
+          guard let itemId = row["id"] as Int?,
+            let originalUrlString = row["original_url"] as String?,
+            let originalUrl = URL(string: originalUrlString)
+          else { continue }
+
+          var meta = MediaMetadata(
+            creationDate: row["creation_date"] as Date?,
+            modificationDate: row["modification_date"] as Date?,
+            dimensions: {
+              if let w = row["width"] as Double?, let h = row["height"] as Double? {
+                return CGSize(width: w, height: h)
+              }
+              return nil
+            }(),
+            exifDate: row["exif_date"] as Date?,
+            gps: {
+              if let lat = row["latitude"] as Double?, let lon = row["longitude"] as Double? {
+                return GPSLocation(latitude: lat, longitude: lon, altitude: nil)
+              }
+              return nil
+            }(),
+            duration: nil,
+            make: nil,
+            model: nil,
+            lens: nil,
+            iso: nil,
+            aperture: nil,
+            shutterSpeed: nil,
+            geocode: row["geocode"] as String?,
+            extraEXIF: [:]
+          )
+
+          // Load additional metadata from EXIF JSON
+          if let exifString = row["exif"] as String?, let exifData = exifString.data(using: .utf8),
+            let exifDict = try? JSONSerialization.jsonObject(with: exifData) as? [String: Any]
+          {
+            meta.gps?.altitude = exifDict["altitude"] as? Double
+            meta.duration = exifDict["duration"] as? Double
+            meta.make = exifDict["make"] as? String
+            meta.model = exifDict["model"] as? String
+            meta.lens = exifDict["lens"] as? String
+            meta.iso = exifDict["iso"] as? Int
+            meta.aperture = exifDict["aperture"] as? Double
+            meta.shutterSpeed = exifDict["shutterSpeed"] as? String
+          }
+
+          let item = LocalFileSystemMediaItem(
+            id: itemId,
+            original: originalUrl,
+            edited: row["edited_url"] as String? != nil
+              ? URL(string: row["edited_url"] as! String) : nil,
+            live: row["live_video_url"] as String? != nil
+              ? URL(string: row["live_video_url"] as! String) : nil
+          )
+          item.metadata = meta
+          items.append(item)
+        }
+      }
+    } catch {
+      print("Error fetching items needing geocode: \(error)")
+    }
+    return items
+  }
+
   private func createTable() throws {
     try dbQueue?.write { db in
       try db.create(table: "local_media_items", ifNotExists: true) { t in
@@ -160,6 +253,7 @@ class DatabaseManager: ObservableObject {
         t.column("latitude", .double)
         t.column("longitude", .double)
         t.column("exif", .text)
+        t.column("geocode", .text)
         t.column("s3_sync_status", .text).defaults(to: S3SyncStatus.notApplicable.rawValue)
         t.column("directory_id", .integer)
       }
@@ -222,13 +316,14 @@ class DatabaseManager: ObservableObject {
               longitude,
               exif,
 
+              geocode,
               s3_sync_status
             )
             VALUES (
               ?, ?, ?, ?,
               ?, ?, ?, ?,
               ?, ?, ?, ?,
-              ?
+              ?, ?
             )
             """,
           arguments: [
@@ -247,6 +342,7 @@ class DatabaseManager: ObservableObject {
             metadata.gps?.longitude,
             exifString,
 
+            metadata.geocode,
             item.s3SyncStatus.rawValue,
           ]
         )
@@ -289,6 +385,7 @@ class DatabaseManager: ObservableObject {
             iso: nil,
             aperture: nil,
             shutterSpeed: nil,
+            geocode: row["geocode"] as String?,
             extraEXIF: [:]
           )
 

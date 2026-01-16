@@ -207,6 +207,38 @@ struct MediaDetailsSidebar: View {
     .padding(16)
     .padding(.bottom, 32)
     .frame(width: 350)
+    .task {
+      // Reverse geocode GPS coordinates when sidebar opens (only if not already geocoded)
+      if let gps = item.metadata?.gps, item.metadata?.geocode == nil {
+        let location = CLLocation(latitude: gps.latitude, longitude: gps.longitude)
+        let geocoder = CLGeocoder()
+
+        do {
+          let placemarks = try await geocoder.reverseGeocodeLocation(location)
+          if let placemark = placemarks.first {
+            // Create deduplicated geocode string
+            var geocodeParts: [String] = []
+            if let country = placemark.country { geocodeParts.append(country) }
+            if let adminArea = placemark.administrativeArea { geocodeParts.append(adminArea) }
+            if let locality = placemark.locality { geocodeParts.append(locality) }
+            if let subLocality = placemark.subLocality { geocodeParts.append(subLocality) }
+
+            let geocodeString = geocodeParts.joined(separator: ", ")
+
+            // Update the item metadata with geocode
+            if var updatedMetadata = item.metadata {
+              updatedMetadata.geocode = geocodeString
+              item.metadata = updatedMetadata
+
+              // Update database with geocode
+              DatabaseManager.shared.updateGeocode(for: item.id, geocode: geocodeString)
+            }
+          }
+        } catch {
+          // Silently fail for fallback geocoding
+        }
+      }
+    }
   }
 
   @State private var showAdditionalMetadata = false

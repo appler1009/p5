@@ -2,7 +2,7 @@ import Foundation
 
 extension MediaItem {
   /// Determines if this media item matches the given search query
-  /// Searches across filename, file extension, camera make, and camera model
+  /// Searches across filename, file extension, camera make, camera model, and geocode
   func matchesSearchQuery(_ query: String) -> Bool {
     // Search in filename
     if displayName.localizedCaseInsensitiveContains(query) {
@@ -25,6 +25,13 @@ extension MediaItem {
     // Search in camera model
     if let model = metadata?.model,
       model.localizedCaseInsensitiveContains(query)
+    {
+      return true
+    }
+
+    // Search in geocode (location information)
+    if let geocode = metadata?.geocode,
+      geocode.localizedCaseInsensitiveContains(query)
     {
       return true
     }

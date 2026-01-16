@@ -258,6 +258,7 @@ struct MediaMetadata {
   var iso: Int?
   var aperture: Double?
   var shutterSpeed: String?
+  var geocode: String?
   var extraEXIF: [String: String]
 }
 
