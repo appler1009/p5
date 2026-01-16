@@ -204,6 +204,16 @@ struct ContentView: View {
 
     .onAppear {
 
+      print("ContentView appeared with databasePath: \(databasePath ?? "nil")")
+
+      // Save the current database path as last opened
+      if let databasePath = databasePath {
+        print("Saving lastOpenedDatabasePath: \(databasePath)")
+        UserDefaults.standard.set(databasePath, forKey: "lastOpenedDatabasePath")
+      } else {
+        print("Not saving lastOpenedDatabasePath because databasePath is nil")
+      }
+
       setupS3SyncNotifications()
 
       // Start auto-sync if enabled
