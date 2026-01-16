@@ -1,3 +1,4 @@
+import MapKit
 import XCTest
 
 @testable import MediaBrowser
@@ -130,5 +131,46 @@ final class SearchTests: XCTestCase {
     XCTAssertTrue(item.matchesSearchQuery("video"))
     XCTAssertTrue(item.matchesSearchQuery("mp4"))
     XCTAssertFalse(item.matchesSearchQuery("canon"))
+  }
+
+  // Geocoding tests
+  func testGeocodeStringLogic() async throws {
+    // Integration test that requires network access to CLGeocoder
+    let placemark1 = try await runGeocodeHelper(latitude: 49.274822, longitude: -123.154225)
+    XCTAssertNotNil(placemark1)
+    if let placemark = placemark1 {
+      XCTAssertEqual(placemark.country, "Canada")
+      XCTAssertEqual(placemark.administrativeArea, "BC")
+      XCTAssertEqual(placemark.subAdministrativeArea, "Metro Vancouver")
+      XCTAssertEqual(placemark.locality, "Vancouver")
+      XCTAssertEqual(placemark.subLocality, "South Vancouver")
+      XCTAssertNil(placemark.thoroughfare)
+      XCTAssertNil(placemark.subThoroughfare)
+      XCTAssertEqual(placemark.geocodeString, "South Vancouver, Vancouver, BC, Canada")
+    }
+
+    let placemark2 = try await runGeocodeHelper(latitude: 49.258608, longitude: -123.193209)
+    XCTAssertNotNil(placemark2)
+    if let placemark = placemark2 {
+      XCTAssertEqual(placemark.country, "Canada")
+      XCTAssertEqual(placemark.administrativeArea, "BC")
+      XCTAssertEqual(placemark.subAdministrativeArea, "Metro Vancouver")
+      XCTAssertEqual(placemark.locality, "Vancouver")
+      XCTAssertEqual(placemark.subLocality, "West Point Grey")
+      XCTAssertEqual(placemark.thoroughfare, "Crown St")
+      XCTAssertEqual(placemark.subThoroughfare, "3060")
+      XCTAssertEqual(placemark.geocodeString, "West Point Grey, Vancouver, BC, Canada")
+    }
+  }
+
+  private func runGeocodeHelper(latitude: CLLocationDegrees, longitude: CLLocationDegrees)
+    async throws -> CLPlacemark?
+  {
+    // Actually run CLGeocoder to get a real CLPlacemark with location components
+    let location = CLLocation(latitude: latitude, longitude: longitude)
+    let geocoder = CLGeocoder()
+
+    let placemarks = try await geocoder.reverseGeocodeLocation(location)
+    return placemarks.first
   }
 }

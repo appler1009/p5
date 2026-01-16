@@ -226,16 +226,7 @@ struct MediaDetailsSidebar: View {
 
         do {
           let placemarks = try await geocoder.reverseGeocodeLocation(location)
-          if let placemark = placemarks.first {
-            // Create deduplicated geocode string (most specific to most general)
-            var geocodeParts: [String] = []
-            if let subLocality = placemark.subLocality { geocodeParts.append(subLocality) }
-            if let locality = placemark.locality { geocodeParts.append(locality) }
-            if let adminArea = placemark.administrativeArea { geocodeParts.append(adminArea) }
-            if let country = placemark.country { geocodeParts.append(country) }
-
-            let geocodeString = geocodeParts.joined(separator: ", ")
-
+          if let placemark = placemarks.first, let geocodeString = placemark.geocodeString {
             // Update the item metadata with geocode
             if var updatedMetadata = item.metadata {
               updatedMetadata.geocode = geocodeString

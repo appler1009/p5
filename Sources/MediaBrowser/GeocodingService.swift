@@ -1,6 +1,25 @@
 import CoreLocation
 import Foundation
 
+extension CLPlacemark {
+  /// Creates a geocoded location string from placemark components
+  /// Returns a comma-separated string in order: subLocality, locality, administrativeArea, country
+  var geocodeString: String? {
+    var geocodeParts: [String] = []
+
+    // Add components in order: most specific to most general
+    if let subLocality = self.subLocality { geocodeParts.append(subLocality) }
+    if let locality = self.locality { geocodeParts.append(locality) }
+    if let administrativeArea = self.administrativeArea { geocodeParts.append(administrativeArea) }
+    if let country = self.country { geocodeParts.append(country) }
+
+    // Only return a string if we have at least one component
+    guard !geocodeParts.isEmpty else { return nil }
+
+    return geocodeParts.joined(separator: ", ")
+  }
+}
+
 @MainActor
 class GeocodingService {
   static let shared = GeocodingService()
@@ -53,16 +72,7 @@ class GeocodingService {
 
         do {
           let placemarks = try await geocoder.reverseGeocodeLocation(location)
-          if let placemark = placemarks.first {
-            // Create deduplicated geocode string (most specific to most general)
-            var geocodeParts: [String] = []
-            if let subLocality = placemark.subLocality { geocodeParts.append(subLocality) }
-            if let locality = placemark.locality { geocodeParts.append(locality) }
-            if let adminArea = placemark.administrativeArea { geocodeParts.append(adminArea) }
-            if let country = placemark.country { geocodeParts.append(country) }
-
-            let geocodeString = geocodeParts.joined(separator: ", ")
-
+          if let placemark = placemarks.first, let geocodeString = placemark.geocodeString {
             // Update database with geocode
             DatabaseManager.shared.updateGeocode(for: item.id, geocode: geocodeString)
             geocodedCount += 1
