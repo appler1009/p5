@@ -22,7 +22,8 @@ let package = Package(
         .product(name: "AWSSDKIdentity", package: "aws-sdk-swift"),
         .product(name: "tzf", package: "tzf-swift"),
       ],
-      path: "Sources/MediaBrowser"
+      path: "Sources/MediaBrowser",
+      resources: [.copy("AppIcon.icns")]
     ),
     .testTarget(
       name: "MediaBrowserTests",
