@@ -91,7 +91,7 @@ struct MediaItemView: View {
       .modifier(
         ConditionalTapGestureModifier(onTap: onTap)
       )
-      .opacity(isDuplicate ? 0.2 : 1.0)
+      .opacity(isDuplicate ? 0.3 : 1.0)
       .onAppear {
         loadThumbnail()
       }
