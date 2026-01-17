@@ -629,10 +629,12 @@ struct WindowStateRestorer: NSViewRepresentable {
         window.setFrame(frame, display: true)
 
         // Restore fullscreen if needed
-        if state.isFullscreen && !window.styleMask.contains(.fullScreen) {
-          window.toggleFullScreen(nil)
-        } else if !state.isFullscreen && window.styleMask.contains(.fullScreen) {
-          window.toggleFullScreen(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+          if state.isFullscreen && !window.styleMask.contains(.fullScreen) {
+            window.toggleFullScreen(nil)
+          } else if !state.isFullscreen && window.styleMask.contains(.fullScreen) {
+            window.toggleFullScreen(nil)
+          }
         }
       }
 
@@ -650,10 +652,12 @@ struct WindowStateRestorer: NSViewRepresentable {
             window.setFrame(frame, display: true)
 
             // Restore fullscreen if needed
-            if state.isFullscreen && !window.styleMask.contains(.fullScreen) {
-              window.toggleFullScreen(nil)
-            } else if !state.isFullscreen && window.styleMask.contains(.fullScreen) {
-              window.toggleFullScreen(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+              if state.isFullscreen && !window.styleMask.contains(.fullScreen) {
+                window.toggleFullScreen(nil)
+              } else if !state.isFullscreen && window.styleMask.contains(.fullScreen) {
+                window.toggleFullScreen(nil)
+              }
             }
           }
 
@@ -695,6 +699,22 @@ struct WindowStateRestorer: NSViewRepresentable {
       guard let window = notification.object as? NSWindow else { return }
       let frame = window.frame
       UserDefaults.saveWindowState(for: databasePath, frame: frame, isFullscreen: false)
+    }
+
+    func windowDidBecomeMain(_ notification: Notification) {
+      print("DEBUG: Window became main for database: \(databasePath)")
+      // Add this window to the open windows list
+      if !databasePath.isEmpty {
+        UserDefaults.addOpenDatabaseWindow(databasePath)
+      }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+      print("DEBUG: Window will close for database: \(databasePath)")
+      // Remove this window from the open windows list only if app is not terminating
+      if !databasePath.isEmpty && !AppDelegate.isTerminating {
+        UserDefaults.removeOpenDatabaseWindow(databasePath)
+      }
     }
   }
 }

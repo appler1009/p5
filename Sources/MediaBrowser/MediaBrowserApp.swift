@@ -47,11 +47,22 @@ extension UserDefaults {
 
   private static let openDatabaseWindowsKey = "openDatabaseWindows"
 
-  @MainActor static func saveOpenDatabaseWindows() {
-    let openPaths = NSApp.windows.compactMap { window in
-      window.representedURL?.path
+  @MainActor static func addOpenDatabaseWindow(_ path: String) {
+    var openPaths = UserDefaults.openDatabaseWindows()
+    if !openPaths.contains(path) {
+      openPaths.append(path)
+      UserDefaults.standard.set(openPaths, forKey: openDatabaseWindowsKey)
+      print("DEBUG: Added open database window: \(path), now: \(openPaths)")
     }
-    UserDefaults.standard.set(openPaths, forKey: openDatabaseWindowsKey)
+  }
+
+  @MainActor static func removeOpenDatabaseWindow(_ path: String) {
+    var openPaths = UserDefaults.openDatabaseWindows()
+    if let index = openPaths.firstIndex(of: path) {
+      openPaths.remove(at: index)
+      UserDefaults.standard.set(openPaths, forKey: openDatabaseWindowsKey)
+      print("DEBUG: Removed open database window: \(path), now: \(openPaths)")
+    }
   }
 
   static func openDatabaseWindows() -> [String] {
@@ -59,7 +70,13 @@ extension UserDefaults {
   }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+@preconcurrency class AppDelegate: NSObject, NSApplicationDelegate {
+  private nonisolated(unsafe) static var _isTerminating = false
+  static var isTerminating: Bool {
+    get { _isTerminating }
+    set { _isTerminating = newValue }
+  }
+
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
@@ -71,9 +88,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Open previously open database windows
     let openPaths = UserDefaults.openDatabaseWindows()
+    print("DEBUG: Restoring open database windows: \(openPaths)")
     if !openPaths.isEmpty {
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-        for path in openPaths {
+      // Stagger window openings to avoid full screen conflicts
+      for (index, path) in openPaths.enumerated() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1 + Double(index) * 0.2) {
           if let action = WindowManager.openWindow {
             action(path)
           }
@@ -101,8 +120,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    // Save currently open database windows
-    UserDefaults.saveOpenDatabaseWindows()
+    AppDelegate.isTerminating = true
     // App cleanup - no auto-sync to clean up
   }
 
