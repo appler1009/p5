@@ -188,7 +188,6 @@ struct ContentView: View {
         databaseManager.setSetting("viewMode", value: newValue)
       }
       .onChange(of: gridCellSize) { _, newValue in
-        print("ContentView: Grid cell size changed to: \(newValue)")
         databaseManager.setSetting("gridCellSize", value: String(Int(newValue)))
       }
       .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SettingsChanged")))

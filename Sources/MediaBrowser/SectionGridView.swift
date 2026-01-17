@@ -11,7 +11,7 @@ struct SectionGridView: View {
   let items: [MediaItem]
   let onSelectionChange: (Set<MediaItem>) -> Void
   let onItemDoubleTap: (MediaItem) -> Void
-  let minCellWidth: CGFloat
+  let cellWidth: CGFloat
   let disableDuplicates: Bool
   let onDuplicateCountChange: ((Int) -> Void)?
   let selectionState: GridSelectionState?
@@ -34,7 +34,7 @@ struct SectionGridView: View {
     selectedItems: Set<MediaItem>,
     onSelectionChange: @escaping (Set<MediaItem>) -> Void,
     onItemDoubleTap: @escaping (MediaItem) -> Void,
-    minCellWidth: CGFloat = 80,
+    cellWidth: CGFloat = 80,
     disableDuplicates: Bool = false,
     onDuplicateCountChange: ((Int) -> Void)? = nil,
     selectionState: GridSelectionState? = nil,
@@ -45,7 +45,7 @@ struct SectionGridView: View {
     self.selectedItems = selectedItems
     self.onSelectionChange = onSelectionChange
     self.onItemDoubleTap = onItemDoubleTap
-    self.minCellWidth = minCellWidth
+    self.cellWidth = cellWidth
     self.disableDuplicates = disableDuplicates
     self.onDuplicateCountChange = onDuplicateCountChange
     self.selectionState = selectionState
@@ -60,7 +60,10 @@ struct SectionGridView: View {
           .padding(.horizontal)
       }
 
-      LazyVGrid(columns: [GridItem(.adaptive(minimum: minCellWidth))], spacing: 10) {
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: cellWidth, maximum: cellWidth * 1.4))],
+        spacing: 2 + (cellWidth - 50) * 8 / 150
+      ) {
         ForEach(items) { item in
           MediaItemView(
             item: item,
@@ -84,7 +87,7 @@ struct SectionGridView: View {
           .onHover { hovering in
             hoveredItemId = hovering ? item.id : nil
           }
-          .scaleEffect(hoveredItemId == item.id ? 1 + hoverPixelIncrease / minCellWidth : 1.0)
+          .scaleEffect(hoveredItemId == item.id ? 1 + hoverPixelIncrease / cellWidth : 1.0)
           .animation(.easeInOut(duration: 0.1), value: hoveredItemId)
           .contentShape(Rectangle())
           .onTapGesture {

@@ -68,7 +68,7 @@ struct MediaGridView: View {
                   self.onFullScreen(item)
                 }
               },
-              minCellWidth: CGFloat(gridCellSize),
+              cellWidth: CGFloat(gridCellSize),
               selectionState: self.selectionState,
               onItemAppearanceChange: self.changedItemAppearance
             )

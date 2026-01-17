@@ -445,7 +445,6 @@ struct SettingsView: View {
         self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
       }
       .onChange(of: gridCellSize) { _, newValue in
-        print("SettingsView: Grid cell size changed to: \(newValue)")
         databaseManager.setSetting("gridCellSize", value: String(newValue))
         NotificationCenter.default.post(name: NSNotification.Name("SettingsChanged"), object: nil)
       }

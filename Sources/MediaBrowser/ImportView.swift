@@ -158,7 +158,7 @@ struct ImportView: View {
               selectedAppleMediaItems = selectedItems as! Set<ApplePhotosMediaItem>
             },
             onItemDoubleTap: { _ in },
-            minCellWidth: CGFloat(gridCellSize),
+            cellWidth: CGFloat(gridCellSize),
             disableDuplicates: true,
             onDuplicateCountChange: { duplicateCount = $0 }
           )
@@ -216,7 +216,7 @@ struct ImportView: View {
                 selectedDeviceMediaItems = selectedItems as! Set<ConnectedDeviceMediaItem>
               },
               onItemDoubleTap: { _ in },  // No-op for import view
-              minCellWidth: CGFloat(gridCellSize),
+              cellWidth: CGFloat(gridCellSize),
               disableDuplicates: true,
               onDuplicateCountChange: { duplicateCount = $0 }
             )
@@ -334,7 +334,7 @@ struct ImportView: View {
               selectedLocalFilesItems = selectedItems as! Set<LocalFileSystemMediaItem>
             },
             onItemDoubleTap: { _ in },
-            minCellWidth: CGFloat(gridCellSize),
+            cellWidth: CGFloat(gridCellSize),
             disableDuplicates: true,
             onDuplicateCountChange: { duplicateCount = $0 }
           )
