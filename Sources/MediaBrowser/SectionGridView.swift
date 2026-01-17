@@ -26,6 +26,8 @@ struct SectionGridView: View {
   @State private var hoveredItemId: Int? = nil
 
   private let hoverPixelIncrease: CGFloat = 4
+  private let minSpacing: CGFloat = 2
+  private let maxSpacing: CGFloat = 8
 
   // Default initializer for standard MediaItemView usage with multiple selection
   init(
@@ -52,7 +54,48 @@ struct SectionGridView: View {
     self.onItemAppearanceChange = onItemAppearanceChange
   }
 
+  private func itemView(for item: MediaItem) -> some View {
+    MediaItemView(
+      item: item,
+      onTap: nil,
+      isSelected: selectedItems.contains(item),
+      isDuplicate: duplicateIds.contains(item.id),
+      externalThumbnail: nil,
+      shouldReloadThumbnail: itemsNeedingThumbnailUpdate.contains(item.id)
+    )
+    .id("item-\(item.id)")
+    .onAppear {
+      if let callback = self.onItemAppearanceChange {
+        callback(item.id, true)
+      }
+    }
+    .onDisappear {
+      if let callback = self.onItemAppearanceChange {
+        callback(item.id, false)
+      }
+    }
+    .onHover { hovering in
+      hoveredItemId = hovering ? item.id : nil
+    }
+    .scaleEffect(hoveredItemId == item.id ? 1 + hoverPixelIncrease / cellWidth : 1.0)
+    .animation(.easeInOut(duration: 0.1), value: hoveredItemId)
+    .contentShape(Rectangle())
+    .onTapGesture {
+      handleItemSelection(item)
+    }
+    .simultaneousGesture(
+      TapGesture(count: 2).onEnded { _ in
+        onItemDoubleTap(item)
+      }
+    )
+  }
+
   var body: some View {
+    let v1 = cellWidth - 50
+    let v2 = (maxSpacing - minSpacing) / 150
+    let v3 = v1 * v2
+    let cellSpacing = minSpacing + CGFloat(v3)
+
     VStack(alignment: .leading, spacing: 8) {
       if let title = title {
         Text(title)
@@ -61,43 +104,13 @@ struct SectionGridView: View {
       }
 
       LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: cellWidth, maximum: cellWidth * 1.4))],
-        spacing: 2 + (cellWidth - 50) * 8 / 150
+        columns: [
+          GridItem(.adaptive(minimum: cellWidth, maximum: cellWidth * 1.4), spacing: cellSpacing)
+        ],
+        spacing: cellSpacing
       ) {
         ForEach(items) { item in
-          MediaItemView(
-            item: item,
-            onTap: nil,
-            isSelected: selectedItems.contains(item),
-            isDuplicate: duplicateIds.contains(item.id),
-            externalThumbnail: nil,
-            shouldReloadThumbnail: itemsNeedingThumbnailUpdate.contains(item.id)
-          )
-          .id("item-\(item.id)")
-          .onAppear {
-            if let callback = self.onItemAppearanceChange {
-              callback(item.id, true)
-            }
-          }
-          .onDisappear {
-            if let callback = self.onItemAppearanceChange {
-              callback(item.id, false)
-            }
-          }
-          .onHover { hovering in
-            hoveredItemId = hovering ? item.id : nil
-          }
-          .scaleEffect(hoveredItemId == item.id ? 1 + hoverPixelIncrease / cellWidth : 1.0)
-          .animation(.easeInOut(duration: 0.1), value: hoveredItemId)
-          .contentShape(Rectangle())
-          .onTapGesture {
-            handleItemSelection(item)
-          }
-          .simultaneousGesture(
-            TapGesture(count: 2).onEnded { _ in
-              onItemDoubleTap(item)
-            }
-          )
+          itemView(for: item)
         }
       }
       .padding(.horizontal, 8)
