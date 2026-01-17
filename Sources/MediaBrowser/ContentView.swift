@@ -620,6 +620,9 @@ struct WindowStateRestorer: NSViewRepresentable {
     guard let databasePath = databasePath else { return }
 
     if let window = nsView.window {
+      // Set represented URL for window identification
+      window.representedURL = URL(fileURLWithPath: databasePath)
+
       let state = UserDefaults.windowState(for: databasePath)
       if let frame = state.frame {
         // Restore frame
@@ -638,6 +641,9 @@ struct WindowStateRestorer: NSViewRepresentable {
     } else {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
         if let window = nsView.window {
+          // Set represented URL for window identification
+          window.representedURL = URL(fileURLWithPath: databasePath)
+
           let state = UserDefaults.windowState(for: databasePath)
           if let frame = state.frame {
             // Restore frame

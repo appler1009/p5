@@ -44,6 +44,19 @@ extension UserDefaults {
     let isFullscreen = UserDefaults.standard.bool(forKey: databasePath + "_windowFullscreen")
     return (frame: frame, isFullscreen: isFullscreen)
   }
+
+  private static let openDatabaseWindowsKey = "openDatabaseWindows"
+
+  @MainActor static func saveOpenDatabaseWindows() {
+    let openPaths = NSApp.windows.compactMap { window in
+      window.representedURL?.path
+    }
+    UserDefaults.standard.set(openPaths, forKey: openDatabaseWindowsKey)
+  }
+
+  static func openDatabaseWindows() -> [String] {
+    return UserDefaults.standard.stringArray(forKey: openDatabaseWindowsKey) ?? []
+  }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -56,11 +69,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // GeocodingService is started in ContentView
 
-    // Open last database
-    if let lastPath = UserDefaults.standard.string(forKey: "lastOpenedDatabasePath") {
+    // Open previously open database windows
+    let openPaths = UserDefaults.openDatabaseWindows()
+    if !openPaths.isEmpty {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-        if let action = WindowManager.openWindow {
-          action(lastPath)
+        for path in openPaths {
+          if let action = WindowManager.openWindow {
+            action(path)
+          }
+        }
+      }
+    } else {
+      // Fallback to last opened database if no open windows were saved
+      if let lastPath = UserDefaults.standard.string(forKey: "lastOpenedDatabasePath") {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+          if let action = WindowManager.openWindow {
+            action(lastPath)
+          }
         }
       }
     }
@@ -76,6 +101,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    // Save currently open database windows
+    UserDefaults.saveOpenDatabaseWindows()
     // App cleanup - no auto-sync to clean up
   }
 
