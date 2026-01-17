@@ -8,6 +8,7 @@ struct MediaGridView: View {
   let onFullScreen: (MediaItem) -> Void
   let onScrollToItem: ((Int) -> Void)?
   @ObservedObject var selectionState: GridSelectionState
+  let gridCellSize: Double
 
   private let lightboxOpeningDelay = 0.1
 
@@ -67,7 +68,7 @@ struct MediaGridView: View {
                   self.onFullScreen(item)
                 }
               },
-              minCellWidth: 80,
+              minCellWidth: CGFloat(gridCellSize),
               selectionState: self.selectionState,
               onItemAppearanceChange: self.changedItemAppearance
             )

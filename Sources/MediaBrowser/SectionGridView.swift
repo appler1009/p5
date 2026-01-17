@@ -25,6 +25,8 @@ struct SectionGridView: View {
   @State private var duplicateIds: Set<Int> = []
   @State private var hoveredItemId: Int? = nil
 
+  private let hoverPixelIncrease: CGFloat = 4
+
   // Default initializer for standard MediaItemView usage with multiple selection
   init(
     title: String? = nil,
@@ -82,7 +84,7 @@ struct SectionGridView: View {
           .onHover { hovering in
             hoveredItemId = hovering ? item.id : nil
           }
-          .scaleEffect(hoveredItemId == item.id ? 1.05 : 1.0)
+          .scaleEffect(hoveredItemId == item.id ? 1 + hoverPixelIncrease / minCellWidth : 1.0)
           .animation(.easeInOut(duration: 0.1), value: hoveredItemId)
           .contentShape(Rectangle())
           .onTapGesture {
@@ -96,10 +98,7 @@ struct SectionGridView: View {
         }
       }
       .padding(.horizontal, 8)
-    }
-    .onAppear {
-      setupThumbnailObserver()
-      checkForDuplicates()
+      .padding(.bottom, 8)
     }
     .onChange(of: selectionState?.selectedItems ?? []) { _, newItems in
       selectedItems = newItems

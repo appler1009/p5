@@ -470,10 +470,17 @@ class DatabaseManager: ObservableObject {
   // MARK: - Settings Management
 
   func getSetting(_ key: String) -> String? {
+    print("DatabaseManager: getting setting \(key)")
+    guard let dbQueue = dbQueue else {
+      print("DatabaseManager: dbQueue is nil")
+      return nil
+    }
     do {
-      return try dbQueue?.read { db in
+      let result = try dbQueue.read { db in
         try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = ?", arguments: [key])
       }
+      print("DatabaseManager: got setting \(key): \(result ?? "nil")")
+      return result
     } catch {
       print("Error getting setting \(key): \(error)")
       return nil
@@ -481,14 +488,20 @@ class DatabaseManager: ObservableObject {
   }
 
   func setSetting(_ key: String, value: String) {
+    print("DatabaseManager: setting \(key) to \(value)")
+    guard let dbQueue = dbQueue else {
+      print("DatabaseManager: dbQueue is nil")
+      return
+    }
     do {
-      try dbQueue?.write { db in
+      try dbQueue.write { db in
         try db.execute(
           sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
           arguments: [key, value])
       }
+      print("DatabaseManager: successfully set setting \(key) to \(value)")
     } catch {
-      print("Error setting \(key): \(error)")
+      print("Error setting setting \(key): \(error)")
     }
   }
 

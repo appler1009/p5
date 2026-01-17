@@ -34,7 +34,8 @@ struct ContentView: View {
   @ObservedObject private var lightboxStateManager = LightboxStateManager.shared
   @Environment(\.openWindow) private var openWindow
   @State private var lightboxItem: MediaItem?
-  @AppStorage("viewMode") private var viewMode = "Grid"
+  @State private var viewMode = "Grid"
+  @State private var gridCellSize: Double = 80
   @State private var searchQuery = ""
   @StateObject private var selectionState = GridSelectionState()
 
@@ -146,7 +147,8 @@ struct ContentView: View {
               onSelected: selectItems,
               onFullScreen: goFullScreen,
               onScrollToItem: nil,
-              selectionState: selectionState
+              selectionState: selectionState,
+              gridCellSize: gridCellSize
             )
           } else if viewMode == "Map" {
             MediaMapView(
@@ -172,11 +174,30 @@ struct ContentView: View {
         } else if showImportSidebar {
           Divider()
 
-          ImportView(directoryManager: directoryManager)
+          ImportView(directoryManager: directoryManager, gridCellSize: gridCellSize)
             .frame(width: 600)
             .frame(maxHeight: .infinity)
             .background(Color(.windowBackgroundColor))
         }
+      }
+      .onAppear {
+        self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
+        self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
+        print(
+          "ContentView onAppear: loaded gridCellSize = \(self.gridCellSize), viewMode = \(self.viewMode)"
+        )
+      }
+      .onChange(of: viewMode) { _, newValue in
+        databaseManager.setSetting("viewMode", value: newValue)
+      }
+      .onChange(of: gridCellSize) { _, newValue in
+        print("ContentView: Grid cell size changed to: \(newValue)")
+        databaseManager.setSetting("gridCellSize", value: String(format: "%g", newValue))
+      }
+      .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SettingsChanged")))
+      { _ in
+        self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
+        self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
       }
 
       if let selectedLightboxItem = lightboxItem {

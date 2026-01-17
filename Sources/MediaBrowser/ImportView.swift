@@ -43,9 +43,11 @@ struct CustomDisclosureGroupStyle: DisclosureGroupStyle {
 
 struct ImportView: View {
   @ObservedObject private var directoryManager: DirectoryManager
+  let gridCellSize: Double
 
-  init(directoryManager: DirectoryManager) {
+  init(directoryManager: DirectoryManager, gridCellSize: Double) {
     self.directoryManager = directoryManager
+    self.gridCellSize = gridCellSize
   }
   @State private var importFromDevice = ImportFromDevice()
   @State private var isScanningDevices = false
@@ -156,7 +158,7 @@ struct ImportView: View {
               selectedAppleMediaItems = selectedItems as! Set<ApplePhotosMediaItem>
             },
             onItemDoubleTap: { _ in },
-            minCellWidth: 80,
+            minCellWidth: CGFloat(gridCellSize),
             disableDuplicates: true,
             onDuplicateCountChange: { duplicateCount = $0 }
           )
@@ -214,7 +216,7 @@ struct ImportView: View {
                 selectedDeviceMediaItems = selectedItems as! Set<ConnectedDeviceMediaItem>
               },
               onItemDoubleTap: { _ in },  // No-op for import view
-              minCellWidth: 80,
+              minCellWidth: CGFloat(gridCellSize),
               disableDuplicates: true,
               onDuplicateCountChange: { duplicateCount = $0 }
             )
@@ -332,7 +334,7 @@ struct ImportView: View {
               selectedLocalFilesItems = selectedItems as! Set<LocalFileSystemMediaItem>
             },
             onItemDoubleTap: { _ in },
-            minCellWidth: 80,
+            minCellWidth: CGFloat(gridCellSize),
             disableDuplicates: true,
             onDuplicateCountChange: { duplicateCount = $0 }
           )

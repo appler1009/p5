@@ -17,6 +17,7 @@ struct SettingsView: View {
     self.mediaScanner = mediaScanner
   }
   @AppStorage("lastThumbnailCleanupCount") private var lastCleanupCount = 0
+  @State private var gridCellSize: Double = 80
 
   @State private var currentUploadItem: String?
 
@@ -69,6 +70,37 @@ struct SettingsView: View {
               }
             }
             .buttonStyle(.bordered)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+        // Grid Settings Section
+        VStack(alignment: .leading, spacing: 12) {
+          Text("Grid Settings")
+            .font(.title2)
+            .fontWeight(.semibold)
+
+          VStack(alignment: .leading, spacing: 8) {
+            HStack {
+              Image(systemName: "square.grid.2x2")
+                .foregroundColor(.accentColor)
+                .frame(width: 24)
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Grid Cell Size")
+                  .font(.body)
+                  .fontWeight(.medium)
+                Text("Adjust the size of grid cells (50-200 pixels)")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              }
+              Spacer()
+              Text("\(Int(gridCellSize)) px")
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .monospaced()
+            }
+            Slider(value: $gridCellSize, in: 50...200, step: 10)
+              .frame(minWidth: 200)
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -412,6 +444,15 @@ struct SettingsView: View {
       .padding(.horizontal, 20)
       .padding(.vertical, 20)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .onAppear {
+        self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
+        print("SettingsView onAppear: loaded gridCellSize = \(self.gridCellSize)")
+      }
+      .onChange(of: gridCellSize) { _, newValue in
+        print("SettingsView: Grid cell size changed to: \(newValue)")
+        databaseManager.setSetting("gridCellSize", value: String(format: "%g", newValue))
+        NotificationCenter.default.post(name: NSNotification.Name("SettingsChanged"), object: nil)
+      }
       .onKeyPress(.escape) {
         NSApp.keyWindow?.close()
         return .handled
