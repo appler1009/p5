@@ -4,8 +4,13 @@ import XCTest
 
 @MainActor final class DatabaseManagerTests: XCTestCase {
   func testDatabaseInsertAndRetrieve() throws {
+    // Initialize shared instances
+    let dbPath = DatabaseManager.defaultPath
+    let databaseManager = DatabaseManager(path: dbPath)
+    DatabaseManager.shared = databaseManager
+
     // Test database operations
-    let db = DatabaseManager.shared
+    let db = DatabaseManager.shared!
 
     // Clear DB first
     db.clearAll()

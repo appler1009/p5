@@ -52,7 +52,7 @@ extension UserDefaults {
     if !openPaths.contains(path) {
       openPaths.append(path)
       UserDefaults.standard.set(openPaths, forKey: openDatabaseWindowsKey)
-      print("DEBUG: Added open database window: \(path), now: \(openPaths)")
+
     }
   }
 
@@ -61,7 +61,7 @@ extension UserDefaults {
     if let index = openPaths.firstIndex(of: path) {
       openPaths.remove(at: index)
       UserDefaults.standard.set(openPaths, forKey: openDatabaseWindowsKey)
-      print("DEBUG: Removed open database window: \(path), now: \(openPaths)")
+
     }
   }
 
@@ -88,7 +88,7 @@ extension UserDefaults {
 
     // Open previously open database windows
     let openPaths = UserDefaults.openDatabaseWindows()
-    print("DEBUG: Restoring open database windows: \(openPaths)")
+
     if !openPaths.isEmpty {
       // Stagger window openings to avoid full screen conflicts
       for (index, path) in openPaths.enumerated() {

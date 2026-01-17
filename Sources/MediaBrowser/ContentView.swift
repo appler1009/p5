@@ -702,7 +702,7 @@ struct WindowStateRestorer: NSViewRepresentable {
     }
 
     func windowDidBecomeMain(_ notification: Notification) {
-      print("DEBUG: Window became main for database: \(databasePath)")
+
       // Add this window to the open windows list
       if !databasePath.isEmpty {
         UserDefaults.addOpenDatabaseWindow(databasePath)
@@ -710,7 +710,7 @@ struct WindowStateRestorer: NSViewRepresentable {
     }
 
     func windowWillClose(_ notification: Notification) {
-      print("DEBUG: Window will close for database: \(databasePath)")
+
       // Remove this window from the open windows list only if app is not terminating
       if !databasePath.isEmpty && !AppDelegate.isTerminating {
         UserDefaults.removeOpenDatabaseWindow(databasePath)

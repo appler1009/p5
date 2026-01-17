@@ -4,7 +4,14 @@ import XCTest
 
 @MainActor final class DirectoryManagerTests: XCTestCase {
   func testDirectoryManager() throws {
-    let manager = DirectoryManager.shared
+    // Initialize shared instances
+    let dbPath = DatabaseManager.defaultPath
+    let databaseManager = DatabaseManager(path: dbPath)
+    let directoryManager = DirectoryManager(databaseManager: databaseManager)
+    DatabaseManager.shared = databaseManager
+    DirectoryManager.shared = directoryManager
+
+    let manager = DirectoryManager.shared!
     // Test remove
     let testURL1 = URL(fileURLWithPath: "/tmp/testdir1")
     let testURL2 = URL(fileURLWithPath: "/tmp/testdir2")
