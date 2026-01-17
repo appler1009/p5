@@ -89,17 +89,14 @@ struct SettingsView: View {
                 Text("Grid Cell Size")
                   .font(.body)
                   .fontWeight(.medium)
-                Text("Adjust the size of grid cells (50-200 pixels)")
+                Text("Adjust the size of grid cells")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
               Spacer()
-              Text("\(Int(gridCellSize)) px")
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .monospaced()
             }
-            Slider(value: $gridCellSize, in: 50...200, step: 10)
+            Slider(value: $gridCellSize, in: 50...200)
+              .labelsHidden()
               .frame(minWidth: 200)
           }
         }
@@ -446,11 +443,10 @@ struct SettingsView: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .onAppear {
         self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
-        print("SettingsView onAppear: loaded gridCellSize = \(self.gridCellSize)")
       }
       .onChange(of: gridCellSize) { _, newValue in
         print("SettingsView: Grid cell size changed to: \(newValue)")
-        databaseManager.setSetting("gridCellSize", value: String(format: "%g", newValue))
+        databaseManager.setSetting("gridCellSize", value: String(newValue))
         NotificationCenter.default.post(name: NSNotification.Name("SettingsChanged"), object: nil)
       }
       .onKeyPress(.escape) {

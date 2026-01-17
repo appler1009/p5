@@ -183,16 +183,13 @@ struct ContentView: View {
       .onAppear {
         self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
         self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
-        print(
-          "ContentView onAppear: loaded gridCellSize = \(self.gridCellSize), viewMode = \(self.viewMode)"
-        )
       }
       .onChange(of: viewMode) { _, newValue in
         databaseManager.setSetting("viewMode", value: newValue)
       }
       .onChange(of: gridCellSize) { _, newValue in
         print("ContentView: Grid cell size changed to: \(newValue)")
-        databaseManager.setSetting("gridCellSize", value: String(format: "%g", newValue))
+        databaseManager.setSetting("gridCellSize", value: String(Int(newValue)))
       }
       .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SettingsChanged")))
       { _ in
@@ -224,11 +221,9 @@ struct ContentView: View {
     }
     .onAppear {
 
-      print("ContentView appeared with databasePath: \(databasePath ?? "nil")")
-
       // Save the current database path as last opened
       if let databasePath = databasePath {
-        print("Saving lastOpenedDatabasePath: \(databasePath)")
+
         UserDefaults.standard.set(databasePath, forKey: "lastOpenedDatabasePath")
         // Add to recent databases
         UserDefaults.addRecentDatabase(databasePath)

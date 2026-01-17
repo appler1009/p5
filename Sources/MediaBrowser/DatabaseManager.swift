@@ -32,8 +32,6 @@ class DatabaseManager: ObservableObject {
       let directory = (path as NSString).deletingLastPathComponent
       try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
 
-      print("Opening database at: \(path)")
-
       // If DB exists and local_media_items table lacks s3_sync_status column, add it
       if FileManager.default.fileExists(atPath: path) {
         let tempQueue = try DatabaseQueue(path: path)
@@ -470,27 +468,20 @@ class DatabaseManager: ObservableObject {
   // MARK: - Settings Management
 
   func getSetting(_ key: String) -> String? {
-    print("DatabaseManager: getting setting \(key)")
     guard let dbQueue = dbQueue else {
-      print("DatabaseManager: dbQueue is nil")
       return nil
     }
     do {
-      let result = try dbQueue.read { db in
+      return try dbQueue.read { db in
         try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = ?", arguments: [key])
       }
-      print("DatabaseManager: got setting \(key): \(result ?? "nil")")
-      return result
     } catch {
-      print("Error getting setting \(key): \(error)")
       return nil
     }
   }
 
   func setSetting(_ key: String, value: String) {
-    print("DatabaseManager: setting \(key) to \(value)")
     guard let dbQueue = dbQueue else {
-      print("DatabaseManager: dbQueue is nil")
       return
     }
     do {
@@ -499,9 +490,8 @@ class DatabaseManager: ObservableObject {
           sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
           arguments: [key, value])
       }
-      print("DatabaseManager: successfully set setting \(key) to \(value)")
     } catch {
-      print("Error setting setting \(key): \(error)")
+      // Ignore errors
     }
   }
 
