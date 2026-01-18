@@ -34,12 +34,15 @@ class MediaScanner: ObservableObject {
   }
 
   @objc private func mediaItemChanged() {
+    print("🔄 [MEDIASCANNER] Received media item change notification, refreshing data...")
     Task { await loadFromDB() }
   }
 
   func loadFromDB() async {
-    let hideDeleted = databaseManager.getSetting("hideDeletedItems") != "false"
-    items = databaseManager.getAllItems(includeTrashed: !hideDeleted)
+    let showDeleted = databaseManager.getSetting("hideDeletedItems") != "false"
+    let oldCount = items.count
+    items = databaseManager.getAllItems(includeTrashed: !showDeleted)
+    print("🔄 [MEDIASCANNER] loadFromDB completed: \(oldCount) → \(items.count) items (showDeleted: \(!showDeleted))")
   }
 
   func updateGeocode(for itemId: Int, geocode: String) async {

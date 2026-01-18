@@ -12,6 +12,7 @@ Media Browser is a SwiftUI-based macOS application for browsing and managing med
 - Do not give extensive summary after the fix is done - just provide a simple git commit message
 - Be concise and direct in responses
 - Avoid unnecessary elaboration or explanation unless specifically requested
+- **Never commit changes on your own** - Only commit when explicitly requested by the user
 
 ## Build System
 

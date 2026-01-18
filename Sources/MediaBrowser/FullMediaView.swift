@@ -36,8 +36,11 @@ struct MediaDetailsSidebar: View {
   let metadata: MediaMetadata?
   let isGeocodingInProgress: Bool
   let databaseManager: DatabaseManager
+  let s3Service: S3Service
+  let mediaScanner: MediaScanner
 
   @State private var showAdditionalMetadata = false
+  @State private var deleteFromS3 = false
 
   private func hasAdditionalMetadata(metadata: MediaMetadata) -> Bool {
     return !metadata.extraEXIF.isEmpty
@@ -234,45 +237,49 @@ struct MediaDetailsSidebar: View {
           .padding(.top, 16)
           .padding(.bottom, 4)
 
-        VStack(alignment: .leading, spacing: 8) {
-
-          if item.isDeleted {
-            Button(action: {
-              Task {
-                await performRestore()
-              }
-            }) {
-              HStack {
-                Image(systemName: "arrow.uturn.backward")
-                Text("Restore")
-              }
-              .buttonStyle(.borderedProminent)
-              .tint(.green)
-              .padding(.vertical, 4)
+        HStack(spacing: 8) {
+          Button(action: {
+            Task {
+              await performRestore()
             }
-          } else {
-            Button(action: {
-              Task {
-                await performDelete()
-              }
-            }) {
-              HStack {
-                Image(systemName: "trash")
-                  .foregroundColor(.red)
-                Text("Delete")
-                  .foregroundColor(.red)
-              }
-              .buttonStyle(.borderedProminent)
-              .tint(.red)
-              .padding(.vertical, 4)
+          }) {
+            HStack {
+              Image(systemName: "arrow.uturn.backward")
+              Text("Restore")
             }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .padding(.vertical, 4)
           }
+          .disabled(!item.isDeleted)
+          .opacity(!item.isDeleted ? 0.5 : 1.0)
+
+          Spacer()
+
+          Button(action: {
+            Task {
+              await performDelete()
+            }
+          }) {
+            HStack {
+              Image(systemName: "trash")
+                .foregroundColor(.red)
+              Text("Delete")
+                .foregroundColor(.red)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .padding(.vertical, 4)
+          }
+          .disabled(item.isDeleted)
+          .opacity(item.isDeleted ? 0.5 : 1.0)
         }
       }
     }
     .padding(16)
-    .padding(.bottom, 64)
+    .padding(.bottom, 32)
     .frame(width: 350)
+
     .task {
       // Reverse geocode GPS coordinates when sidebar opens (only if not already geocoded)
       if let gps = item.metadata?.gps, item.metadata?.geocode == nil {
@@ -325,9 +332,32 @@ struct MediaDetailsSidebar: View {
     databaseManager.moveToTrash(itemId: item.id)
     print("✅ [DELETE] Marked item as deleted in database")
 
-    // Post notification to refresh the UI
+    // Update local item state to trigger UI refresh in the lightbox
     await MainActor.run {
+      item.isDeleted = true
+      
+      // Also update the corresponding item in mediaScanner.items to ensure grid view updates
+      if let scannerItem = mediaScanner.items.first(where: { $0.id == item.id }) {
+        scannerItem.isDeleted = true
+        scannerItem.objectWillChange.send()
+      }
+    }
+
+    // Post notification to refresh the mediaScanner items array
+    await MainActor.run {
+      print("📢 [DELETE] Posting MediaItemDeleted notification")
       NotificationCenter.default.post(name: NSNotification.Name("MediaItemDeleted"), object: nil)
+    }
+
+    // Delete from S3 if requested and configured
+    if deleteFromS3 && s3Service.config.isValid {
+      print("🗑️ [DELETE] Deleting from S3...")
+      do {
+        try await s3Service.deleteFromS3(item)
+        print("✅ [DELETE] Deleted from S3")
+      } catch {
+        print("❌ [DELETE] Failed to delete from S3: \(error)")
+      }
     }
 
     print("✅ [DELETE] Delete process completed successfully")
@@ -340,12 +370,35 @@ struct MediaDetailsSidebar: View {
     databaseManager.restoreFromTrash(itemId: item.id)
     print("✅ [RESTORE] Marked item as restored in database")
 
-    // Post notification to refresh the UI
+    // Update local item state to trigger UI refresh in the lightbox
+    await MainActor.run {
+      item.isDeleted = false
+      
+      // Also update the corresponding item in mediaScanner.items to ensure grid view updates
+      if let scannerItem = mediaScanner.items.first(where: { $0.id == item.id }) {
+        scannerItem.isDeleted = false
+        scannerItem.objectWillChange.send()
+      }
+    }
+
+    // Post notification to refresh the mediaScanner items array
     await MainActor.run {
       NotificationCenter.default.post(name: NSNotification.Name("MediaItemRestored"), object: nil)
     }
 
     print("✅ [RESTORE] Restore process completed successfully")
+  }
+
+  private func updateItemStateFromDatabase() {
+    // Find the item in the current database state to check deletion status
+    let allItems = databaseManager.getAllItems(includeTrashed: true)
+    if let dbItem = allItems.first(where: { $0.id == item.id }) {
+      let isCurrentlyDeleted = dbItem.isDeleted
+      print("🔍 [SYNC] Item \(item.id) deletion status from DB: \(isCurrentlyDeleted)")
+      item.isDeleted = isCurrentlyDeleted
+    } else {
+      print("❌ [SYNC] Item \(item.id) not found in database")
+    }
   }
 
   private func detailRow(_ label: String, _ value: String, allowCopy: Bool = true) -> some View {
@@ -482,10 +535,14 @@ struct FullMediaView: View {
   let onPrev: () -> Void
   let databaseManager: DatabaseManager
   let mediaScanner: MediaScanner
+  let s3Service: S3Service
+
+
 
   init(
     item: LocalFileSystemMediaItem, onClose: @escaping () -> Void, onNext: @escaping () -> Void,
-    onPrev: @escaping () -> Void, databaseManager: DatabaseManager, mediaScanner: MediaScanner
+    onPrev: @escaping () -> Void, databaseManager: DatabaseManager, mediaScanner: MediaScanner,
+    s3Service: S3Service
   ) {
     self.item = item
     self.onClose = onClose
@@ -493,6 +550,7 @@ struct FullMediaView: View {
     self.onPrev = onPrev
     self.databaseManager = databaseManager
     self.mediaScanner = mediaScanner
+    self.s3Service = s3Service
   }
 
   @State private var fullImage: NSImage?
@@ -518,7 +576,7 @@ struct FullMediaView: View {
         Divider()
         MediaDetailsSidebar(
           item: item, metadata: currentMetadata, isGeocodingInProgress: isGeocodingInProgress,
-          databaseManager: databaseManager)
+          databaseManager: databaseManager, s3Service: s3Service, mediaScanner: mediaScanner)
         Spacer()
       }
       .frame(width: 350)

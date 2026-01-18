@@ -208,6 +208,20 @@ struct ContentView: View {
       self.viewMode = "Trash"
       self.databaseManager.setSetting("viewMode", value: "Trash")
     }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MediaItemDeleted"))) {
+      _ in
+      // Update lightbox item reference to match refreshed data
+      if let currentItem = self.lightboxItem {
+        self.lightboxItem = self.mediaScanner.items.first { $0.id == currentItem.id }
+      }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MediaItemRestored"))) {
+      _ in
+      // Update lightbox item reference to match refreshed data
+      if let currentItem = self.lightboxItem {
+        self.lightboxItem = self.mediaScanner.items.first { $0.id == currentItem.id }
+      }
+    }
   }
 
   var lightboxView: some View {
@@ -222,7 +236,8 @@ struct ContentView: View {
           onNext: nextFullScreenItem,
           onPrev: prevFullScreenItem,
           databaseManager: databaseManager,
-          mediaScanner: mediaScanner
+          mediaScanner: mediaScanner,
+          s3Service: s3Service
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
