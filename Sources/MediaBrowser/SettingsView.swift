@@ -15,9 +15,14 @@ struct SettingsView: View {
     self.s3Service = s3Service
     self.databaseManager = databaseManager
     self.mediaScanner = mediaScanner
+
+    // Load hide deleted items setting (default to true = hide deleted items)
+    self._hideDeletedItems = State(
+      initialValue: databaseManager.getSetting("hideDeletedItems") != "false")
   }
   @AppStorage("lastThumbnailCleanupCount") private var lastCleanupCount = 0
   @State private var gridCellSize: Double = 80
+  @State private var hideDeletedItems: Bool = true
 
   @State private var currentUploadItem: String?
 
@@ -98,6 +103,21 @@ struct SettingsView: View {
             Slider(value: $gridCellSize, in: 50...200)
               .labelsHidden()
               .frame(minWidth: 200)
+
+            // Hide Deleted Items Checkbox
+            HStack {
+              Toggle("Hide Deleted Items", isOn: $hideDeletedItems)
+                .onChange(of: hideDeletedItems) {
+                  databaseManager.setSetting(
+                    "hideDeletedItems", value: hideDeletedItems ? "true" : "false")
+                  // Refresh the media scanner to show/hide deleted items
+                  Task {
+                    await mediaScanner.loadFromDB()
+                  }
+                }
+              Spacer()
+            }
+            .padding(.top, 8)
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -190,7 +210,8 @@ struct SettingsView: View {
               .disabled(mediaScanner.isScanning)
               .buttonStyle(.borderedProminent)
             }
-            .padding(.top)
+            .padding(.top, 8)
+
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

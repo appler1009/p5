@@ -37,6 +37,12 @@ struct MediaDetailsSidebar: View {
   let isGeocodingInProgress: Bool
   let databaseManager: DatabaseManager
 
+  @State private var showAdditionalMetadata = false
+
+  private func hasAdditionalMetadata(metadata: MediaMetadata) -> Bool {
+    return !metadata.extraEXIF.isEmpty
+  }
+
   var body: some View {
     ScrollView(.vertical) {
       VStack(alignment: .leading, spacing: 8) {
@@ -219,10 +225,51 @@ struct MediaDetailsSidebar: View {
         VStack(alignment: .leading, spacing: 12) {
           detailRow("Status", s3SyncStatusText)
         }
+
+        // Delete section - intentionally hidden deep in the views
+        Divider()
+          .padding(.vertical, 16)
+
+        SectionHeader(title: "Danger Zone", iconName: "exclamationmark.triangle.fill")
+          .padding(.top, 16)
+          .padding(.bottom, 4)
+
+        VStack(alignment: .leading, spacing: 8) {
+
+          if item.isDeleted {
+            Button(action: {
+              Task {
+                await performRestore()
+              }
+            }) {
+              HStack {
+                Image(systemName: "arrow.uturn.backward")
+                Text("Restore")
+              }
+              .buttonStyle(.borderedProminent)
+              .tint(.green)
+              .padding(.vertical, 4)
+            }
+          } else {
+            Button(action: {
+              Task {
+                await performDelete()
+              }
+            }) {
+              HStack {
+                Image(systemName: "trash")
+                Text("Delete")
+              }
+              .buttonStyle(.borderedProminent)
+              .tint(.red)
+              .padding(.vertical, 4)
+            }
+          }
+        }
       }
     }
     .padding(16)
-    .padding(.bottom, 32)
+    .padding(.bottom, 64)
     .frame(width: 350)
     .task {
       // Reverse geocode GPS coordinates when sidebar opens (only if not already geocoded)
@@ -257,12 +304,6 @@ struct MediaDetailsSidebar: View {
     }
   }
 
-  @State private var showAdditionalMetadata = false
-
-  private func hasAdditionalMetadata(metadata: MediaMetadata) -> Bool {
-    return metadata.extraEXIF.keys.contains { shouldShowTag($0) }
-  }
-
   private func shouldShowTag(_ key: String) -> Bool {
     let blacklistedTags: Set<String> = [
       "ColorSpace", "BrightnessValue", "ExifVersion", "LensSpecification", "SubjectArea",
@@ -273,6 +314,36 @@ struct MediaDetailsSidebar: View {
       .replacingOccurrences(of: "gps_", with: "")
       .replacingOccurrences(of: "image_", with: "")
     return !blacklistedTags.contains(cleanKey)
+  }
+
+  private func performDelete() async {
+    print("🗑️ [DELETE] Starting delete process for item: \(item.displayName) (ID: \(item.id))")
+
+    // Mark item as deleted in database
+    databaseManager.moveToTrash(itemId: item.id)
+    print("✅ [DELETE] Marked item as deleted in database")
+
+    // Post notification to refresh the UI
+    await MainActor.run {
+      NotificationCenter.default.post(name: NSNotification.Name("MediaItemDeleted"), object: nil)
+    }
+
+    print("✅ [DELETE] Delete process completed successfully")
+  }
+
+  private func performRestore() async {
+    print("🔄 [RESTORE] Starting restore process for item: \(item.displayName) (ID: \(item.id))")
+
+    // Restore item from trash
+    databaseManager.restoreFromTrash(itemId: item.id)
+    print("✅ [RESTORE] Marked item as restored in database")
+
+    // Post notification to refresh the UI
+    await MainActor.run {
+      NotificationCenter.default.post(name: NSNotification.Name("MediaItemRestored"), object: nil)
+    }
+
+    print("✅ [RESTORE] Restore process completed successfully")
   }
 
   private func detailRow(_ label: String, _ value: String, allowCopy: Bool = true) -> some View {

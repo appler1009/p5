@@ -5,6 +5,7 @@ class MediaItem: Identifiable, Equatable, Hashable, ObservableObject, @unchecked
   let id: Int
   var metadata: MediaMetadata?  // to be filled later
   @Published var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
+  var isDeleted: Bool = false  // Track if item is marked as deleted
   var displayName: String {
     fatalError("Subclasses must override displayName")
   }
@@ -243,6 +244,14 @@ enum MediaType {
   case photo
   case livePhoto
   case video
+
+  var description: String {
+    switch self {
+    case .photo: return "photo"
+    case .livePhoto: return "live photo"
+    case .video: return "video"
+    }
+  }
 }
 
 struct MediaMetadata {

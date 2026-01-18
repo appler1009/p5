@@ -17,10 +17,29 @@ class MediaScanner: ObservableObject {
   init(databaseManager: DatabaseManager) {
     self.databaseManager = databaseManager
     Task { await loadFromDB() }
+
+    // Listen for media item deleted/restored notifications
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(mediaItemChanged),
+      name: NSNotification.Name("MediaItemDeleted"),
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(mediaItemChanged),
+      name: NSNotification.Name("MediaItemRestored"),
+      object: nil
+    )
+  }
+
+  @objc private func mediaItemChanged() {
+    Task { await loadFromDB() }
   }
 
   func loadFromDB() async {
-    items = databaseManager.getAllItems()
+    let hideDeleted = databaseManager.getSetting("hideDeletedItems") != "false"
+    items = databaseManager.getAllItems(includeTrashed: !hideDeleted)
   }
 
   func updateGeocode(for itemId: Int, geocode: String) async {

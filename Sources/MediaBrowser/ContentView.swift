@@ -93,109 +93,109 @@ struct ContentView: View {
       }
   }
 
-  var body: some View {
-    ZStack {
-      // Hidden button for `/` shortcut for search
-      Button("") {
-        DispatchQueue.main.async {
-          self.searchTextField?.window?.makeFirstResponder(self.searchTextField)
+  var keyCaptureView: some View {
+    KeyCaptureView(onKey: { event in
+      guard lightboxItem == nil else { return event }
+      switch event.keyCode {
+      case 36, 49:  // Enter or Space
+        if let selectedItem = selectionState.selectedItems.first {
+          withAnimation(.easeInOut(duration: 0.1)) {
+            goFullScreen(selectedItem)
+          }
+        }
+        return nil
+      case 123:  // Left arrow
+        moveSelectionLeft()
+        return nil
+      case 124:  // Right arrow
+        moveSelectionRight()
+        return nil
+      case 53:  // ESC
+        // When the search field (NSTextView editor) has focus, let ESC pass to the custom ToolbarSearchField.performKeyEquivalent
+        // which clears the text if not empty or loses focus if empty.
+        // Otherwise, consume ESC to clear the grid selection.
+        if NSApp.keyWindow?.firstResponder is NSTextView {
+          return event  // let the search field handle ESC
+        } else {
+          selectionState.selectedItems.removeAll()
+          return nil
+        }
+      default: return event
+      }
+    })
+    .opacity(0)
+    .allowsHitTesting(false)
+  }
+
+  var mainContentView: some View {
+    HStack(spacing: 0) {
+      VStack(spacing: 0) {
+        if viewMode == "Grid" {
+          MediaGridView(
+            mediaScanner: mediaScanner,
+            databaseManager: databaseManager,
+            searchQuery: searchQuery,
+            onSelected: selectItems,
+            onFullScreen: goFullScreen,
+            onScrollToItem: nil,
+            selectionState: selectionState,
+            gridCellSize: gridCellSize
+          )
+        } else if viewMode == "Map" {
+          MediaMapView(
+            mediaScanner: mediaScanner,
+            lightboxItem: lightboxItem,
+            searchQuery: searchQuery,
+            onFullScreen: goFullScreen
+          )
+        } else if viewMode == "Trash" {
+          TrashView(
+            databaseManager: databaseManager,
+            s3Service: s3Service,
+            mediaScanner: mediaScanner
+          )
         }
       }
-      .keyboardShortcut("/", modifiers: [])
-      .hidden()
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-      // Keyboard shortcuts for grid navigation
-      KeyCaptureView(onKey: { event in
-        guard lightboxItem == nil else { return event }
-        switch event.keyCode {
-        case 36, 49:  // Enter or Space
-          if let selectedItem = selectionState.selectedItems.first {
-            withAnimation(.easeInOut(duration: 0.1)) {
-              goFullScreen(selectedItem)
-            }
-          }
-          return nil
-        case 123:  // Left arrow
-          moveSelectionLeft()
-          return nil
-        case 124:  // Right arrow
-          moveSelectionRight()
-          return nil
-        case 53:  // ESC
-          // When the search field (NSTextView editor) has focus, let ESC pass to the custom ToolbarSearchField.performKeyEquivalent
-          // which clears the text if not empty or loses focus if empty.
-          // Otherwise, consume ESC to clear the grid selection.
-          if NSApp.keyWindow?.firstResponder is NSTextView {
-            return event  // let the search field handle ESC
-          } else {
-            selectionState.selectedItems.removeAll()
-            return nil
-          }
-        default: return event
-        }
-      })
-      .opacity(0)
-      .allowsHitTesting(false)
+      if showSettingsSidebar {
+        Divider()
 
-      HStack(spacing: 0) {
-        VStack(spacing: 0) {
-          if viewMode == "Grid" {
-            MediaGridView(
-              mediaScanner: mediaScanner,
-              databaseManager: databaseManager,
-              searchQuery: searchQuery,
-              onSelected: selectItems,
-              onFullScreen: goFullScreen,
-              onScrollToItem: nil,
-              selectionState: selectionState,
-              gridCellSize: gridCellSize
-            )
-          } else if viewMode == "Map" {
-            MediaMapView(
-              mediaScanner: mediaScanner,
-              lightboxItem: lightboxItem,
-              searchQuery: searchQuery,
-              onFullScreen: goFullScreen
-            )
-          }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        SettingsView(
+          directoryManager: directoryManager, s3Service: s3Service,
+          databaseManager: databaseManager, mediaScanner: mediaScanner
+        )
+        .frame(width: 455)
+        .frame(maxHeight: .infinity)
+        .background(Color(.windowBackgroundColor))
+      } else if showImportSidebar {
+        Divider()
 
-        if showSettingsSidebar {
-          Divider()
-
-          SettingsView(
-            directoryManager: directoryManager, s3Service: s3Service,
-            databaseManager: databaseManager, mediaScanner: mediaScanner
-          )
-          .frame(width: 455)
+        ImportView(directoryManager: directoryManager, gridCellSize: gridCellSize)
+          .frame(width: 600)
           .frame(maxHeight: .infinity)
           .background(Color(.windowBackgroundColor))
-        } else if showImportSidebar {
-          Divider()
+      }
+    }
+    .onAppear {
+      self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
+      self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
+    }
+    .onChange(of: viewMode) { _, newValue in
+      databaseManager.setSetting("viewMode", value: newValue)
+    }
+    .onChange(of: gridCellSize) { _, newValue in
+      databaseManager.setSetting("gridCellSize", value: String(Int(newValue)))
+    }
+    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SettingsChanged"))) {
+      _ in
+      self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
+      self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
+    }
+  }
 
-          ImportView(directoryManager: directoryManager, gridCellSize: gridCellSize)
-            .frame(width: 600)
-            .frame(maxHeight: .infinity)
-            .background(Color(.windowBackgroundColor))
-        }
-      }
-      .onAppear {
-        self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
-        self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
-      }
-      .onChange(of: viewMode) { _, newValue in
-        databaseManager.setSetting("viewMode", value: newValue)
-      }
-      .onChange(of: gridCellSize) { _, newValue in
-        databaseManager.setSetting("gridCellSize", value: String(Int(newValue)))
-      }
-      .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SettingsChanged")))
-      { _ in
-        self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
-        self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
-      }
-
+  var lightboxView: some View {
+    Group {
       if let selectedLightboxItem = lightboxItem {
         FullMediaView(
           item: selectedLightboxItem as! LocalFileSystemMediaItem,
@@ -218,36 +218,21 @@ struct ContentView: View {
         }
       }
     }
-    .onAppear {
+  }
 
-      // Save the current database path as last opened
-      if let databasePath = databasePath {
-
-        UserDefaults.standard.set(databasePath, forKey: "lastOpenedDatabasePath")
-        // Add to recent databases
-        UserDefaults.addRecentDatabase(databasePath)
-      } else {
-        print("Not saving lastOpenedDatabasePath because databasePath is nil")
+  var viewModePickerToolbar: some ToolbarContent {
+    ToolbarItem(placement: .navigation) {
+      Picker("View Mode", selection: $viewMode) {
+        Image(systemName: "square.grid.2x2").tag("Grid")
+        Image(systemName: "map").tag("Map")
+        Image(systemName: "trash").tag("Trash")
       }
-
-      setupS3SyncNotifications()
-
-      // Start auto-sync if enabled
-      if s3Service.autoSyncEnabled && s3Service.config.isValid {
-        Task {
-          await s3Service.uploadNextItem()
-        }
-      }
-
+      .pickerStyle(.segmented)
     }
-    .toolbar {
-      ToolbarItem(placement: .navigation) {
-        Picker("View Mode", selection: $viewMode) {
-          Image(systemName: "square.grid.2x2").tag("Grid")
-          Image(systemName: "map").tag("Map")
-        }
-        .pickerStyle(.segmented)
-      }
+  }
+
+  var actionButtonsToolbar: some ToolbarContent {
+    Group {
       ToolbarItem {
         Button(action: {
           withAnimation(.easeInOut(duration: 0.2)) {
@@ -278,34 +263,81 @@ struct ContentView: View {
           )
         )
       }
+    }
+  }
 
-      ToolbarItemGroup(placement: .principal) {
-        HStack(spacing: 8) {
-          Image(systemName: "magnifyingglass")
-            .foregroundColor(.secondary)
-          FocusableTextField(text: $searchQuery, textField: $searchTextField)
-            .frame(minWidth: 200, maxWidth: 300)
-        }
-        .padding(.leading, 8)
-        .overlay(alignment: .trailing) {
-          if !searchQuery.isEmpty {
-            Button(action: {
-              searchQuery = ""
-            }) {
-              Image(systemName: "xmark.circle.fill")
-                .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .padding(.trailing, 8)
+  var searchToolbar: some ToolbarContent {
+    ToolbarItemGroup(placement: .principal) {
+      HStack(spacing: 8) {
+        Image(systemName: "magnifyingglass")
+          .foregroundColor(.secondary)
+        FocusableTextField(text: $searchQuery, textField: $searchTextField)
+          .frame(minWidth: 200, maxWidth: 300)
+      }
+      .padding(.leading, 8)
+      .overlay(alignment: .trailing) {
+        if !searchQuery.isEmpty {
+          Button(action: {
+            searchQuery = ""
+          }) {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundColor(.secondary)
           }
+          .buttonStyle(.plain)
+          .padding(.trailing, 8)
         }
       }
-
     }
+  }
 
+  var body: some View {
+    ZStack {
+      // Hidden button for `/` shortcut for search
+      Button("") {
+        DispatchQueue.main.async {
+          self.searchTextField?.window?.makeFirstResponder(self.searchTextField)
+        }
+      }
+      .keyboardShortcut("/", modifiers: [])
+      .hidden()
+
+      // Keyboard shortcuts for grid navigation
+      keyCaptureView
+
+      mainContentView
+
+      lightboxView
+    }
+    .onAppear {
+
+      // Save the current database path as last opened
+      if let databasePath = databasePath {
+
+        UserDefaults.standard.set(databasePath, forKey: "lastOpenedDatabasePath")
+        // Add to recent databases
+        UserDefaults.addRecentDatabase(databasePath)
+      } else {
+        print("Not saving lastOpenedDatabasePath because databasePath is nil")
+      }
+
+      setupS3SyncNotifications()
+
+      // Start auto-sync if enabled
+      if s3Service.autoSyncEnabled && s3Service.config.isValid {
+        Task {
+          await s3Service.uploadNextItem()
+        }
+      }
+    }
+    .toolbar {
+      viewModePickerToolbar
+      actionButtonsToolbar
+      searchToolbar
+    }
     .navigationTitle(databasePath.map { ($0 as NSString).lastPathComponent } ?? "")
     .background(WindowStateRestorer(databasePath: databasePath))
   }
+
   private func nextFullScreenItem() {
     guard let currentLightboxItem = lightboxItem,
       let index = sortedItems.firstIndex(where: { $0.id == currentLightboxItem.id })

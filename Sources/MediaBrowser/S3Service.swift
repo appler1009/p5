@@ -336,6 +336,40 @@ class S3Service: ObservableObject {
     // Note: We don't auto-start here - user must explicitly enable via toggle
   }
 
+  func deleteFromS3(_ item: LocalFileSystemMediaItem) async throws {
+    guard config.isValid else {
+      throw S3Error.notConfigured
+    }
+    guard s3Client != nil else {
+      throw S3Error.clientNotInitialized
+    }
+
+    // Delete all related files from S3
+    var allFiles = [item.originalUrl]
+    if let editedUrl = item.editedUrl {
+      allFiles.append(editedUrl)
+    }
+    if let liveUrl = item.liveUrl {
+      allFiles.append(liveUrl)
+    }
+
+    for fileURL in allFiles {
+      let fileDate = item.thumbnailDate
+      let s3Key = createS3Key(for: fileDate, fileURL: fileURL)
+
+      do {
+        let input = DeleteObjectInput(bucket: config.bucketName, key: s3Key)
+        _ = try await s3Client?.deleteObject(input: input)
+        print("✅ [DELETED] \(fileURL.lastPathComponent) from S3")
+      } catch {
+        let filename = fileURL.lastPathComponent
+        print("❌ [DELETE FAILED] \(filename) - Error: \(error.localizedDescription)")
+        // Continue with next file even if one fails
+        continue
+      }
+    }
+  }
+
   private func contentType(for url: URL) -> String {
     let pathExtension = url.pathExtension.lowercased()
 

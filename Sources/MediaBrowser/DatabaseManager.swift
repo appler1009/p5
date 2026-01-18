@@ -48,6 +48,11 @@ class DatabaseManager: ObservableObject {
                 t.add(column: "geocode", .text)
               }
             }
+            if !columns.contains("deleted_at") {
+              try db.alter(table: "local_media_items") { t in
+                t.add(column: "deleted_at", .datetime)
+              }
+            }
           }
         }
       }
@@ -158,6 +163,141 @@ class DatabaseManager: ObservableObject {
     }
   }
 
+  func moveToTrash(itemId: Int) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "UPDATE local_media_items SET deleted_at = ? WHERE id = ?",
+          arguments: [Date(), itemId]
+        )
+      }
+    } catch {
+      print("Move to trash error: \(error)")
+    }
+  }
+
+  func restoreFromTrash(itemId: Int) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "UPDATE local_media_items SET deleted_at = NULL WHERE id = ?",
+          arguments: [itemId]
+        )
+      }
+    } catch {
+      print("Restore from trash error: \(error)")
+    }
+  }
+
+  func permanentlyDeleteFromTrash(itemId: Int) {
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "DELETE FROM local_media_items WHERE id = ? AND deleted_at IS NOT NULL",
+          arguments: [itemId]
+        )
+      }
+    } catch {
+      print("Permanent delete error: \(error)")
+    }
+  }
+
+  func getTrashedItems() -> [LocalFileSystemMediaItem] {
+    var items: [LocalFileSystemMediaItem] = []
+    do {
+      try dbQueue?.read { db in
+        let rows = try Row.fetchAll(
+          db, sql: "SELECT * FROM local_media_items WHERE deleted_at IS NOT NULL")
+        for row in rows {
+          guard let itemId = row["id"] as Int?,
+            let originalUrlString = row["original_url"] as String?,
+            let originalUrl = URL(string: originalUrlString)
+          else { continue }
+          var meta = MediaMetadata(
+            creationDate: row["creation_date"] as Date?,
+            modificationDate: row["modification_date"] as Date?,
+            dimensions: {
+              if let w = row["width"] as Double?, let h = row["height"] as Double? {
+                return CGSize(width: w, height: h)
+              }
+              return nil
+            }(),
+            exifDate: row["exif_date"] as Date?,
+            gps: {
+              if let lat = row["latitude"] as Double?, let lon = row["longitude"] as Double? {
+                return GPSLocation(latitude: lat, longitude: lon, altitude: nil)
+              }
+              return nil
+            }(),
+            duration: nil,
+            make: nil,
+            model: nil,
+            lens: nil,
+            iso: nil,
+            aperture: nil,
+            shutterSpeed: nil,
+            geocode: row["geocode"] as String?,
+            extraEXIF: [:]
+          )
+
+          if let exifString = row["exif"] as String?, let exifData = exifString.data(using: .utf8),
+            let exifDict = try? JSONSerialization.jsonObject(with: exifData) as? [String: Any]
+          {
+            meta.gps?.altitude = exifDict["altitude"] as? Double
+            meta.duration = exifDict["duration"] as? Double
+            meta.make = exifDict["make"] as? String
+            meta.model = exifDict["model"] as? String
+            meta.lens = exifDict["lens"] as? String
+            meta.iso = exifDict["iso"] as? Int
+            meta.aperture = exifDict["aperture"] as? Double
+            meta.shutterSpeed = exifDict["shutter_speed"] as? String
+
+            let knownKeys = Set([
+              "altitude", "duration", "make", "model", "lens", "iso", "aperture", "shutter_speed",
+            ])
+            for (key, value) in exifDict {
+              if !knownKeys.contains(key) {
+                meta.extraEXIF[key] = value as? String ?? "\(value)"
+              }
+            }
+          }
+
+          let syncStatusString = row["s3_sync_status"] as String?
+          let syncStatus = syncStatusString.flatMap { S3SyncStatus(rawValue: $0) } ?? .notSynced
+
+          let editedUrlString = row["edited_url"] as? String
+          let editedUrl = editedUrlString.flatMap { URL(string: $0) }
+          let liveUrlString = row["live_video_url"] as? String
+          let liveUrl = liveUrlString.flatMap { URL(string: $0) }
+
+          let item = LocalFileSystemMediaItem(
+            id: itemId, original: originalUrl, edited: editedUrl, live: liveUrl)
+          item.metadata = meta
+          item.s3SyncStatus = syncStatus
+          item.isDeleted = row["deleted_at"] != nil  // Set isDeleted based on deleted_at field
+          items.append(item)
+        }
+      }
+    } catch {
+      print("Query trashed items error: \(error)")
+    }
+    return items
+  }
+
+  func cleanupOldTrashItems() {
+    let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+    do {
+      try dbQueue?.write { db in
+        try db.execute(
+          sql: "DELETE FROM local_media_items WHERE deleted_at < ?",
+          arguments: [oneWeekAgo]
+        )
+      }
+    } catch {
+      print("Cleanup trash error: \(error)")
+    }
+  }
+
   func getItemsNeedingGeocode(limit: Int = 45) -> [LocalFileSystemMediaItem] {
     var items: [LocalFileSystemMediaItem] = []
     do {
@@ -253,6 +393,7 @@ class DatabaseManager: ObservableObject {
         t.column("geocode", .text)
         t.column("s3_sync_status", .text).defaults(to: S3SyncStatus.notApplicable.rawValue)
         t.column("directory_id", .integer)
+        t.column("deleted_at", .datetime)
       }
       try db.create(table: "directories", ifNotExists: true) { t in
         t.column("id", .integer).primaryKey(autoincrement: true)
@@ -349,11 +490,15 @@ class DatabaseManager: ObservableObject {
     }
   }
 
-  func getAllItems() -> [LocalFileSystemMediaItem] {
+  func getAllItems(includeTrashed: Bool = false) -> [LocalFileSystemMediaItem] {
     var items: [LocalFileSystemMediaItem] = []
     do {
       try dbQueue?.read { db in
-        let rows = try Row.fetchAll(db, sql: "SELECT * FROM local_media_items")
+        let sql =
+          includeTrashed
+          ? "SELECT * FROM local_media_items"
+          : "SELECT * FROM local_media_items WHERE deleted_at IS NULL"
+        let rows = try Row.fetchAll(db, sql: sql)
         for row in rows {
           guard let itemId = row["id"] as Int?,
             let originalUrlString = row["original_url"] as String?,
@@ -420,6 +565,7 @@ class DatabaseManager: ObservableObject {
             id: itemId, original: originalUrl, edited: editedUrl, live: liveUrl)
           item.metadata = meta
           item.s3SyncStatus = syncStatus
+          item.isDeleted = row["deleted_at"] != nil  // Set isDeleted based on deleted_at field
           items.append(item)
         }
       }

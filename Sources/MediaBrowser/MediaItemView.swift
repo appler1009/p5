@@ -24,18 +24,23 @@ struct MediaItemView: View {
 
   private var syncStatusIndicator: some View {
     Group {
-      switch item.s3SyncStatus {
-      case .synced:
-        Image(systemName: "cloud.fill")
-          .foregroundColor(.white)
-      case .failed:
-        Image(systemName: "exclamationmark.triangle.fill")
+      if item.isDeleted {
+        Image(systemName: "trash.fill")
           .foregroundColor(.red)
-      case .notSynced:
-        Image(systemName: "cloud")
-          .foregroundColor(.white.opacity(0.7))
-      case .notApplicable:
-        EmptyView()  // No icon for items where sync is not applicable
+      } else {
+        switch item.s3SyncStatus {
+        case .synced:
+          Image(systemName: "cloud.fill")
+            .foregroundColor(.white)
+        case .failed:
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundColor(.red)
+        case .notSynced:
+          Image(systemName: "cloud")
+            .foregroundColor(.white.opacity(0.7))
+        case .notApplicable:
+          EmptyView()  // No icon for items where sync is not applicable
+        }
       }
     }
     .font(.caption)
@@ -79,19 +84,24 @@ struct MediaItemView: View {
         // Sync status indicator
         syncStatusIndicator
           .padding(4)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+          .frame(
+            maxWidth: .infinity, maxHeight: .infinity,
+            alignment: item.isDeleted ? .topTrailing : .bottomTrailing)
       }
       .aspectRatio(1, contentMode: .fit)  // Ensure square cells
       .clipShape(RoundedRectangle(cornerRadius: cornerRadius))  // Apply rounded corners to entire view
       .overlay(
         RoundedRectangle(cornerRadius: cornerRadius)
-          .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 4)
+          .strokeBorder(
+            isSelected ? Color.accentColor : item.isDeleted ? Color.red : Color.clear,
+            lineWidth: 4
+          )
       )
       .help(item.displayName)
       .modifier(
         ConditionalTapGestureModifier(onTap: onTap)
       )
-      .opacity(isDuplicate ? 0.3 : 1.0)
+      .opacity((isDuplicate || item.isDeleted) ? 0.3 : 1.0)
       .onAppear {
         loadThumbnail()
       }
