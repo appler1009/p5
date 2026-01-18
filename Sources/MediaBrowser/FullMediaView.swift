@@ -32,7 +32,7 @@ struct SectionHeader: View {
 }
 
 struct MediaDetailsSidebar: View {
-  let item: LocalFileSystemMediaItem
+  @ObservedObject var item: LocalFileSystemMediaItem
   let metadata: MediaMetadata?
   let isGeocodingInProgress: Bool
   let databaseManager: DatabaseManager
@@ -239,6 +239,7 @@ struct MediaDetailsSidebar: View {
 
         HStack(spacing: 8) {
           Button(action: {
+            print("🖱️ [RESTORE] Button clicked for item: \(item.displayName) (ID: \(item.id))")
             Task {
               await performRestore()
             }
@@ -257,6 +258,7 @@ struct MediaDetailsSidebar: View {
           Spacer()
 
           Button(action: {
+            print("🗑️ [DELETE] Button clicked for item: \(item.displayName) (ID: \(item.id))")
             Task {
               await performDelete()
             }
@@ -328,25 +330,30 @@ struct MediaDetailsSidebar: View {
   private func performDelete() async {
     print("🗑️ [DELETE] Starting delete process for item: \(item.displayName) (ID: \(item.id))")
 
-    // Mark item as deleted in database
-    databaseManager.moveToTrash(itemId: item.id)
-    print("✅ [DELETE] Marked item as deleted in database")
-
-    // Update local item state to trigger UI refresh in the lightbox
+    // Update database and local item state atomically on MainActor
     await MainActor.run {
+      // Mark item as deleted in database
+      databaseManager.moveToTrash(itemId: item.id)
+      print("✅ [DELETE] Marked item as deleted in database")
+
+      // Update local item state to trigger UI refresh
+      item.objectWillChange.send()
       item.isDeleted = true
-      
+
       // Also update the corresponding item in mediaScanner.items to ensure grid view updates
       if let scannerItem = mediaScanner.items.first(where: { $0.id == item.id }) {
-        scannerItem.isDeleted = true
         scannerItem.objectWillChange.send()
+        scannerItem.isDeleted = true
       }
     }
 
     // Post notification to refresh the mediaScanner items array
     await MainActor.run {
-      print("📢 [DELETE] Posting MediaItemDeleted notification")
-      NotificationCenter.default.post(name: NSNotification.Name("MediaItemDeleted"), object: nil)
+      print("📢 [DELETE] Posting MediaItemDeleted notification for item \(item.id)")
+      NotificationCenter.default.post(
+        name: NSNotification.Name("MediaItemDeleted"),
+        object: item.id
+      )
     }
 
     // Delete from S3 if requested and configured
@@ -366,24 +373,29 @@ struct MediaDetailsSidebar: View {
   private func performRestore() async {
     print("🔄 [RESTORE] Starting restore process for item: \(item.displayName) (ID: \(item.id))")
 
-    // Restore item from trash
-    databaseManager.restoreFromTrash(itemId: item.id)
-    print("✅ [RESTORE] Marked item as restored in database")
-
-    // Update local item state to trigger UI refresh in the lightbox
+    // Update database and local item state atomically on MainActor
     await MainActor.run {
+      // Restore item from trash
+      databaseManager.restoreFromTrash(itemId: item.id)
+      print("✅ [RESTORE] Marked item as restored in database")
+
+      // Update local item state to trigger UI refresh
+      item.objectWillChange.send()
       item.isDeleted = false
-      
+
       // Also update the corresponding item in mediaScanner.items to ensure grid view updates
       if let scannerItem = mediaScanner.items.first(where: { $0.id == item.id }) {
-        scannerItem.isDeleted = false
         scannerItem.objectWillChange.send()
+        scannerItem.isDeleted = false
       }
     }
 
     // Post notification to refresh the mediaScanner items array
     await MainActor.run {
-      NotificationCenter.default.post(name: NSNotification.Name("MediaItemRestored"), object: nil)
+      NotificationCenter.default.post(
+        name: NSNotification.Name("MediaItemRestored"),
+        object: item.id
+      )
     }
 
     print("✅ [RESTORE] Restore process completed successfully")

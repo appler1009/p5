@@ -21,28 +21,46 @@ class MediaScanner: ObservableObject {
     // Listen for media item deleted/restored notifications
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(mediaItemChanged),
+      selector: #selector(mediaItemChanged(_:)),
       name: NSNotification.Name("MediaItemDeleted"),
       object: nil
     )
     NotificationCenter.default.addObserver(
       self,
-      selector: #selector(mediaItemChanged),
+      selector: #selector(mediaItemChanged(_:)),
       name: NSNotification.Name("MediaItemRestored"),
       object: nil
     )
   }
 
-  @objc private func mediaItemChanged() {
-    print("🔄 [MEDIASCANNER] Received media item change notification, refreshing data...")
-    Task { await loadFromDB() }
+  @objc private func mediaItemChanged(_ notification: Notification) {
+    guard let itemId = notification.object as? Int else {
+      print("🔄 [MEDIASCANNER] Received notification without item ID, refreshing all...")
+      Task { await loadFromDB() }
+      return
+    }
+    print("🔄 [MEDIASCANNER] Received notification for item \(itemId), updating in place...")
+    Task { await updateItemStateFromDB(itemId: itemId) }
   }
 
   func loadFromDB() async {
     let showDeleted = databaseManager.getSetting("hideDeletedItems") != "false"
     let oldCount = items.count
     items = databaseManager.getAllItems(includeTrashed: !showDeleted)
-    print("🔄 [MEDIASCANNER] loadFromDB completed: \(oldCount) → \(items.count) items (showDeleted: \(!showDeleted))")
+  }
+
+  func updateItemStateFromDB(itemId: Int) async {
+    let showDeleted = databaseManager.getSetting("hideDeletedItems") != "false"
+    let dbItems = databaseManager.getAllItems(includeTrashed: !showDeleted)
+
+    await MainActor.run {
+      if let dbItem = dbItems.first(where: { $0.id == itemId }),
+         let existingItem = items.first(where: { $0.id == itemId }) {
+        existingItem.objectWillChange.send()
+        existingItem.isDeleted = dbItem.isDeleted
+        print("🔄 [MEDIASCANNER] Updated item \(itemId) isDeleted to \(dbItem.isDeleted)")
+      }
+    }
   }
 
   func updateGeocode(for itemId: Int, geocode: String) async {

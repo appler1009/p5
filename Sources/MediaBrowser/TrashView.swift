@@ -75,10 +75,6 @@ struct TrashView: View {
     .onAppear {
       loadTrashedItems()
     }
-    .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MediaItemDeleted"))) {
-      _ in
-      loadTrashedItems()
-    }
   }
 
   private func loadTrashedItems() {

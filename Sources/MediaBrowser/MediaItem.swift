@@ -5,7 +5,13 @@ class MediaItem: Identifiable, Equatable, Hashable, ObservableObject, @unchecked
   let id: Int
   var metadata: MediaMetadata?  // to be filled later
   @Published var s3SyncStatus: S3SyncStatus = .notSynced  // Track S3 upload status
-  @Published var isDeleted: Bool = false  // Track if item is marked as deleted
+  @Published var isDeleted: Bool = false {
+    willSet {
+      if newValue != isDeleted {
+        print("🔄 [MEDIAITEM] isDeleted changed: \(displayName) (ID: \(id)) → \(newValue)")
+      }
+    }
+  }
   var displayName: String {
     fatalError("Subclasses must override displayName")
   }

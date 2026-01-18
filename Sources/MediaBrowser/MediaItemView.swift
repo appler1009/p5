@@ -13,7 +13,7 @@ struct ConditionalTapGestureModifier: ViewModifier {
 }
 
 struct MediaItemView: View {
-  let item: MediaItem
+  @ObservedObject var item: MediaItem
   let onTap: (() -> Void)?
   let isSelected: Bool
   let isDuplicate: Bool
