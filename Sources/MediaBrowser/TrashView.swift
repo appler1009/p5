@@ -4,6 +4,7 @@ struct TrashView: View {
   let databaseManager: DatabaseManager
   let s3Service: S3Service
   let mediaScanner: MediaScanner
+  let gridCellSize: Double
 
   @State private var trashedItems: [LocalFileSystemMediaItem] = []
   @State private var selectedItems: Set<Int> = []
@@ -62,7 +63,7 @@ struct TrashView: View {
             onItemDoubleTap: { _ in
               // No double-tap action for trash items
             },
-            cellWidth: 120,
+            cellWidth: gridCellSize,
             disableDuplicates: false,
             onDuplicateCountChange: nil,
             selectionState: nil,

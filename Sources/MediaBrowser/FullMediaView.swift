@@ -258,7 +258,9 @@ struct MediaDetailsSidebar: View {
             }) {
               HStack {
                 Image(systemName: "trash")
+                  .foregroundColor(.red)
                 Text("Delete")
+                  .foregroundColor(.red)
               }
               .buttonStyle(.borderedProminent)
               .tint(.red)

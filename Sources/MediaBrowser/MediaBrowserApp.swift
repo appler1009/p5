@@ -209,21 +209,31 @@ struct MediaBrowserApp: App {
         }
       }
 
-      // Add items after standard View options
+      // Add items after standard View menu options
+      // View menu for switching between views
       CommandGroup(after: .sidebar) {
         Button(action: {
-          UserDefaults.standard.set("Grid", forKey: "viewMode")
+          NotificationCenter.default.post(name: Notification.Name("switchToGridView"), object: nil)
         }) {
           Label("Grid View", systemImage: "square.grid.2x2")
         }
         .keyboardShortcut("1", modifiers: .command)
 
         Button(action: {
-          UserDefaults.standard.set("Map", forKey: "viewMode")
+          NotificationCenter.default.post(name: Notification.Name("switchToMapView"), object: nil)
         }) {
           Label("Map View", systemImage: "map")
         }
         .keyboardShortcut("2", modifiers: .command)
+
+        Divider()
+
+        Button(action: {
+          NotificationCenter.default.post(name: Notification.Name("switchToTrashView"), object: nil)
+        }) {
+          Label("Trash View", systemImage: "trash")
+        }
+        .keyboardShortcut("3", modifiers: .command)
 
         Divider()
 

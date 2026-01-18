@@ -152,7 +152,8 @@ struct ContentView: View {
           TrashView(
             databaseManager: databaseManager,
             s3Service: s3Service,
-            mediaScanner: mediaScanner
+            mediaScanner: mediaScanner,
+            gridCellSize: gridCellSize
           )
         }
       }
@@ -191,6 +192,21 @@ struct ContentView: View {
       _ in
       self.viewMode = self.databaseManager.getSetting("viewMode") ?? "Grid"
       self.gridCellSize = Double(self.databaseManager.getSetting("gridCellSize") ?? "80") ?? 80
+    }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("switchToGridView"))) {
+      _ in
+      self.viewMode = "Grid"
+      self.databaseManager.setSetting("viewMode", value: "Grid")
+    }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("switchToMapView"))) {
+      _ in
+      self.viewMode = "Map"
+      self.databaseManager.setSetting("viewMode", value: "Map")
+    }
+    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("switchToTrashView"))) {
+      _ in
+      self.viewMode = "Trash"
+      self.databaseManager.setSetting("viewMode", value: "Trash")
     }
   }
 
