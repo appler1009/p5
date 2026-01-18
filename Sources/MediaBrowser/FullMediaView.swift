@@ -549,8 +549,6 @@ struct FullMediaView: View {
   let mediaScanner: MediaScanner
   let s3Service: S3Service
 
-
-
   init(
     item: LocalFileSystemMediaItem, onClose: @escaping () -> Void, onNext: @escaping () -> Void,
     onPrev: @escaping () -> Void, databaseManager: DatabaseManager, mediaScanner: MediaScanner,

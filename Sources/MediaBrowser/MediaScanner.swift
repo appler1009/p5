@@ -55,7 +55,8 @@ class MediaScanner: ObservableObject {
 
     await MainActor.run {
       if let dbItem = dbItems.first(where: { $0.id == itemId }),
-         let existingItem = items.first(where: { $0.id == itemId }) {
+        let existingItem = items.first(where: { $0.id == itemId })
+      {
         existingItem.objectWillChange.send()
         existingItem.isDeleted = dbItem.isDeleted
         print("🔄 [MEDIASCANNER] Updated item \(itemId) isDeleted to \(dbItem.isDeleted)")
