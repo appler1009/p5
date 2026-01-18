@@ -27,6 +27,7 @@ struct MediaItemView: View {
       if item.isDeleted {
         Image(systemName: "trash.fill")
           .foregroundColor(.red)
+          .padding(4)
       } else {
         switch item.s3SyncStatus {
         case .synced:
